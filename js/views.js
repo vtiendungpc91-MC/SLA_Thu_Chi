@@ -7,6 +7,7 @@ import {
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
   getRange, shiftAnchor, elapsedDays, parseISO, nextDate, FREQ_LABEL, PERIOD_LABEL, splitTags, debounce, addMonths,
+  fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN,
 } from './utils.js';
 import { donut, bars } from './charts.js';
 import { voiceSupported, listen, parseSpeech } from './voice.js';
@@ -26,6 +27,19 @@ const BANKS = ['Vietcombank', 'VietinBank', 'BIDV', 'Agribank', 'Techcombank', '
   'HDBank', 'VIB', 'SHB', 'SeABank', 'OCB', 'MSB', 'LPBank', 'Eximbank', 'Nam A Bank', 'Bac A Bank', 'ABBANK', 'Shinhan Bank',
   'HSBC', 'Standard Chartered', 'UOB', 'Cake by VPBank', 'Timo', 'FE Credit', 'Home Credit', 'HD Saison', 'Mcredit', 'Mirae Asset'];
 
+/**
+ * Ngày giao dịch + giờ ghi nhận (giờ Việt Nam).
+ * Ghi đúng ngày: "🕒 03/11/2026 · 08:35". Ghi bù ngày khác: "🕒 01/11/2026 · ghi lúc 08:35 03/11".
+ */
+function txWhen(t) {
+  if (!t.createdAt) return `🕒 ${fmtDate(t.date)}`;
+  const createdDay = vnDateISO(t.createdAt);
+  const time = fmtTimeVN(t.createdAt);
+  return createdDay === t.date
+    ? `🕒 ${fmtDate(t.date)} · ${time}`
+    : `🕒 ${fmtDate(t.date)} · ghi lúc ${time} ${fmtDM(createdDay)}${createdDay.slice(0, 4) !== t.date.slice(0, 4) ? '/' + createdDay.slice(0, 4) : ''}`;
+}
+
 function txRow(t) {
   const parts = S.txParts(t);
   const isTr = t.type === 'transfer';
@@ -41,7 +55,7 @@ function txRow(t) {
   const foreign = t.currency && t.currency !== 'VND' ? `<small>${esc(fmtCur(t.amount, t.currency))}</small>` : '';
   return `<button type="button" class="row tx" data-act="tx-edit" data-id="${t.id}">
     ${icon}
-    <span class="grow"><b>${esc(title)}</b><small>${esc(sub.join(' · '))}</small></span>
+    <span class="grow"><b>${esc(title)}</b><small>${esc(sub.join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
     <span class="amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}${foreign}<small>${flags}</small></span>
   </button>`;
 }
@@ -210,7 +224,7 @@ function homeView() {
   const recent = sortTx([...state.transactions]).slice(0, 6);
   const top = S.byCategory(r, 'expense').slice(0, 5);
   const topMax = top[0]?.amount || 1;
-  const hour = new Date().getHours();
+  const hour = Number(fmtTimeVN(Date.now()).slice(0, 2));
   const loggedToday = state.transactions.some((x) => x.date === today);
   const showMonthSum = Number(today.slice(8)) <= 3;
 
@@ -410,6 +424,7 @@ function gopDetail(tx) {
       <div class="kv"><span>Số tiền</span><b class="${out ? 'expense' : 'income'}">${fmtSigned(out ? -tx.amountVnd : tx.amountVnd)}</b></div>
       <div class="kv"><span>${out ? 'Từ tài khoản' : 'Vào tài khoản'}</span><b>${esc(accName(tx.accountId))}</b></div>
       <div class="kv"><span>Ngày</span><b>${fmtDate(tx.date)}</b></div>
+      ${tx.createdAt ? `<div class="kv"><span>Ghi nhận lúc</span><b>${fmtDateTimeVN(tx.createdAt)}</b></div>` : ''}
       ${tx.note ? `<div class="kv"><span>Ghi chú</span><b>${esc(tx.note)}</b></div>` : ''}
       <p class="muted small">Khoản góp được ghi ở cả 2 sổ. Muốn sửa số tiền: xóa khoản này rồi góp lại.</p>
       <div class="actions"><button type="button" class="btn danger" data-del>Xóa khoản góp${peerExists ? ' (cả 2 bên)' : ''}</button></div>
@@ -988,6 +1003,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   openSheet({
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     body: `<form class="form txf" autocomplete="off">
+      ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button>' : ''}</div>
       <div class="amount-row">

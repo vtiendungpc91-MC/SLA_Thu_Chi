@@ -63,7 +63,35 @@ export const parseISO = (s) => {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
 };
-export const todayISO = () => toISO(new Date());
+// ---------- Giờ Việt Nam (UTC+7) ----------
+// Ngày giao dịch và giờ ghi nhận luôn tính theo giờ Việt Nam, kể cả khi điện thoại đặt múi giờ khác.
+const VN_TZ = 'Asia/Ho_Chi_Minh';
+let vnFmt = null;
+try {
+  vnFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: VN_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
+} catch { vnFmt = null; }
+
+function vnParts(ts) {
+  const d = new Date(ts);
+  if (!vnFmt) {
+    // Trình duyệt không hỗ trợ múi giờ: tự cộng UTC+7.
+    const v = new Date(d.getTime() + 7 * 3600e3);
+    return { year: v.getUTCFullYear(), month: pad(v.getUTCMonth() + 1), day: pad(v.getUTCDate()), hour: pad(v.getUTCHours()), minute: pad(v.getUTCMinutes()) };
+  }
+  const p = Object.fromEntries(vnFmt.formatToParts(d).map((x) => [x.type, x.value]));
+  if (p.hour === '24') p.hour = '00';
+  return p;
+}
+/** Ngày (YYYY-MM-DD) theo giờ Việt Nam của một thời điểm. */
+export const vnDateISO = (ts = Date.now()) => { const p = vnParts(ts); return `${p.year}-${p.month}-${p.day}`; };
+/** Giờ:phút theo giờ Việt Nam. */
+export const fmtTimeVN = (ts) => { const p = vnParts(ts); return `${p.hour}:${p.minute}`; };
+/** "08:35 · 03/11/2026" theo giờ Việt Nam. */
+export const fmtDateTimeVN = (ts) => { const p = vnParts(ts); return `${p.hour}:${p.minute} · ${p.day}/${p.month}/${p.year}`; };
+
+export const todayISO = () => vnDateISO();
 export const addDays = (s, n) => {
   const d = parseISO(s);
   d.setDate(d.getDate() + n);

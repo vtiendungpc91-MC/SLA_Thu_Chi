@@ -2,7 +2,7 @@
 // Lưu ý: đây là lớp khóa giao diện, giúp người khác cầm máy không xem được; dữ liệu trong máy không bị mã hóa.
 
 const KEY = 'stc-lock';
-export const DEFAULT_PIN = '10101990';
+export const DEFAULT_PIN = '2024';
 const MAX_TRIES = 5;
 const WAIT_SECONDS = 30;
 

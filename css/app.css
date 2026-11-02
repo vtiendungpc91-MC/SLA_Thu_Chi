@@ -114,6 +114,7 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .row-top { display: flex; align-items: center; gap: 12px; }
 .row-top .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row.off { opacity: .5; }
+.row .grow small.when { font-size: 11.5px; opacity: .85; font-variant-numeric: tabular-nums; }
 .row.add-row b { color: var(--primary); font-weight: 600; }
 .row.add-row .ci { color: var(--primary); font-size: 20px; }
 .row.danger b { color: var(--expense); }
