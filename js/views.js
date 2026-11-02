@@ -93,6 +93,97 @@ const readMoney = (s) => {
   return neg ? -v : v;
 };
 
+// ================= Người dùng =================
+const profileChip = () => {
+  const p = S.currentProfile();
+  return `<button type="button" class="profile-chip" data-act="profiles" style="--c:${esc(p.color)}" title="Đổi người dùng">
+    <span>${esc(p.icon)}</span>${esc(p.name)} <i>▾</i></button>`;
+};
+const summaryBtn = () => `<button type="button" class="btn ghost small" data-act="summary" data-v="current">📊 Tóm tắt</button>`;
+
+async function switchTo(id) {
+  if (id === S.currentProfile().id) return;
+  ui.period = null;
+  ui.txFilter = { type: 'all', q: '', categoryId: null, tag: null, accountId: null };
+  await S.switchProfile(id);
+  await S.processRecurring();
+  toast(`Đã chuyển sang sổ của ${S.currentProfile().name}`);
+}
+
+actions['profile-switch'] = (el) => switchTo(el.dataset.id);
+
+actions.profiles = () => {
+  const cur = S.currentProfile().id;
+  openSheet({
+    title: 'Chọn người dùng',
+    body: `<div class="list">${S.getProfiles().map((p) => `
+      <div class="row profile-row ${p.id === cur ? 'on' : ''}">
+        <button type="button" class="grow-btn" data-switch="${esc(p.id)}"><span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span>
+          <span class="grow"><b>${esc(p.name)}</b><small>${p.id === cur ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>${p.id === cur ? '<span class="income">✓</span>' : ''}</button>
+        <button type="button" class="icon-btn" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
+      </div>`).join('')}</div>
+      <button type="button" class="btn primary block" data-add>+ Thêm người dùng</button>
+      <p class="muted small">Ví dụ: sổ của bạn, sổ của vợ/chồng, sổ của con… Dữ liệu mỗi người tách riêng.</p>`,
+    onMount(sh, close) {
+      sh.addEventListener('click', async (e) => {
+        const sw = e.target.closest('[data-switch]');
+        const ed = e.target.closest('[data-edit]');
+        if (sw) { close(); await switchTo(sw.dataset.switch); }
+        else if (ed) { close(); profileForm(S.getProfiles().find((p) => p.id === ed.dataset.edit)); }
+        else if (e.target.closest('[data-add]')) { close(); profileForm(null); }
+      });
+    },
+  });
+};
+
+const PROFILE_ICONS = ['🧑', '👨', '👩', '👦', '👧', '👴', '👵', '👪', '💼', '🏠'];
+
+function profileForm(p) {
+  const f = p ? { ...p } : { name: '', icon: S.getProfiles().length === 1 ? '👩' : '🧑', color: null };
+  if (!f.color) f.color = S.PROFILE_COLORS[S.getProfiles().length % S.PROFILE_COLORS.length];
+  const isOnly = S.getProfiles().length <= 1;
+  openSheet({
+    title: p ? 'Sửa người dùng' : 'Thêm người dùng',
+    body: `<form class="form">
+      ${field('Tên hiển thị', `<input id="pf-name" required maxlength="20" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ, Con gái">`)}
+      <div class="field"><span>Biểu tượng</span><div class="chips" id="pf-icons">${PROFILE_ICONS.map((i) => `<button type="button" class="chip icon-chip ${i === f.icon ? 'on' : ''}" data-icon="${i}">${i}</button>`).join('')}</div></div>
+      <div class="field"><span>Màu</span><div class="colors">${S.PROFILE_COLORS.map((col) => `<button type="button" class="color ${col === f.color ? 'on' : ''}" data-color="${col}" style="--c:${col}" aria-label="${col}"></button>`).join('')}</div></div>
+      ${p ? '' : '<p class="muted small">Sổ mới có sẵn danh mục và 2 ví mặc định. Cài đặt khác lấy giá trị mặc định.</p>'}
+      <div class="actions">${p && !isOnly ? '<button type="button" class="btn danger" data-del>Xóa người dùng</button>' : ''}<button class="btn primary">${p ? 'Lưu' : 'Thêm & chuyển sang'}</button></div>
+    </form>`,
+    onMount(sh, close) {
+      $(sh, '#pf-icons').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-icon]');
+        if (!b) return;
+        f.icon = b.dataset.icon;
+        sh.querySelectorAll('[data-icon]').forEach((x) => x.classList.toggle('on', x === b));
+      });
+      $(sh, '.colors').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-color]');
+        if (!b) return;
+        f.color = b.dataset.color;
+        sh.querySelectorAll('.color').forEach((x) => x.classList.toggle('on', x === b));
+      });
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = $(sh, '#pf-name').value.trim();
+        if (!name) return toast('Nhập tên');
+        if (S.getProfiles().some((x) => x.id !== f.id && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên này đã có');
+        const saved = S.saveProfile({ ...f, name });
+        close();
+        if (p) { refresh(); toast('Đã lưu'); } else await switchTo(saved.id);
+      });
+      $(sh, '[data-del]')?.addEventListener('click', async () => {
+        if (!confirm(`Xóa người dùng "${p.name}" và TOÀN BỘ dữ liệu thu chi của người này? Không thể hoàn tác. Nên sao lưu trước!`)) return;
+        if (prompt('Gõ XOA để xác nhận') !== 'XOA') return;
+        ui.period = null;
+        await S.deleteProfile(p.id);
+        close(); refresh(); toast('Đã xóa người dùng');
+      });
+    },
+  });
+}
+
 function sectionTitle(text, actionHtml = '') {
   return `<div class="sec-h"><h2>${text}</h2>${actionHtml}</div>`;
 }
@@ -108,14 +199,11 @@ function homeView() {
   const topMax = top[0]?.amount || 1;
   const hour = new Date().getHours();
   const loggedToday = state.transactions.some((x) => x.date === today);
-  const ws = Number(state.settings.weekStart);
-  const dow = parseISO(today).getDay();
-  const showWeekSum = dow === ws || dow === (ws + 1) % 7;
   const showMonthSum = Number(today.slice(8)) <= 3;
 
   return `
-  <header class="top"><div><small>${fmtDayHeader(today)}</small><h1>Sổ Thu Chi</h1></div>
-    <button type="button" class="icon-btn" data-act="summary" data-v="current" title="Tóm tắt & chia sẻ">📤</button></header>
+  <header class="top"><div>${profileChip()}<h1>Sổ Thu Chi</h1><small>${fmtDayHeader(today)}</small></div>
+    ${summaryBtn()}</header>
   ${periodBar()}
   <section class="card hero">
     <div class="hero-row">
@@ -128,7 +216,6 @@ function homeView() {
 
   ${!loggedToday && hour >= 18 ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
   ${showMonthSum ? `<button type="button" class="banner soft" data-act="summary" data-v="prev-month">📊 Xem tóm tắt tháng trước</button>` : ''}
-  ${showWeekSum ? `<button type="button" class="banner soft" data-act="summary" data-v="prev-week">📊 Xem tóm tắt tuần trước</button>` : ''}
 
   ${alerts.length ? `${sectionTitle('Cần chú ý')}<div class="card list">${alerts.map(alertRow).join('')}</div>` : ''}
 
@@ -200,7 +287,7 @@ function txView() {
   if (f.accountId) chips.push(['accountId', accName(f.accountId)]);
   const tags = S.allTags().slice(0, 12);
   return `
-  <header class="top"><h1>Giao dịch</h1><button type="button" class="icon-btn" data-act="export-csv" title="Xuất CSV">⬇️</button></header>
+  <header class="top"><div>${profileChip()}<h1>Giao dịch</h1></div><button type="button" class="icon-btn" data-act="export-csv" title="Xuất CSV">⬇️</button></header>
   ${periodBar()}
   <div class="filters">
     <input id="tx-q" type="search" placeholder="Tìm ghi chú, danh mục, tag, số tiền…" value="${esc(f.q)}">
@@ -281,7 +368,7 @@ function reportsView() {
   const tags = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return `
-  <header class="top"><h1>Báo cáo</h1><button type="button" class="icon-btn" data-act="summary" data-v="current" title="Chia sẻ tóm tắt">📤</button></header>
+  <header class="top"><div>${profileChip()}<h1>Báo cáo</h1></div>${summaryBtn()}</header>
   ${periodBar()}
   <section class="card stats">
     <div><small>Thu</small><b class="income">${fmt(t.income)}</b><em>${pctChange(t.income, pt.income)}</em></div>
@@ -333,7 +420,7 @@ function planView(sub) {
   if (sub && PLAN_TABS[sub]) ui.planTab = sub;
   const tab = ui.planTab;
   const body = { budget: budgetTab, goals: goalsTab, debts: debtsTab, recurring: recurringTab }[tab]();
-  return `<header class="top"><h1>Kế hoạch</h1></header>
+  return `<header class="top"><div>${profileChip()}<h1>Kế hoạch</h1></div></header>
   <div class="seg tabs">${Object.entries(PLAN_TABS).map(([k, v]) => `<a href="#/plan/${k}" class="${tab === k ? 'on' : ''}">${v}</a>`).join('')}</div>
   ${body}`;
 }
@@ -368,7 +455,7 @@ actions['budget-edit'] = (el) => {
     body: `<form class="form">
       ${field('Áp dụng cho', `<select id="bf-cat">${catOptions('expense', f.categoryId, `<option value="__all" ${f.categoryId === '__all' ? 'selected' : ''}>Σ Tổng chi tiêu</option>`)}</select>`)}
       ${amountField('bf-amt', f.amount, 'Hạn mức')}
-      ${field('Chu kỳ', `<select id="bf-per">${['week', 'month', 'year'].map((p) => `<option value="${p}" ${f.period === p ? 'selected' : ''}>Mỗi ${PERIOD_LABEL[p].toLowerCase()}</option>`).join('')}</select>`)}
+      ${field('Chu kỳ', `<select id="bf-per">${['month', 'year'].map((p) => `<option value="${p}" ${f.period === p ? 'selected' : ''}>Mỗi ${PERIOD_LABEL[p].toLowerCase()}</option>`).join('')}</select>`)}
       <div class="actions">${b ? '<button type="button" class="btn danger" data-del>Xóa</button>' : ''}<button class="btn primary">Lưu</button></div>
     </form>`,
     onMount(sh, close) {
@@ -1147,12 +1234,19 @@ function settingsView() {
   const s = state.settings;
   const notifState = !('Notification' in window) ? 'unsupported' : Notification.permission;
   return `
-  <header class="top"><h1>Cài đặt</h1></header>
+  <header class="top"><div>${profileChip()}<h1>Cài đặt</h1></div></header>
+
+  ${sectionTitle('Người dùng', `<button type="button" class="link" data-act="profiles">Quản lý</button>`)}
+  <section class="card list">${S.getProfiles().map((p) => `
+    <button type="button" class="row" data-act="profile-switch" data-id="${esc(p.id)}">
+      <span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span><span class="grow"><b>${esc(p.name)}</b>
+      <small>${p.id === S.currentProfile().id ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>${p.id === S.currentProfile().id ? '<span class="income">✓</span>' : '›'}</button>`).join('')}
+  </section>
+  <p class="muted small">Mỗi người có sổ riêng: ví, giao dịch, ngân sách, mục tiêu, trả nợ và cài đặt hoàn toàn tách biệt.</p>
 
   ${sectionTitle('Hiển thị')}
   <section class="card form">
-    ${field('Kỳ xem mặc định', `<select data-set="period">${['week', 'month', 'year'].map((p) => `<option value="${p}" ${s.period === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`)}
-    ${field('Tuần bắt đầu từ', `<select data-set="weekStart" data-num>${[[1, 'Thứ Hai'], [0, 'Chủ Nhật']].map(([v, l]) => `<option value="${v}" ${Number(s.weekStart) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+    ${field('Kỳ xem mặc định', `<select data-set="period">${['month', 'year'].map((p) => `<option value="${p}" ${s.period === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`)}
   </section>
 
   ${sectionTitle('Dữ liệu nền')}
@@ -1185,7 +1279,7 @@ function settingsView() {
     <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu (file .json)</b><small>${s.lastBackup ? 'Lần cuối: ' + fmtDate(s.lastBackup) : 'Chưa sao lưu lần nào'}</small></span>›</button>
     <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Thay thế toàn bộ dữ liệu hiện tại</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
     <button type="button" class="row" data-act="export-csv-all"><span class="ci">📄</span><span class="grow"><b>Xuất Excel (CSV) toàn bộ giao dịch</b></span>›</button>
-    <button type="button" class="row danger" data-act="wipe"><span class="ci">🗑️</span><span class="grow"><b>Xóa toàn bộ dữ liệu</b></span></button>
+    <button type="button" class="row danger" data-act="wipe"><span class="ci">🗑️</span><span class="grow"><b>Xóa toàn bộ dữ liệu của ${esc(S.currentProfile().name)}</b><small>Sổ của người khác giữ nguyên</small></span></button>
   </section>
   ${s.lastBackup && diffDays(s.lastBackup, todayISO()) < 30 ? '' : '<p class="muted small center">⚠️ Dữ liệu chỉ nằm trên máy này. Nên sao lưu định kỳ (lưu vào iCloud Drive / Google Drive / Zalo "Cloud của tôi").</p>'}
   <p class="muted small center" id="storage-info"></p>
@@ -1217,7 +1311,7 @@ async function mountSettings(root) {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    if (!confirm('Khôi phục sẽ THAY THẾ toàn bộ dữ liệu hiện tại. Tiếp tục?')) return;
+    if (!confirm(`Khôi phục sẽ THAY THẾ toàn bộ dữ liệu trong sổ của "${S.currentProfile().name}". Sổ của người khác không bị ảnh hưởng. Tiếp tục?`)) return;
     try {
       await S.importData(JSON.parse(await file.text()));
       ui.period = null;
@@ -1236,7 +1330,8 @@ actions['daily-ics'] = () => calendarSheet('nhac-ghi-chep.ics', buildDailyICS(st
 
 actions.backup = async () => {
   const data = await S.exportData();
-  await shareOrDownload(`sothuchi-backup-${todayISO()}.json`, JSON.stringify(data), 'application/json');
+  const who = S.currentProfile().name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').replace(/[^\w]+/g, '-').toLowerCase();
+  await shareOrDownload(`sothuchi-${who}-${todayISO()}.json`, JSON.stringify(data), 'application/json');
   await S.setSetting('lastBackup', todayISO());
 };
 
@@ -1254,7 +1349,7 @@ actions['export-csv'] = () => shareOrDownload(`giao-dich-${currentRange().start}
 actions['export-csv-all'] = () => shareOrDownload(`giao-dich-tat-ca-${todayISO()}.csv`, csvOf(state.transactions), 'text/csv');
 
 actions.wipe = async () => {
-  if (!confirm('Xóa TOÀN BỘ dữ liệu? Không thể hoàn tác. Hãy sao lưu trước!')) return;
+  if (!confirm(`Xóa TOÀN BỘ dữ liệu trong sổ của "${S.currentProfile().name}"? Không thể hoàn tác. Hãy sao lưu trước!`)) return;
   if (prompt('Gõ XOA để xác nhận') !== 'XOA') return;
   await S.wipeAll();
   ui.period = null;

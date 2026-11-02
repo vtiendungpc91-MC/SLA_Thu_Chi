@@ -1,5 +1,5 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
-import { db, STORES } from './db.js';
+import { db, STORES, useProfile, dropProfile } from './db.js';
 import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate } from './utils.js';
 
 const LIST = STORES.filter((s) => s !== 'settings' && s !== 'photos');
@@ -70,8 +70,61 @@ const listeners = new Set();
 export const onChange = (fn) => listeners.add(fn);
 export const emit = () => listeners.forEach((f) => f());
 
+// ---------- Người dùng (hồ sơ) ----------
+// Danh sách hồ sơ lưu ở localStorage; dữ liệu mỗi hồ sơ nằm trong database riêng.
+const PROFILES_KEY = 'stc-profiles';
+const CURRENT_KEY = 'stc-current';
+export const PROFILE_COLORS = ['#1f6feb', '#d6409f', '#30a46c', '#f76b15', '#8e4ec6', '#0d74ce'];
+
+export function getProfiles() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(PROFILES_KEY) || '[]'); } catch { list = []; }
+  if (!list.length) {
+    list = [{ id: 'main', name: 'Tôi', icon: '🧑', color: PROFILE_COLORS[0] }];
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
+  }
+  return list;
+}
+const saveProfiles = (list) => localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
+
+export function currentProfile() {
+  const list = getProfiles();
+  return list.find((p) => p.id === localStorage.getItem(CURRENT_KEY)) || list[0];
+}
+
+export async function switchProfile(id) {
+  localStorage.setItem(CURRENT_KEY, id);
+  await useProfile(id);
+  await loadAll();
+  emit();
+}
+
+export function saveProfile(p) {
+  const list = getProfiles();
+  if (!p.id) {
+    p.id = uid().replace(/-/g, '').slice(0, 12);
+    p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
+    list.push(p);
+  } else {
+    const i = list.findIndex((x) => x.id === p.id);
+    if (i >= 0) list[i] = { ...list[i], ...p };
+  }
+  saveProfiles(list);
+  return p;
+}
+
+/** Xóa hồ sơ và toàn bộ dữ liệu của hồ sơ đó. */
+export async function deleteProfile(id) {
+  const list = getProfiles().filter((p) => p.id !== id);
+  if (!list.length) throw new Error('Cần giữ ít nhất 1 người dùng');
+  saveProfiles(list);
+  if (currentProfile().id === id || localStorage.getItem(CURRENT_KEY) === id) await switchProfile(list[0].id);
+  await dropProfile(id);
+}
+
 // ---------- Tải / ghi ----------
 export async function loadAll() {
+  await useProfile(currentProfile().id);
   for (const s of LIST) state[s] = await db.getAll(s);
   const rows = await db.getAll('settings');
   state.settings = { ...DEFAULT_SETTINGS };

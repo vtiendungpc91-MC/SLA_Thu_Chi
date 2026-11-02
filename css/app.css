@@ -78,6 +78,19 @@ h1, h2, h3, h4 { margin: 0; }
 .top { display: flex; align-items: center; justify-content: space-between; margin: 4px 2px 12px; }
 .top h1 { font-size: 26px; letter-spacing: -.02em; }
 .top small { color: var(--muted); }
+.top > div { min-width: 0; }
+.profile-chip {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px;
+  border: 0; border-radius: 999px; padding: 4px 12px 4px 5px; font-size: 13.5px; font-weight: 600;
+  background: var(--soft); color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+.profile-chip span { width: 24px; height: 24px; border-radius: 50%; background: var(--card); display: grid; place-items: center; font-size: 15px; }
+.profile-chip i { font-style: normal; font-size: 10px; opacity: .7; }
+.profile-row { padding: 4px 6px 4px 0; gap: 4px; }
+.profile-row.on { background: var(--primary-soft); border-radius: 12px; }
+.grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 10px; background: none; border: 0; text-align: left; }
+.icon-chip { font-size: 20px; padding: 4px 8px; }
 .sec-h { display: flex; align-items: center; justify-content: space-between; margin: 20px 4px 8px; }
 .sec-h h2 { font-size: 16px; }
 .link { background: none; border: 0; color: var(--primary); padding: 4px; font-size: 14px; }

@@ -11,7 +11,7 @@ export const ui = {
 };
 
 export function currentRange() {
-  if (!ui.period) ui.period = { type: state.settings.period || 'month', anchor: todayISO() };
+  if (!ui.period) ui.period = { type: state.settings.period === 'year' ? 'year' : 'month', anchor: todayISO() };
   return getRange(ui.period.type, ui.period.anchor, state.settings.weekStart);
 }
 
@@ -62,7 +62,7 @@ export function periodBar() {
   const r = currentRange();
   return `
   <div class="period">
-    <div class="seg">${['week', 'month', 'year'].map((t) =>
+    <div class="seg">${['month', 'year'].map((t) =>
       `<button type="button" data-act="period-type" data-v="${t}" class="${ui.period.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
     </div>
     <div class="period-nav">

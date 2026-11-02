@@ -1,15 +1,37 @@
 // Lớp lưu trữ IndexedDB: toàn bộ dữ liệu nằm trên điện thoại, không gửi đi đâu.
+// Mỗi người dùng (hồ sơ) có một database riêng; hồ sơ đầu tiên dùng tên cũ "sothuchi" để giữ dữ liệu sẵn có.
 
-const DB_NAME = 'sothuchi';
 const DB_VERSION = 1;
 export const STORES = ['accounts', 'categories', 'transactions', 'recurring', 'budgets', 'goals', 'debts', 'photos', 'settings'];
 
+export const dbNameOf = (profileId) => (!profileId || profileId === 'main' ? 'sothuchi' : 'sothuchi-' + profileId);
+
+let dbName = dbNameOf('main');
 let dbPromise;
+
+/** Chuyển sang database của hồ sơ khác. */
+export async function useProfile(profileId) {
+  const name = dbNameOf(profileId);
+  if (name === dbName && dbPromise) return;
+  if (dbPromise) (await dbPromise).close();
+  dbName = name;
+  dbPromise = null;
+}
+
+/** Xóa hẳn database của một hồ sơ. */
+export function dropProfile(profileId) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(dbNameOf(profileId));
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
+  });
+}
 
 function open() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      const req = indexedDB.open(dbName, DB_VERSION);
       req.onupgradeneeded = () => {
         const d = req.result;
         for (const s of STORES) {
