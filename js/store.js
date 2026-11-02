@@ -1,5 +1,5 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
-import { db, STORES, useProfile, dropProfile } from './db.js';
+import { db, dbOf, STORES, useProfile, dropProfile } from './db.js';
 import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate } from './utils.js';
 
 const LIST = STORES.filter((s) => s !== 'settings' && s !== 'photos');
@@ -59,11 +59,38 @@ const SEED_EXPENSE = [
   ['Trả nợ ngân hàng', '🏦', 'savings', 'NEC', 'debt'],
   ['Tiết kiệm', '🐷', 'savings', 'LTSS', 'saving'],
   ['Đầu tư', '📈', 'savings', 'FFA'],
+  ['Góp cho người nhà', '🤝', 'needs', 'NEC', 'gop-out'],
   ['Khác', '📦', 'wants', 'PLAY'],
 ];
 const SEED_INCOME = [
-  ['Lương', '💰'], ['Thưởng', '🎉'], ['Kinh doanh', '💼'], ['Lãi tiết kiệm/Đầu tư', '📈'], ['Được tặng', '🎁'], ['Thu khác', '➕'],
+  ['Lương', '💰'], ['Thưởng', '🎉'], ['Kinh doanh', '💼'], ['Lãi tiết kiệm/Đầu tư', '📈'], ['Được tặng', '🎁'],
+  ['Nhận góp', '🤝', 'gop-in'], ['Thu khác', '➕'],
 ];
+// Danh mục hệ thống cần có ở mọi sổ (kể cả sổ tạo từ bản cũ).
+const SYS_CATS = {
+  'gop-out': { type: 'expense', name: 'Góp cho người nhà', icon: '🤝', rule: 'needs', jar: 'NEC', color: '#12a594' },
+  'gop-in': { type: 'income', name: 'Nhận góp', icon: '🤝', color: '#12a594' },
+};
+
+function seedRows() {
+  return {
+    cats: [
+      ...SEED_EXPENSE.map(([name, icon, rule, jar, sys], i) => ({ id: uid(), type: 'expense', name, icon, rule, jar, sys: sys || null, color: PALETTE[i % PALETTE.length], order: i })),
+      ...SEED_INCOME.map(([name, icon, sys], i) => ({ id: uid(), type: 'income', name, icon, sys: sys || null, color: PALETTE[(i + 3) % PALETTE.length], order: i })),
+    ],
+    accs: [
+      { id: uid(), name: 'Tiền mặt', icon: '💵', kind: 'cash', initial: 0, order: 0 },
+      { id: uid(), name: 'Tài khoản ngân hàng', icon: '🏦', kind: 'bank', initial: 0, order: 1 },
+    ],
+  };
+}
+
+/** Bổ sung danh mục hệ thống còn thiếu vào danh sách `cats` của một sổ; trả về các danh mục mới tạo. */
+function missingSysCats(cats) {
+  return Object.entries(SYS_CATS)
+    .filter(([sys]) => !cats.some((c) => c.sys === sys))
+    .map(([sys, c]) => ({ id: uid(), ...c, sys, order: 99 }));
+}
 
 // ---------- Thông báo thay đổi ----------
 const listeners = new Set();
@@ -129,22 +156,71 @@ export async function loadAll() {
   const rows = await db.getAll('settings');
   state.settings = { ...DEFAULT_SETTINGS };
   for (const r of rows) state.settings[r.key] = r.value;
-  if (!state.categories.length) await seed();
+  if (!state.categories.length) {
+    const { cats, accs } = seedRows();
+    await db.bulkPut('categories', cats);
+    await db.bulkPut('accounts', accs);
+    state.categories = cats;
+    state.accounts = accs;
+  }
+  const extra = missingSysCats(state.categories);
+  if (extra.length) {
+    await db.bulkPut('categories', extra);
+    state.categories.push(...extra);
+  }
 }
 
-async function seed() {
-  const cats = [
-    ...SEED_EXPENSE.map(([name, icon, rule, jar, sys], i) => ({ id: uid(), type: 'expense', name, icon, rule, jar, sys: sys || null, color: PALETTE[i % PALETTE.length], order: i })),
-    ...SEED_INCOME.map(([name, icon], i) => ({ id: uid(), type: 'income', name, icon, color: PALETTE[(i + 3) % PALETTE.length], order: i })),
-  ];
-  const accs = [
-    { id: uid(), name: 'Tiền mặt', icon: '💵', kind: 'cash', initial: 0, order: 0 },
-    { id: uid(), name: 'Tài khoản ngân hàng', icon: '🏦', kind: 'bank', initial: 0, order: 1 },
-  ];
-  await db.bulkPut('categories', cats);
-  await db.bulkPut('accounts', accs);
-  state.categories = cats;
-  state.accounts = accs;
+// ---------- Góp tiền giữa các người dùng ----------
+/** Đọc sổ của người khác; nếu sổ chưa từng mở thì tạo dữ liệu mặc định. */
+async function openPeerBook(profileId) {
+  const peer = dbOf(profileId);
+  let cats = await peer.getAll('categories');
+  let accs = await peer.getAll('accounts');
+  if (!cats.length) {
+    const seedData = seedRows();
+    cats = seedData.cats;
+    accs = seedData.accs;
+    await peer.bulkPut('categories', cats);
+    await peer.bulkPut('accounts', accs);
+  }
+  const extra = missingSysCats(cats);
+  if (extra.length) { await peer.bulkPut('categories', extra); cats = cats.concat(extra); }
+  return { peer, cats, accs };
+}
+
+/** Danh sách ví (chưa ẩn) của một người dùng khác. */
+export async function peerAccounts(profileId) {
+  const { accs } = await openPeerBook(profileId);
+  return accs.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+/**
+ * Góp tiền: sổ người góp ghi khoản CHI "Góp cho …", sổ người nhận ghi khoản THU "Nhận góp từ …".
+ * Hai giao dịch liên kết qua gop.id để xóa đồng bộ.
+ */
+export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note }) {
+  const me = currentProfile();
+  const to = getProfiles().find((p) => p.id === toProfileId);
+  if (!to || to.id === me.id) throw new Error('Chọn người nhận khác');
+  const gid = uid();
+  const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
+  const { peer, cats } = await openPeerBook(to.id);
+  await peer.put('transactions', {
+    ...base, id: uid(), type: 'income', categoryId: cats.find((c) => c.sys === 'gop-in').id, accountId: toAccountId,
+    note: note || `Nhận góp từ ${me.name}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: me.name }, updatedAt: Date.now(),
+  });
+  return put('transactions', {
+    ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
+    note: note || `Góp cho ${to.name}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: to.name },
+  });
+}
+
+/** Xóa giao dịch tương ứng trong sổ của người kia (nếu người đó còn tồn tại). */
+async function deleteGopPeer(tx) {
+  if (!tx.gop || !getProfiles().some((p) => p.id === tx.gop.peer)) return;
+  const peer = dbOf(tx.gop.peer);
+  const twin = (await peer.getAll('transactions')).find((t) => t.gop && t.gop.id === tx.gop.id);
+  if (twin) await peer.del('transactions', twin.id);
 }
 
 export async function put(store, obj, { silent = false } = {}) {
@@ -243,6 +319,7 @@ export function topCategories(type, n = 6) {
 // ---------- Giao dịch ----------
 export async function deleteTx(tx) {
   for (const pid of tx.photoIds || []) await db.del('photos', pid);
+  await deleteGopPeer(tx);
   await remove('transactions', tx.id);
 }
 

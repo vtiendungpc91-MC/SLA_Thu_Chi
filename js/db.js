@@ -28,25 +28,30 @@ export function dropProfile(profileId) {
   });
 }
 
+function openByName(name) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const d = req.result;
+      for (const s of STORES) {
+        if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: s === 'settings' ? 'key' : 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 function open() {
-  if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(dbName, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const d = req.result;
-        for (const s of STORES) {
-          if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: s === 'settings' ? 'key' : 'id' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
+  if (!dbPromise) dbPromise = openByName(dbName);
   return dbPromise;
 }
 
 async function run(store, mode, fn) {
-  const d = await open();
+  return runOn(await open(), store, mode, fn);
+}
+
+function runOn(d, store, mode, fn) {
   return new Promise((resolve, reject) => {
     const t = d.transaction(store, mode);
     const os = t.objectStore(store);
@@ -67,3 +72,19 @@ export const db = {
   clear: (s) => run(s, 'readwrite', (os) => os.clear()),
   bulkPut: (s, arr) => run(s, 'readwrite', (os) => { for (const v of arr) os.put(v); }),
 };
+
+/** Đọc/ghi vào sổ của một hồ sơ bất kỳ (dùng cho chức năng Góp giữa các người dùng). */
+export function dbOf(profileId) {
+  const name = dbNameOf(profileId);
+  const runIn = async (store, mode, fn) => {
+    if (name === dbName) return run(store, mode, fn);
+    const d = await openByName(name);
+    try { return await runOn(d, store, mode, fn); } finally { d.close(); }
+  };
+  return {
+    getAll: (s) => runIn(s, 'readonly', (os) => os.getAll()),
+    put: (s, v) => runIn(s, 'readwrite', (os) => os.put(v)),
+    del: (s, k) => runIn(s, 'readwrite', (os) => os.delete(k)),
+    bulkPut: (s, arr) => runIn(s, 'readwrite', (os) => { for (const v of arr) os.put(v); }),
+  };
+}

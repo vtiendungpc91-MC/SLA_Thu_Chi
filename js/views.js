@@ -31,9 +31,10 @@ function txRow(t) {
   const isTr = t.type === 'transfer';
   const cat = isTr ? null : S.catById(parts[0].categoryId);
   const icon = isTr ? `<span class="ci" style="--c:#6f6e77">⇄</span>` : catIcon(cat);
-  const catText = parts.length > 1 ? `${parts.length} danh mục` : (cat || UNKNOWN_CAT).name;
+  const catText = t.gop ? (t.gop.dir === 'out' ? `Góp cho ${t.gop.peerName}` : `Nhận góp từ ${t.gop.peerName}`)
+    : parts.length > 1 ? `${parts.length} danh mục` : (cat || UNKNOWN_CAT).name;
   const title = t.note || (isTr ? 'Chuyển tiền' : catText);
-  const sub = [isTr ? `${accName(t.accountId)} → ${accName(t.toAccountId)}` : (t.note ? catText + ' · ' : '') + accName(t.accountId)];
+  const sub = [isTr ? `${accName(t.accountId)} → ${accName(t.toAccountId)}` : (t.note && t.note !== catText ? catText + ' · ' : '') + accName(t.accountId)];
   if (t.tags && t.tags.length) sub.push(t.tags.map((g) => '#' + g).join(' '));
   const flags = (t.photoIds && t.photoIds.length ? '📎' : '') + (t.recurringId ? '🔁' : '') + (t.debtId ? '🏦' : '');
   const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
@@ -212,6 +213,7 @@ function homeView() {
     </div>
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
     <div class="hero-bal"><span>Tổng số dư các ví</span><b>${fmt(S.totalBalance())}</b></div>
+    ${otherProfiles().length ? `<button type="button" class="btn ghost block gop-btn" data-act="gop">🤝 Góp tiền cho ${esc(otherProfiles().map((p) => p.name).join(' / '))}</button>` : ''}
   </section>
 
   ${!loggedToday && hour >= 18 ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
@@ -317,8 +319,94 @@ actions['tx-tag'] = (el) => { ui.txFilter.tag = el.dataset.v; refresh(); };
 actions['tx-unfilter'] = (el) => { ui.txFilter[el.dataset.v] = null; refresh(); };
 actions['tx-edit'] = (el) => {
   const tx = state.transactions.find((t) => t.id === el.dataset.id);
-  if (tx) openTxForm({ tx });
+  if (tx) (tx.gop ? gopDetail(tx) : openTxForm({ tx }));
 };
+
+// ================= Góp tiền giữa các người dùng =================
+const otherProfiles = () => S.getProfiles().filter((p) => p.id !== S.currentProfile().id);
+
+actions.gop = () => openGopForm();
+
+function openGopForm() {
+  const others = otherProfiles();
+  if (!others.length) {
+    toast('Cần thêm ít nhất 1 người dùng nữa để góp');
+    return actions.profiles();
+  }
+  const me = S.currentProfile();
+  openSheet({
+    title: 'Góp tiền cho người khác',
+    body: `<form class="form">
+      <p class="muted small">Sổ của <b>${esc(me.name)}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
+      <div class="field"><span>Góp cho</span><div class="chips" id="gf-to">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>
+      ${amountField('gf-amt', 0)}
+      <div class="two">
+        ${field('Từ ví của ' + esc(me.name), `<select id="gf-from">${accOptions(state.settings.lastAccount)}</select>`)}
+        ${field('Vào ví của <span id="gf-to-name"></span>', `<select id="gf-toacc"><option>Đang tải…</option></select>`)}
+      </div>
+      ${field('Ngày', `<input type="date" id="gf-date" value="${todayISO()}">`)}
+      ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Góp tiền chợ tháng 11">`)}
+      <div class="actions"><button class="btn primary">🤝 Góp</button></div>
+    </form>`,
+    onMount(sh, close) {
+      const amt = bindMoney(sh, 'gf-amt');
+      let toId = others[0].id;
+      const loadPeer = async () => {
+        const p = others.find((x) => x.id === toId);
+        $(sh, '#gf-to-name').textContent = p.name;
+        const accs = await S.peerAccounts(toId);
+        $(sh, '#gf-toacc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)}</option>`).join('');
+      };
+      $(sh, '#gf-to').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-to]');
+        if (!b) return;
+        toId = b.dataset.to;
+        sh.querySelectorAll('[data-to]').forEach((x) => x.classList.toggle('on', x === b));
+        loadPeer();
+      });
+      loadPeer();
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = Math.round(readMoney(amt.value));
+        if (!(v > 0)) return toast('Nhập số tiền góp');
+        const toAccountId = $(sh, '#gf-toacc').value;
+        if (!toAccountId) return toast('Chọn ví nhận');
+        const to = others.find((x) => x.id === toId);
+        await S.gop({
+          toProfileId: toId, amount: v, fromAccountId: $(sh, '#gf-from').value, toAccountId,
+          date: $(sh, '#gf-date').value || todayISO(), note: $(sh, '#gf-note').value.trim(),
+        });
+        close();
+        toast(`🤝 Đã góp ${fmt(v)} cho ${to.name}`);
+      });
+    },
+  });
+}
+
+function gopDetail(tx) {
+  const out = tx.gop.dir === 'out';
+  const peerExists = S.getProfiles().some((p) => p.id === tx.gop.peer);
+  openSheet({
+    title: out ? 'Khoản góp' : 'Khoản nhận góp',
+    body: `<div class="detail">
+      <div class="big-ic">🤝</div>
+      <div class="kv"><span>${out ? 'Góp cho' : 'Nhận từ'}</span><b>${esc(tx.gop.peerName)}${peerExists ? '' : ' (đã xóa)'}</b></div>
+      <div class="kv"><span>Số tiền</span><b class="${out ? 'expense' : 'income'}">${fmtSigned(out ? -tx.amountVnd : tx.amountVnd)}</b></div>
+      <div class="kv"><span>${out ? 'Từ ví' : 'Vào ví'}</span><b>${esc(accName(tx.accountId))}</b></div>
+      <div class="kv"><span>Ngày</span><b>${fmtDate(tx.date)}</b></div>
+      ${tx.note ? `<div class="kv"><span>Ghi chú</span><b>${esc(tx.note)}</b></div>` : ''}
+      <p class="muted small">Khoản góp được ghi ở cả 2 sổ. Muốn sửa số tiền: xóa khoản này rồi góp lại.</p>
+      <div class="actions"><button type="button" class="btn danger" data-del>Xóa khoản góp${peerExists ? ' (cả 2 bên)' : ''}</button></div>
+    </div>`,
+    onMount(sh, close) {
+      $(sh, '[data-del]').addEventListener('click', async () => {
+        if (!confirm(`Xóa khoản góp này?${peerExists ? ` Giao dịch tương ứng trong sổ của ${tx.gop.peerName} cũng bị xóa.` : ''}`)) return;
+        await S.deleteTx(tx);
+        close(); toast('Đã xóa khoản góp');
+      });
+    },
+  });
+}
 actions['report-cat'] = (el) => {
   ui.txFilter = { type: 'all', q: '', categoryId: el.dataset.id, tag: null, accountId: null };
   location.hash = '#/tx';
@@ -882,7 +970,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   openSheet({
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     body: `<form class="form txf" autocomplete="off">
-      <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}</div>
+      <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
+        ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button>' : ''}</div>
       <div class="amount-row">
         <input id="tf-amt" class="amount-input" inputmode="decimal" placeholder="0" value="${f.amount ? esc(fmtNum(f.amount)) : ''}" aria-label="Số tiền">
         ${multiCur ? `<select id="tf-cur" class="cur">${st.currencies.map((c) => `<option ${c.code === f.currency ? 'selected' : ''}>${esc(c.code)}</option>`).join('')}</select>` : ''}
@@ -928,7 +1017,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       curSel?.addEventListener('change', updHint);
 
       // --- loại giao dịch ---
-      const typeBtns = sh.querySelectorAll('#tf-type button');
+      const typeBtns = sh.querySelectorAll('#tf-type button[data-v]');
+      $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(); });
       const updType = () => {
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
         const tr = f.type === 'transfer';
@@ -949,7 +1039,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       // --- danh mục ---
       function renderCats() {
         if (f.type === 'transfer') return;
-        $(sh, '#tf-cats').innerHTML = S.catsOf(f.type).map((c) =>
+        $(sh, '#tf-cats').innerHTML = S.catsOf(f.type).filter((c) => !String(c.sys || '').startsWith('gop')).map((c) =>
           `<button type="button" class="cat ${c.id === f.categoryId ? 'on' : ''}" data-id="${c.id}" style="--c:${esc(c.color)}"><span>${esc(c.icon)}</span><small>${esc(c.name)}</small></button>`).join('');
         $(sh, '#tf-quick').innerHTML = '';
       }
