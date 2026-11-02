@@ -11,6 +11,8 @@ Dữ liệu chỉ lưu trên điện thoại (IndexedDB), không gửi lên serv
 | **Ngân sách (D)** | Hạn mức theo tuần/tháng/năm, cảnh báo 80% và 100%, phân bổ 50/30/20 hoặc 6 chiếc lọ (JARS), mục tiêu tiết kiệm, quỹ dự phòng tự tính theo chi tiêu trung bình |
 | **Nhắc nhở (F)** | Nhắc trước hạn N ngày ngay trong app, thông báo hệ thống khi mở app, xuất hạn trả nợ và nhắc ghi chép hằng ngày sang **app Lịch** của điện thoại, tóm tắt tuần/tháng để chia sẻ |
 | **Trả nợ (A)** | Ngân hàng, số tiền mỗi kỳ, ngày đến hạn, lặp hằng tháng và số kỳ còn lại, cách thanh toán và ghi chú (STK, nội dung CK…), đánh dấu đã trả (tự ghi khoản chi), hoàn tác |
+| **Tài khoản ngân hàng** | Tiền nằm trong tài khoản ngân hàng (không có Tiền mặt): ngân hàng, số TK, chủ TK, tên gợi nhớ; thêm nhiều tài khoản; chỉnh số dư cho khớp app ngân hàng. **Không đủ số dư thì không chi, chuyển khoản, góp, trả nợ hay nạp mục tiêu được**; khoản định kỳ tự động thiếu tiền sẽ chờ xử lý |
+| **Khóa app** | Mật khẩu số khi mở app (mặc định `10101990`, nên đổi trong Cài đặt → Bảo mật), tự khóa khi rời app, che nội dung ở màn hình đa nhiệm, sai 5 lần phải chờ 30 giây |
 | **Nhiều người dùng** | Mỗi người (bạn, vợ/chồng, con…) có sổ riêng: ví, giao dịch, ngân sách, mục tiêu, trả nợ, cài đặt tách biệt. Chuyển người bằng nút tên ở góc trên trái |
 | **Góp** | Chuyển tiền từ người này sang người khác: sổ người góp ghi khoản chi "Góp cho …", sổ người nhận ghi khoản thu "Nhận góp từ …". Xóa một bên thì bên kia tự xóa theo |
 | **Báo cáo** | Xem theo ngày/tháng/năm (bấm vào nhãn kỳ 📅 để chọn ngày bất kỳ), biểu đồ thu chi theo thời gian, biểu đồ tròn theo danh mục, so sánh với kỳ trước, chi theo tag |

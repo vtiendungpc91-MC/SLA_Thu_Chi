@@ -3,6 +3,7 @@ import * as S from './store.js';
 import { state } from './store.js';
 import { actions, render, refresh, openTxForm } from './views.js';
 import { toast } from './ui.js';
+import { lockConfig, showLock, initAutoLock } from './lock.js';
 import { fmt, fmtDue } from './utils.js';
 
 function parseHash() {
@@ -99,6 +100,10 @@ function registerSW() {
 }
 
 async function start() {
+  registerSW();
+  initAutoLock();
+  // Khóa trước khi vẽ dữ liệu để không lộ số liệu.
+  if (lockConfig().enabled) await showLock();
   try {
     await S.loadAll();
   } catch (err) {
@@ -114,7 +119,6 @@ async function start() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') onResume();
   });
-  registerSW();
 }
 
 start();

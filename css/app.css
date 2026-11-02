@@ -114,6 +114,8 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .row-top { display: flex; align-items: center; gap: 12px; }
 .row-top .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .row.off { opacity: .5; }
+.row.add-row b { color: var(--primary); font-weight: 600; }
+.row.add-row .ci { color: var(--primary); font-size: 20px; }
 .row.danger b { color: var(--expense); }
 .row.alert.warn { background: var(--warn-soft); }
 .row.alert.over { background: var(--over-soft); }
@@ -329,6 +331,33 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .note-box { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 10px 12px; margin: 10px 0 6px; white-space: pre-wrap; }
 .big-ic { font-size: 48px; text-align: center; margin: 6px 0 10px; }
 .summary { white-space: pre-wrap; font: 14px/1.55 inherit; background: var(--card); padding: 14px; border-radius: 12px; margin: 0 0 10px; }
+
+/* ---------- Khóa ứng dụng ---------- */
+.lock {
+  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  background: var(--bg); padding: calc(var(--safe-t) + 20px) 20px calc(var(--safe-b) + 20px);
+}
+.lock-box { width: 100%; max-width: 320px; text-align: center; }
+.lock-ic { font-size: 40px; }
+.lock-box h2 { font-size: 22px; margin: 6px 0 2px; }
+.lock-msg { color: var(--muted); min-height: 1.4em; margin: 4px 0 18px; }
+.dots { display: flex; justify-content: center; gap: 12px; margin-bottom: 30px; }
+.dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary); transition: background .1s; }
+.dots i.on { background: var(--primary); }
+.dots.shake { animation: shake .4s; }
+.dots.shake i { border-color: var(--expense); }
+@keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px; padding: 0 10px; }
+.keypad button {
+  aspect-ratio: 1; max-width: 76px; width: 100%; justify-self: center; border-radius: 50%; border: 0;
+  background: var(--card); box-shadow: var(--shadow); font-size: 28px; font-weight: 500;
+}
+.keypad button:active { background: var(--primary-soft); transform: scale(.94); }
+.keypad button[data-k="del"] { background: none; box-shadow: none; font-size: 24px; }
+body.is-locked .main, body.is-locked .tabbar, body.is-locked .fab, body.is-locked .sheet-wrap { visibility: hidden; }
+/* Che nội dung khi app chạy nền để ảnh xem trước đa nhiệm không lộ số liệu */
+body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
+.pin-input { letter-spacing: .4em; font-size: 20px !important; text-align: center; }
 
 /* ---------- Toast ---------- */
 .toast {

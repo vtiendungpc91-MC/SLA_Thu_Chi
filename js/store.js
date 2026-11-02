@@ -1,6 +1,6 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
 import { db, dbOf, STORES, useProfile, dropProfile } from './db.js';
-import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate } from './utils.js';
+import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate, fmt } from './utils.js';
 
 const LIST = STORES.filter((s) => s !== 'settings' && s !== 'photos');
 
@@ -79,8 +79,7 @@ function seedRows() {
       ...SEED_INCOME.map(([name, icon, sys], i) => ({ id: uid(), type: 'income', name, icon, sys: sys || null, color: PALETTE[(i + 3) % PALETTE.length], order: i })),
     ],
     accs: [
-      { id: uid(), name: 'Tiền mặt', icon: '💵', kind: 'cash', initial: 0, order: 0 },
-      { id: uid(), name: 'Tài khoản ngân hàng', icon: '🏦', kind: 'bank', initial: 0, order: 1 },
+      { id: uid(), name: 'Tài khoản chính', bank: '', number: '', holder: '', icon: '🏦', kind: 'bank', initial: 0, order: 0 },
     ],
   };
 }
@@ -168,6 +167,56 @@ export async function loadAll() {
     await db.bulkPut('categories', extra);
     state.categories.push(...extra);
   }
+  await migrateCash();
+}
+
+/**
+ * Bản cũ có ví "Tiền mặt": xóa nếu chưa dùng (chưa có giao dịch, số dư ban đầu 0) và
+ * chuyển các khoản nợ/định kỳ đang trỏ tới nó sang tài khoản ngân hàng đầu tiên.
+ * Ví tiền mặt đã có giao dịch được giữ lại để không lệch số dư.
+ */
+async function migrateCash() {
+  const used = new Set(state.transactions.flatMap((t) => [t.accountId, t.toAccountId]));
+  const drop = state.accounts.filter((a) => a.kind === 'cash' && !used.has(a.id) && !Number(a.initial));
+  if (!drop.length) return;
+  for (const a of drop) await db.del('accounts', a.id);
+  state.accounts = state.accounts.filter((a) => !drop.includes(a));
+  if (!state.accounts.length) {
+    const acc = seedRows().accs[0];
+    await db.put('accounts', acc);
+    state.accounts = [acc];
+  }
+  const target = state.accounts.find((a) => !a.archived) || state.accounts[0];
+  const dropped = new Set(drop.map((a) => a.id));
+  for (const d of state.debts) if (dropped.has(d.accountId)) { d.accountId = target.id; await db.put('debts', d); }
+  for (const r of state.recurring) {
+    if (dropped.has(r.template.accountId)) r.template.accountId = target.id;
+    if (dropped.has(r.template.toAccountId)) r.template.toAccountId = null;
+    await db.put('recurring', r);
+  }
+  if (dropped.has(state.settings.lastAccount)) await setSetting('lastAccount', target.id, { silent: true });
+}
+
+// ---------- Kiểm tra số dư ----------
+/** Ảnh hưởng của một giao dịch lên số dư một tài khoản. */
+function txEffect(t, accountId) {
+  if (t.type === 'income') return t.accountId === accountId ? t.amountVnd : 0;
+  if (t.type === 'expense') return t.accountId === accountId ? -t.amountVnd : 0;
+  return (t.toAccountId === accountId ? t.amountVnd : 0) - (t.accountId === accountId ? t.amountVnd : 0);
+}
+
+/** Số dư khả dụng; khi sửa giao dịch thì bỏ qua ảnh hưởng của chính giao dịch đó. */
+export function available(accountId, ignoreTx = null) {
+  const acc = accById(accountId);
+  if (!acc) return 0;
+  return accountBalance(acc) - (ignoreTx ? txEffect(ignoreTx, accountId) : 0);
+}
+
+/** Trả về thông báo lỗi nếu tài khoản không đủ tiền cho khoản chi, ngược lại trả về null. */
+export function fundsError(accountId, amountVnd, ignoreTx = null) {
+  const have = available(accountId, ignoreTx);
+  if (amountVnd <= have) return null;
+  return `Số dư "${accById(accountId)?.name || 'tài khoản'}" không đủ: còn ${fmt(have)}, cần ${fmt(amountVnd)}`;
 }
 
 // ---------- Góp tiền giữa các người dùng ----------
@@ -188,7 +237,7 @@ async function openPeerBook(profileId) {
   return { peer, cats, accs };
 }
 
-/** Danh sách ví (chưa ẩn) của một người dùng khác. */
+/** Danh sách tài khoản (chưa ẩn) của một người dùng khác. */
 export async function peerAccounts(profileId) {
   const { accs } = await openPeerBook(profileId);
   return accs.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -202,6 +251,8 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   const me = currentProfile();
   const to = getProfiles().find((p) => p.id === toProfileId);
   if (!to || to.id === me.id) throw new Error('Chọn người nhận khác');
+  const err = fundsError(fromAccountId, amount);
+  if (err) throw new Error(err);
   const gid = uid();
   const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
   const { peer, cats } = await openPeerBook(to.id);
@@ -355,7 +406,10 @@ export async function processRecurring() {
     if (!r.active || !r.autoAdd) continue;
     let guard = 0;
     while (r.active && r.nextDate <= today && guard++ < 400) {
-      await put('transactions', txFromTemplate(r, r.nextDate), { silent: true });
+      const tx = txFromTemplate(r, r.nextDate);
+      // Khoản chi/chuyển khoản không đủ số dư: không tự ghi, để lại thành mục "cần xử lý".
+      if (tx.type !== 'income' && fundsError(tx.accountId, tx.amountVnd)) break;
+      await put('transactions', tx, { silent: true });
       advanceRecurring(r);
       added++;
     }
@@ -369,6 +423,8 @@ export async function processRecurring() {
 export const debtName = (d) => d.bank + (d.title ? ' – ' + d.title : '');
 
 export async function payDebt(debt, { amount, accountId, date }) {
+  const err = fundsError(accountId, Math.round(amount));
+  if (err) throw new Error(err);
   const cat = sysCat('debt');
   const tx = await put('transactions', {
     type: 'expense', amount, currency: 'VND', rate: 1, amountVnd: Math.round(amount), date,
@@ -466,8 +522,9 @@ export function getAlerts() {
     if (!r.active) continue;
     const days = diffDays(today, r.nextDate);
     const title = r.template.note || catById(r.template.categoryId)?.name || 'Giao dịch định kỳ';
-    if (!r.autoAdd && days <= 0) {
-      out.push({ key: `pending:${r.id}:${r.nextDate}`, kind: 'pending', id: r.id, days, title, amount: Math.round(r.template.amount * rateOf(r.template.currency)), date: r.nextDate });
+    if (days <= 0) {
+      // Chờ xác nhận, hoặc khoản tự động bị dừng vì không đủ số dư.
+      out.push({ key: `pending:${r.id}:${r.nextDate}`, kind: 'pending', id: r.id, days, noFunds: !!r.autoAdd, title, amount: Math.round(r.template.amount * rateOf(r.template.currency)), date: r.nextDate });
     } else if (r.template.type === 'expense' && days > 0 && days <= (r.remindDays ?? def)) {
       out.push({ key: `rec:${r.id}:${r.nextDate}`, kind: 'recurring', id: r.id, days, title, amount: Math.round(r.template.amount * rateOf(r.template.currency)), date: r.nextDate });
     }
@@ -516,7 +573,8 @@ export async function seedDemo() {
   if (state.transactions.length) return false;
   const today = todayISO();
   const c = (n) => state.categories.find((x) => x.name === n)?.id;
-  const [cash, bank] = state.accounts;
+  const bank = await put('accounts', { ...state.accounts[0], name: 'VCB lương', bank: 'Vietcombank', number: '0123456789', holder: 'NGUYEN VAN A', initial: 8000000 }, { silent: true });
+  const cash = await put('accounts', { name: 'Techcombank chi tiêu', bank: 'Techcombank', number: '19034567891011', holder: 'NGUYEN VAN A', icon: '💳', kind: 'bank', initial: 500000, order: 1 }, { silent: true });
   // Ngày lùi n ngày nhưng giữ trong tháng hiện tại để báo cáo tháng có đủ dữ liệu.
   const monthStart = today.slice(0, 8) + '01';
   const day = (n) => { const d = addDays(today, -n); return d < monthStart ? monthStart : d; };
@@ -524,8 +582,6 @@ export async function seedDemo() {
     type, amount: amt, currency: 'VND', rate: 1, amountVnd: amt, date: day(d), categoryId: c(cat), accountId: acc.id,
     note, tags, splits: null, photoIds: [], createdAt: Date.now() - d * 1000,
   }, { silent: true });
-  await put('accounts', { ...bank, initial: 8000000 }, { silent: true });
-  await put('accounts', { ...cash, initial: 500000 }, { silent: true });
   await tx('income', 18000000, 'Lương', 10, 'Lương tháng');
   await tx('expense', 3500000, 'Nhà ở', 9, 'Tiền thuê nhà');
   await tx('expense', 420000, 'Điện nước & Internet', 8, 'Tiền điện');
