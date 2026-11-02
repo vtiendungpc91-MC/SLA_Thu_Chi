@@ -134,11 +134,22 @@ export function nextDate(date, freq, interval = 1, anchorDay) {
 }
 
 // ---------- Kỳ báo cáo ----------
-export const PERIOD_LABEL = { day: 'Ngày', week: 'Tuần', month: 'Tháng', year: 'Năm' };
+export const PERIOD_LABEL = { day: 'Ngày', week: 'Tuần', month: 'Tháng', quarter: 'Quý', year: 'Năm', custom: 'Khoảng' };
+
+/** Kỳ tự chọn từ ngày → đến ngày. */
+export function customRange(from, to) {
+  if (from > to) [from, to] = [to, from];
+  return { type: 'custom', start: from, end: to, days: diffDays(from, to) + 1, label: `${fmtDate(from)} – ${fmtDate(to)}` };
+}
 
 export function getRange(type, anchor, weekStart = 1) {
   const d = parseISO(anchor);
   if (type === 'day') return { type, start: anchor, end: anchor, days: 1, label: fmtDayHeader(anchor) };
+  if (type === 'quarter') {
+    const y = d.getFullYear(), q = Math.floor(d.getMonth() / 3);
+    const start = toISO(new Date(y, q * 3, 1)), end = toISO(new Date(y, q * 3 + 3, 0));
+    return { type, start, end, days: diffDays(start, end) + 1, label: `Quý ${q + 1}/${y}` };
+  }
   if (type === 'week') {
     const off = (d.getDay() - weekStart + 7) % 7;
     const start = addDays(anchor, -off);
@@ -158,7 +169,14 @@ export function shiftAnchor(type, anchor, dir) {
   if (type === 'day') return addDays(anchor, dir);
   if (type === 'week') return addDays(anchor, 7 * dir);
   if (type === 'year') return `${parseISO(anchor).getFullYear() + dir}-01-01`;
+  if (type === 'quarter') return addMonths(anchor, 3 * dir, 1);
   return addMonths(anchor, dir, 1);
+}
+
+/** Kỳ liền trước để so sánh (khoảng tự chọn: cùng số ngày ngay trước đó). */
+export function prevRange(r, weekStart = 1) {
+  if (r.type === 'custom') return customRange(addDays(r.start, -r.days), addDays(r.start, -1));
+  return getRange(r.type, shiftAnchor(r.type, r.start, -1), weekStart);
 }
 
 /** Số ngày đã trôi qua của kỳ tính đến hôm nay (để tính trung bình/ngày). */

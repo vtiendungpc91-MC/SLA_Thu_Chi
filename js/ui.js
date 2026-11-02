@@ -1,19 +1,36 @@
 // Thành phần giao diện dùng chung: toast, bottom sheet, thanh chọn kỳ, chia sẻ/tải file.
-import { esc, getRange, todayISO, PERIOD_LABEL } from './utils.js';
+import { esc, getRange, customRange, todayISO, addDays, PERIOD_LABEL } from './utils.js';
 import { state } from './store.js';
 
 /** Trạng thái giao diện (không lưu vào DB). */
 export const ui = {
-  period: null, // { type, anchor }
+  period: null, // Tổng quan + Giao dịch: { type: day|month, anchor }
+  reportPeriod: null, // Báo cáo: { type: day|month|quarter|year|custom, anchor, from, to }
   txFilter: { type: 'all', q: '', categoryId: null, tag: null, accountId: null },
   reportType: 'expense',
   planTab: 'budget',
 };
 
-export function currentRange() {
-  if (!ui.period) ui.period = { type: state.settings.period === 'year' ? 'year' : 'month', anchor: todayISO() };
-  return getRange(ui.period.type, ui.period.anchor, state.settings.weekStart);
+/** Các loại kỳ cho từng nơi: "main" = Tổng quan/Giao dịch, "report" = Báo cáo. */
+export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'] };
+
+export function periodState(key = 'main') {
+  if (key === 'report') {
+    if (!ui.reportPeriod) {
+      const t = todayISO();
+      ui.reportPeriod = { type: 'month', anchor: t, from: addDays(t, -29), to: t };
+    }
+    return ui.reportPeriod;
+  }
+  if (!ui.period) ui.period = { type: state.settings.period === 'day' ? 'day' : 'month', anchor: todayISO() };
+  return ui.period;
 }
+
+function rangeOf(p) {
+  return p.type === 'custom' ? customRange(p.from, p.to) : getRange(p.type, p.anchor, state.settings.weekStart);
+}
+export const currentRange = () => rangeOf(periodState('main'));
+export const reportRange = () => rangeOf(periodState('report'));
 
 let toastTimer;
 export function toast(msg, ms = 2400) {
@@ -58,20 +75,28 @@ export function openSheet({ title, body, onMount, onClose, wide = false }) {
   return close;
 }
 
-export function periodBar() {
-  const r = currentRange();
+export function periodBar(key = 'main') {
+  const p = periodState(key);
+  const r = rangeOf(p);
+  const k = `data-p="${key}"`;
+  const nav = p.type === 'custom'
+    ? `<div class="range-pick">
+        <label class="field"><span>Từ ngày</span><input type="date" ${k} data-range="from" value="${esc(p.from)}"></label>
+        <label class="field"><span>Đến ngày</span><input type="date" ${k} data-range="to" value="${esc(p.to)}"></label>
+      </div><p class="muted small center">${esc(r.label)} · ${r.days} ngày</p>`
+    : `<div class="period-nav">
+        <button type="button" class="icon-btn" data-act="period-shift" ${k} data-v="-1" aria-label="Kỳ trước">‹</button>
+        <label class="period-label" title="Chọn ngày">${esc(r.label)} <span class="cal">📅</span>
+          <input type="date" ${k} data-period-date value="${esc(p.anchor)}" aria-label="Chọn ngày"></label>
+        <button type="button" class="icon-btn" data-act="period-shift" ${k} data-v="1" aria-label="Kỳ sau">›</button>
+      </div>
+      ${todayISO() < r.start || todayISO() > r.end ? `<button type="button" class="link center" data-act="period-today" ${k}>↺ Về ${p.type === 'day' ? 'hôm nay' : 'kỳ hiện tại'}</button>` : ''}`;
   return `
   <div class="period">
-    <div class="seg">${['day', 'month', 'year'].map((t) =>
-      `<button type="button" data-act="period-type" data-v="${t}" class="${ui.period.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
+    <div class="seg${PERIOD_TYPES[key].length > 3 ? ' small' : ''}">${PERIOD_TYPES[key].map((t) =>
+      `<button type="button" data-act="period-type" ${k} data-v="${t}" class="${p.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
     </div>
-    <div class="period-nav">
-      <button type="button" class="icon-btn" data-act="period-shift" data-v="-1" aria-label="Kỳ trước">‹</button>
-      <label class="period-label" title="Chọn ngày">${esc(r.label)} <span class="cal">📅</span>
-        <input type="date" data-period-date value="${esc(ui.period.anchor)}" aria-label="Chọn ngày"></label>
-      <button type="button" class="icon-btn" data-act="period-shift" data-v="1" aria-label="Kỳ sau">›</button>
-    </div>
-    ${todayISO() < r.start || todayISO() > r.end ? `<button type="button" class="link center" data-act="period-today">↺ Về ${ui.period.type === 'day' ? 'hôm nay' : 'kỳ hiện tại'}</button>` : ''}
+    ${nav}
   </div>`;
 }
 

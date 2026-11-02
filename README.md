@@ -15,7 +15,9 @@ Dữ liệu chỉ lưu trên điện thoại (IndexedDB), không gửi lên serv
 | **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt → Bảo mật), tự khóa khi rời app, che nội dung ở màn hình đa nhiệm, sai 5 lần phải chờ 30 giây |
 | **Nhiều người dùng** | Mỗi người (bạn, vợ/chồng, con…) có sổ riêng: ví, giao dịch, ngân sách, mục tiêu, trả nợ, cài đặt tách biệt. Chuyển người bằng nút tên ở góc trên trái |
 | **Góp** | Chuyển tiền từ người này sang người khác: sổ người góp ghi khoản chi "Góp cho …", sổ người nhận ghi khoản thu "Nhận góp từ …". Xóa một bên thì bên kia tự xóa theo |
-| **Báo cáo** | Xem theo ngày/tháng/năm (bấm vào nhãn kỳ 📅 để chọn ngày bất kỳ), biểu đồ thu chi theo thời gian, biểu đồ tròn theo danh mục, so sánh với kỳ trước, chi theo tag |
+| **Trích** | Ngược với Góp: lấy tiền từ tài khoản của người khác về tài khoản của mình (người bị trích phải đủ số dư) |
+| **Ẩn/hiện mục** | Mỗi người dùng tự chọn ẩn/hiện mục Báo cáo, Kế hoạch (Cài đặt → Hiển thị) |
+| **Báo cáo** | Tổng quan/Giao dịch xem theo ngày/tháng; Báo cáo chọn ngày, tháng, quý, năm hoặc khoảng thời gian tự chọn, biểu đồ thu chi theo thời gian, biểu đồ tròn theo danh mục, so sánh với kỳ trước, chi theo tag |
 | **Dữ liệu** | Sao lưu và khôi phục file `.json` (kèm ảnh), xuất CSV mở bằng Excel |
 
 ## 1. Chạy thử trên máy tính

@@ -2,11 +2,11 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import {
-  ui, currentRange, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, periodState, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
-  getRange, shiftAnchor, elapsedDays, parseISO, nextDate, FREQ_LABEL, PERIOD_LABEL, splitTags, debounce, addMonths,
+  getRange, shiftAnchor, prevRange, elapsedDays, parseISO, nextDate, FREQ_LABEL, PERIOD_LABEL, splitTags, debounce, addMonths,
   fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN,
 } from './utils.js';
 import { donut, bars } from './charts.js';
@@ -40,12 +40,18 @@ function txWhen(t) {
     : `🕒 ${fmtDate(t.date)} · ghi lúc ${time} ${fmtDM(createdDay)}${createdDay.slice(0, 4) !== t.date.slice(0, 4) ? '/' + createdDay.slice(0, 4) : ''}`;
 }
 
+/** Nhãn khoản Góp/Trích theo góc nhìn của sổ đang xem. */
+function gopLabel(g) {
+  if (g.mode === 'trich') return g.dir === 'in' ? `Trích từ ${g.peerName}` : `Bị ${g.peerName} trích`;
+  return g.dir === 'out' ? `Góp cho ${g.peerName}` : `Nhận góp từ ${g.peerName}`;
+}
+
 function txRow(t) {
   const parts = S.txParts(t);
   const isTr = t.type === 'transfer';
   const cat = isTr ? null : S.catById(parts[0].categoryId);
   const icon = isTr ? `<span class="ci" style="--c:#6f6e77">⇄</span>` : catIcon(cat);
-  const catText = t.gop ? (t.gop.dir === 'out' ? `Góp cho ${t.gop.peerName}` : `Nhận góp từ ${t.gop.peerName}`)
+  const catText = t.gop ? gopLabel(t.gop)
     : parts.length > 1 ? `${parts.length} danh mục` : (cat || UNKNOWN_CAT).name;
   const title = t.note || (isTr ? 'Chuyển tiền' : catText);
   const sub = [isTr ? `${accName(t.accountId)} → ${accName(t.toAccountId)}` : (t.note && t.note !== catText ? catText + ' · ' : '') + accName(t.accountId)];
@@ -126,7 +132,7 @@ const profileChip = () => {
   return `<button type="button" class="profile-chip" data-act="profiles" style="--c:${esc(p.color)}" title="Đổi người dùng">
     <span>${esc(p.icon)}</span>${esc(p.name)} <i>▾</i></button>`;
 };
-const summaryBtn = () => `<button type="button" class="btn ghost small" data-act="summary" data-v="current">📊 Tóm tắt</button>`;
+const summaryBtn = (v = 'current') => `<button type="button" class="btn ghost small" data-act="summary" data-v="${v}">📊 Tóm tắt</button>`;
 
 async function switchTo(id) {
   if (id === S.currentProfile().id) return;
@@ -239,7 +245,9 @@ function homeView() {
     </div>
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
     <div class="hero-bal"><span>Tổng số dư tài khoản</span><b>${fmt(S.totalBalance())}</b></div>
-    ${otherProfiles().length ? `<button type="button" class="btn ghost block gop-btn" data-act="gop">🤝 Góp tiền cho ${esc(otherProfiles().map((p) => p.name).join(' / '))}</button>` : ''}
+    ${otherProfiles().length ? `<div class="gop-actions">
+      <button type="button" class="btn ghost" data-act="gop">🤝 Góp cho người khác</button>
+      <button type="button" class="btn ghost" data-act="trich">🔄 Trích từ người khác</button></div>` : ''}
   </section>
 
   ${!loggedToday && hour >= 18 ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
@@ -254,7 +262,7 @@ function homeView() {
   }).join('')}
   <button type="button" class="row add-row" data-act="acc-edit"><span class="ci">＋</span><span class="grow"><b>Thêm tài khoản ngân hàng</b></span></button></div>
 
-  ${top.length ? `${sectionTitle('Chi nhiều nhất', `<a class="link" href="#/reports">Báo cáo</a>`)}
+  ${top.length ? `${sectionTitle('Chi nhiều nhất', state.settings.showReports === false ? '' : `<a class="link" href="#/reports">Báo cáo</a>`)}
   <div class="card list">${top.map((x) => `<button type="button" class="row" data-act="report-cat" data-id="${x.cat.id}">${catIcon(x.cat)}
     <span class="grow"><b>${esc(x.cat.name)}</b><span class="bar thin"><i style="width:${(x.amount / topMax) * 100}%;background:${esc(x.cat.color)}"></i></span></span>
     <span class="amt">${fmt(x.amount)}</span></button>`).join('')}</div>` : ''}
@@ -415,25 +423,103 @@ function openGopForm() {
 
 function gopDetail(tx) {
   const out = tx.gop.dir === 'out';
+  const isTrich = tx.gop.mode === 'trich';
+  const word = isTrich ? 'trích' : 'góp';
   const peerExists = S.getProfiles().some((p) => p.id === tx.gop.peer);
   openSheet({
-    title: out ? 'Khoản góp' : 'Khoản nhận góp',
+    title: isTrich ? (out ? 'Khoản bị trích' : 'Khoản trích') : (out ? 'Khoản góp' : 'Khoản nhận góp'),
     body: `<div class="detail">
-      <div class="big-ic">🤝</div>
-      <div class="kv"><span>${out ? 'Góp cho' : 'Nhận từ'}</span><b>${esc(tx.gop.peerName)}${peerExists ? '' : ' (đã xóa)'}</b></div>
+      <div class="big-ic">${isTrich ? '🔄' : '🤝'}</div>
+      <div class="kv"><span>Nội dung</span><b>${esc(gopLabel(tx.gop))}${peerExists ? '' : ' (người dùng đã xóa)'}</b></div>
       <div class="kv"><span>Số tiền</span><b class="${out ? 'expense' : 'income'}">${fmtSigned(out ? -tx.amountVnd : tx.amountVnd)}</b></div>
       <div class="kv"><span>${out ? 'Từ tài khoản' : 'Vào tài khoản'}</span><b>${esc(accName(tx.accountId))}</b></div>
       <div class="kv"><span>Ngày</span><b>${fmtDate(tx.date)}</b></div>
       ${tx.createdAt ? `<div class="kv"><span>Ghi nhận lúc</span><b>${fmtDateTimeVN(tx.createdAt)}</b></div>` : ''}
       ${tx.note ? `<div class="kv"><span>Ghi chú</span><b>${esc(tx.note)}</b></div>` : ''}
-      <p class="muted small">Khoản góp được ghi ở cả 2 sổ. Muốn sửa số tiền: xóa khoản này rồi góp lại.</p>
-      <div class="actions"><button type="button" class="btn danger" data-del>Xóa khoản góp${peerExists ? ' (cả 2 bên)' : ''}</button></div>
+      <p class="muted small">Khoản ${word} được ghi ở cả 2 sổ. Muốn sửa số tiền: xóa khoản này rồi ${word} lại.</p>
+      <div class="actions"><button type="button" class="btn danger" data-del>Xóa khoản ${word}${peerExists ? ' (cả 2 bên)' : ''}</button></div>
     </div>`,
     onMount(sh, close) {
       $(sh, '[data-del]').addEventListener('click', async () => {
-        if (!confirm(`Xóa khoản góp này?${peerExists ? ` Giao dịch tương ứng trong sổ của ${tx.gop.peerName} cũng bị xóa.` : ''}`)) return;
+        if (!confirm(`Xóa khoản ${word} này?${peerExists ? ` Giao dịch tương ứng trong sổ của ${tx.gop.peerName} cũng bị xóa.` : ''}`)) return;
         await S.deleteTx(tx);
-        close(); toast('Đã xóa khoản góp');
+        close(); toast(`Đã xóa khoản ${word}`);
+      });
+    },
+  });
+}
+
+actions.trich = () => openTrichForm();
+
+/** Trích: lấy tiền từ tài khoản của người khác về tài khoản của mình (ngược với Góp). */
+function openTrichForm() {
+  const others = otherProfiles();
+  if (!others.length) {
+    toast('Cần thêm ít nhất 1 người dùng nữa để trích');
+    return actions.profiles();
+  }
+  const me = S.currentProfile();
+  openSheet({
+    title: 'Trích tiền từ người khác',
+    body: `<form class="form">
+      <p class="muted small">Sổ người bị trích ghi một khoản <b class="expense">chi</b>, sổ của <b>${esc(me.name)}</b> ghi một khoản <b class="income">thu</b>. Người bị trích phải đủ số dư.</p>
+      <div class="field"><span>Trích từ</span><div class="chips" id="tr-from">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>
+      ${amountField('tr-amt', 0)}
+      <div class="two">
+        ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
+        ${field('Vào tài khoản của ' + esc(me.name), `<select id="tr-to">${accOptions(state.settings.lastAccount)}</select>`)}
+      </div>
+      <em class="hint" id="tr-bal"></em>
+      ${field('Ngày', `<input type="date" id="tr-date" value="${todayISO()}">`)}
+      ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Trích tiền học cho con">`)}
+      <div class="actions"><button class="btn primary">🔄 Trích</button></div>
+    </form>`,
+    onMount(sh, close) {
+      const amt = bindMoney(sh, 'tr-amt');
+      let fromId = others[0].id;
+      const balances = new Map();
+      const updBal = () => {
+        const have = balances.get($(sh, '#tr-facc').value);
+        if (have == null) return;
+        const need = Math.round(readMoney(amt.value) || 0);
+        $(sh, '#tr-bal').textContent = `Khả dụng của ${others.find((x) => x.id === fromId).name}: ${fmt(have)}${need > have ? ' — không đủ tiền!' : ''}`;
+        $(sh, '#tr-bal').className = 'hint' + (need > have ? ' expense' : '');
+      };
+      const loadPeer = async () => {
+        $(sh, '#tr-from-name').textContent = others.find((x) => x.id === fromId).name;
+        const all = await S.peerAccounts(fromId);
+        const banks = all.filter((a) => a.kind !== 'cash');
+        const accs = banks.length ? banks : all;
+        balances.clear();
+        for (const a of accs) balances.set(a.id, await S.peerBalance(fromId, a.id));
+        $(sh, '#tr-facc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmt(balances.get(a.id))}</option>`).join('');
+        updBal();
+      };
+      $(sh, '#tr-from').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-from]');
+        if (!b) return;
+        fromId = b.dataset.from;
+        sh.querySelectorAll('[data-from]').forEach((x) => x.classList.toggle('on', x === b));
+        loadPeer();
+      });
+      $(sh, '#tr-facc').addEventListener('change', updBal);
+      amt.addEventListener('input', updBal);
+      loadPeer();
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = Math.round(readMoney(amt.value));
+        if (!(v > 0)) return toast('Nhập số tiền trích');
+        const fromAccountId = $(sh, '#tr-facc').value;
+        if (!balances.has(fromAccountId)) return toast('Chọn tài khoản bị trích');
+        const from = others.find((x) => x.id === fromId);
+        try {
+          await S.trich({
+            fromProfileId: fromId, amount: v, fromAccountId, toAccountId: $(sh, '#tr-to').value,
+            date: $(sh, '#tr-date').value || todayISO(), note: $(sh, '#tr-note').value.trim(),
+          });
+        } catch (err) { return toast('⛔ ' + err.message, 4500); }
+        close();
+        toast(`🔄 Đã trích ${fmt(v)} từ ${from.name}`);
       });
     },
   });
@@ -444,18 +530,27 @@ actions['report-cat'] = (el) => {
 };
 
 // ================= Báo cáo =================
+/** Gom cột theo độ dài kỳ: ≤ 31 ngày → theo ngày; ≤ 120 ngày → theo tuần; dài hơn → theo tháng. */
 function trendBuckets(r) {
-  const WD = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
   let buckets, idx;
-  if (r.type === 'year') {
-    buckets = Array.from({ length: 12 }, (_, i) => ({ label: 'T' + (i + 1), income: 0, expense: 0 }));
-    idx = (d) => Number(d.slice(5, 7)) - 1;
-  } else {
+  if (r.days <= 31) {
     buckets = Array.from({ length: r.days }, (_, i) => {
       const d = addDays(r.start, i);
-      return { label: r.type === 'week' ? WD[parseISO(d).getDay()] : String(Number(d.slice(8))), income: 0, expense: 0 };
+      return { label: r.type === 'month' ? String(Number(d.slice(8))) : fmtDM(d), income: 0, expense: 0 };
     });
     idx = (d) => diffDays(r.start, d);
+  } else if (r.days <= 120) {
+    buckets = Array.from({ length: Math.ceil(r.days / 7) }, (_, i) => ({ label: fmtDM(addDays(r.start, i * 7)), income: 0, expense: 0 }));
+    idx = (d) => Math.floor(diffDays(r.start, d) / 7);
+  } else {
+    const y0 = Number(r.start.slice(0, 4)), m0 = Number(r.start.slice(5, 7));
+    const mIndex = (d) => (Number(d.slice(0, 4)) - y0) * 12 + Number(d.slice(5, 7)) - m0;
+    const multiYear = r.start.slice(0, 4) !== r.end.slice(0, 4);
+    buckets = Array.from({ length: mIndex(r.end) + 1 }, (_, i) => {
+      const m = ((m0 - 1 + i) % 12) + 1, y = y0 + Math.floor((m0 - 1 + i) / 12);
+      return { label: multiYear ? `${m}/${String(y).slice(2)}` : 'T' + m, income: 0, expense: 0 };
+    });
+    idx = mIndex;
   }
   for (const t of S.txIn(r)) {
     const b = buckets[idx(t.date)];
@@ -473,10 +568,9 @@ function pctChange(cur, prev) {
 }
 
 function reportsView() {
-  const r = currentRange();
+  const r = reportRange();
   const t = S.totals(r);
-  const prev = getRange(r.type, shiftAnchor(r.type, r.start, -1), state.settings.weekStart);
-  const pt = S.totals(prev);
+  const pt = S.totals(prevRange(r, state.settings.weekStart));
   const type = ui.reportType;
   const cats = S.byCategory(r, type);
   const total = type === 'expense' ? t.expense : t.income;
@@ -487,8 +581,8 @@ function reportsView() {
   const tags = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return `
-  <header class="top"><div>${profileChip()}<h1>Báo cáo</h1></div>${summaryBtn()}</header>
-  ${periodBar()}
+  <header class="top"><div>${profileChip()}<h1>Báo cáo</h1></div>${summaryBtn('report')}</header>
+  ${periodBar('report')}
   <section class="card stats">
     <div><small>Thu</small><b class="income">${fmt(t.income)}</b><em>${pctChange(t.income, pt.income)}</em></div>
     <div><small>Chi</small><b class="expense">${fmt(t.expense)}</b><em>${pctChange(t.expense, pt.expense)}</em></div>
@@ -565,7 +659,11 @@ function budgetTab() {
   ${alloc ? allocationCard(alloc) : `<p class="muted center">Muốn chia thu nhập theo <b>50/30/20</b> hoặc <b>6 chiếc lọ</b>? Bật trong <a href="#/settings">Cài đặt</a>.</p>`}`;
 }
 
-actions['budget-goto'] = () => { ui.planTab = 'budget'; location.hash = '#/plan/budget'; };
+actions['budget-goto'] = () => {
+  if (state.settings.showPlan === false) return toast('Mục Kế hoạch đang ẩn — bật lại trong Cài đặt → Hiển thị');
+  ui.planTab = 'budget';
+  location.hash = '#/plan/budget';
+};
 actions['budget-edit'] = (el) => {
   const b = state.budgets.find((x) => x.id === el.dataset.id);
   const f = b ? { ...b } : { categoryId: '__all', amount: 0, period: 'month' };
@@ -1005,15 +1103,14 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     body: `<form class="form txf" autocomplete="off">
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
-        ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button>' : ''}</div>
+        ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button><button type="button" id="tf-trich">🔄 Trích</button>' : ''}</div>
       <div class="amount-row">
         <input id="tf-amt" class="amount-input" inputmode="decimal" placeholder="0" value="${f.amount ? esc(fmtNum(f.amount)) : ''}" aria-label="Số tiền">
         ${multiCur ? `<select id="tf-cur" class="cur">${st.currencies.map((c) => `<option ${c.code === f.currency ? 'selected' : ''}>${esc(c.code)}</option>`).join('')}</select>` : ''}
         ${showVoice ? '<button type="button" class="icon-btn mic" id="tf-mic" title="Nói, vd: ăn trưa 45 nghìn">🎤</button>' : ''}
       </div>
       <em class="hint center" id="tf-hint">Gõ nhanh: 50k · 1tr2 · 2,5tr</em>
-      <div id="tf-quick" class="chips center"></div>
-      <div id="tf-cats" class="cat-grid"></div>
+      ${field('Danh mục', `<select id="tf-cat" class="cat-select"></select>`, 'id="tf-cats"')}
       <label class="check" id="tf-split-wrap"><input type="checkbox" id="tf-split" ${splitRows.length ? 'checked' : ''}> Chia thành nhiều danh mục</label>
       <div id="tf-splits"></div>
       <div class="two">
@@ -1066,11 +1163,11 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       // --- loại giao dịch ---
       const typeBtns = sh.querySelectorAll('#tf-type button[data-v]');
       $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(); });
+      $(sh, '#tf-trich')?.addEventListener('click', () => { close(); openTrichForm(); });
       const updType = () => {
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
         const tr = f.type === 'transfer';
         $(sh, '#tf-cats').hidden = tr;
-        $(sh, '#tf-quick').hidden = tr;
         $(sh, '#tf-split-wrap').hidden = tr;
         $(sh, '#tf-to-wrap').hidden = !tr;
         $(sh, '#tf-acc-l').textContent = tr ? 'Từ tài khoản' : 'Tài khoản';
@@ -1085,24 +1182,20 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       }));
 
       // --- danh mục ---
+      // Danh mục dạng danh sách thả xuống (danh mục Góp/Trích chỉ tạo qua chức năng riêng nên không hiện ở đây).
       function renderCats() {
         if (f.type === 'transfer') return;
-        $(sh, '#tf-cats').innerHTML = S.catsOf(f.type).filter((c) => !String(c.sys || '').startsWith('gop')).map((c) =>
-          `<button type="button" class="cat ${c.id === f.categoryId ? 'on' : ''}" data-id="${c.id}" style="--c:${esc(c.color)}"><span>${esc(c.icon)}</span><small>${esc(c.name)}</small></button>`).join('');
-        $(sh, '#tf-quick').innerHTML = '';
+        $(sh, '#tf-cat').innerHTML = S.catsOf(f.type).filter((c) => !/^(gop|trich)/.test(c.sys || '')).map((c) =>
+          `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('');
+        f.categoryId = $(sh, '#tf-cat').value;
       }
-      $(sh, '#tf-cats').addEventListener('click', (e) => {
-        const b = e.target.closest('.cat');
-        if (!b) return;
-        f.categoryId = b.dataset.id;
-        renderCats();
-      });
+      $(sh, '#tf-cat').addEventListener('change', (e) => { f.categoryId = e.target.value; });
 
       // --- chia danh mục ---
       const splitBox = $(sh, '#tf-splits');
       function renderSplits() {
         const on = $(sh, '#tf-split').checked && f.type !== 'transfer';
-        $(sh, '#tf-cats').classList.toggle('dim', on);
+        $(sh, '#tf-cats').hidden = on || f.type === 'transfer';
         if (!on) { splitBox.innerHTML = ''; return; }
         if (!splitRows.length) splitRows = [{ categoryId: f.categoryId, amount: amtIn.value }, { categoryId: S.catsOf(f.type)[1]?.id, amount: '' }];
         splitBox.innerHTML = splitRows.map((r, i) => `<div class="split-row" data-i="${i}">
@@ -1318,7 +1411,7 @@ actions.add = (el) => openTxForm({ type: el.dataset.type || 'expense', repeat: e
 // ================= Tóm tắt & chia sẻ =================
 function summaryText(r) {
   const t = S.totals(r);
-  const prev = getRange(r.type, shiftAnchor(r.type, r.start, -1), state.settings.weekStart);
+  const prev = prevRange(r, state.settings.weekStart);
   const pt = S.totals(prev);
   const top = S.byCategory(r, 'expense').slice(0, 5);
   const lines = [
@@ -1349,7 +1442,7 @@ actions.summary = (el) => {
   const today = todayISO();
   const ws = state.settings.weekStart;
   const r = v === 'prev-week' ? getRange('week', addDays(today, -7), ws)
-    : v === 'prev-month' ? getRange('month', addMonths(today, -1, 1), ws) : currentRange();
+    : v === 'prev-month' ? getRange('month', addMonths(today, -1, 1), ws) : v === 'report' ? reportRange() : currentRange();
   const text = summaryText(r);
   openSheet({
     title: 'Tóm tắt ' + r.label,
@@ -1383,9 +1476,13 @@ function settingsView() {
   </section>
   <p class="muted small">Mỗi người có sổ riêng: tài khoản, giao dịch, ngân sách, mục tiêu, trả nợ và cài đặt hoàn toàn tách biệt.</p>
 
-  ${sectionTitle('Hiển thị')}
+  ${sectionTitle(`Hiển thị (riêng của ${esc(S.currentProfile().name)})`)}
   <section class="card form">
-    ${field('Kỳ xem mặc định', `<select data-set="period">${['month', 'year'].map((p) => `<option value="${p}" ${s.period === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`)}
+    ${field('Kỳ xem mặc định ở Tổng quan / Giao dịch', `<select data-set="period">${['day', 'month'].map((p) => `<option value="${p}" ${(s.period === 'day' ? 'day' : 'month') === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`)}
+    ${[['showReports', '📊 Hiện mục Báo cáo'], ['showPlan', '🎯 Hiện mục Kế hoạch']].map(([k, label]) => `
+    <div class="row-between"><span>${label}</span>
+      <label class="switch"><input type="checkbox" data-tab-toggle="${k}" ${s[k] !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
+    <p class="muted small">Tắt để ẩn mục khỏi thanh dưới cùng cho người dùng này. Dữ liệu ngân sách, mục tiêu, trả nợ vẫn được giữ.</p>
   </section>
 
   ${sectionTitle('Dữ liệu nền')}
@@ -1481,6 +1578,10 @@ actions['pin-change'] = () => {
 };
 
 async function mountSettings(root) {
+  root.querySelectorAll('[data-tab-toggle]').forEach((el) => el.addEventListener('change', async () => {
+    await S.setSetting(el.dataset.tabToggle, el.checked);
+    toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');
+  }));
   root.querySelector('[data-lock-toggle]').addEventListener('change', async (e) => {
     if (e.target.checked) {
       setLockEnabled(true);
@@ -1725,22 +1826,30 @@ actions.currencies = () => {
 };
 
 // ================= Điều hướng chung =================
+// data-p="main" (Tổng quan/Giao dịch) hoặc "report" (Báo cáo)
+const pOf = (el) => periodState(el.dataset.p === 'report' ? 'report' : 'main');
+
 actions['period-type'] = (el) => {
-  const r = currentRange();
+  const p = pOf(el);
+  const r = el.dataset.p === 'report' ? reportRange() : currentRange();
   const today = todayISO();
   // Chuyển sang xem theo ngày khi đang ở kỳ hiện tại → mở luôn ngày hôm nay.
-  if (el.dataset.v === 'day' && today >= r.start && today <= r.end) ui.period.anchor = today;
-  ui.period.type = el.dataset.v;
+  if (el.dataset.v === 'day' && today >= r.start && today <= r.end) p.anchor = today;
+  // Chuyển sang "Khoảng": lấy luôn kỳ đang xem làm khoảng mặc định.
+  if (el.dataset.v === 'custom' && p.type !== 'custom') { p.from = r.start; p.to = r.end; }
+  if (p.type === 'custom' && el.dataset.v !== 'custom') p.anchor = p.to;
+  p.type = el.dataset.v;
   refresh();
 };
-actions['period-shift'] = (el) => { currentRange(); ui.period.anchor = shiftAnchor(ui.period.type, ui.period.anchor, Number(el.dataset.v)); refresh(); };
+actions['period-shift'] = (el) => { const p = pOf(el); p.anchor = shiftAnchor(p.type, p.anchor, Number(el.dataset.v)); refresh(); };
 actions['period-date'] = (el) => {
   if (!el.value) return;
-  currentRange();
-  ui.period.anchor = el.value;
+  const p = pOf(el);
+  if (el.dataset.range) p[el.dataset.range] = el.value;
+  else p.anchor = el.value;
   refresh();
 };
-actions['period-today'] = () => { currentRange(); ui.period.anchor = todayISO(); refresh(); };
+actions['period-today'] = (el) => { pOf(el).anchor = todayISO(); refresh(); };
 
 const VIEWS = {
   home: { html: homeView },
@@ -1752,7 +1861,20 @@ const VIEWS = {
 
 let current = { route: 'home', sub: null };
 
+/** Mục bị ẩn theo cài đặt của người dùng hiện tại. */
+const hiddenTabs = () => {
+  const s = state.settings;
+  return new Set([s.showReports === false && 'reports', s.showPlan === false && 'plan'].filter(Boolean));
+};
+
 export function render(route, sub) {
+  const hidden = hiddenTabs();
+  if (hidden.has(route)) {
+    route = 'home';
+    sub = null;
+    if (location.hash !== '#/home') history.replaceState(null, '', '#/home');
+  }
+  document.querySelectorAll('#tabbar a').forEach((a) => { a.hidden = hidden.has(a.dataset.tab); });
   const sameView = current.route === route && current.sub === sub;
   current = { route: VIEWS[route] ? route : 'home', sub };
   const v = VIEWS[current.route];

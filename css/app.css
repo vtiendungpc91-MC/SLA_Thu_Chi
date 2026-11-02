@@ -333,6 +333,12 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .big-ic { font-size: 48px; text-align: center; margin: 6px 0 10px; }
 .summary { white-space: pre-wrap; font: 14px/1.55 inherit; background: var(--card); padding: 14px; border-radius: 12px; margin: 0 0 10px; }
 
+.gop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.gop-actions .btn { padding: 10px 8px; font-size: 14px; }
+.range-pick { display: flex; gap: 10px; }
+.range-pick .field input { padding: 8px 10px; }
+.cat-select { font-size: 17px !important; }
+
 /* ---------- Khóa ứng dụng ---------- */
 .lock {
   position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;

@@ -70,6 +70,8 @@ const SEED_INCOME = [
 const SYS_CATS = {
   'gop-out': { type: 'expense', name: 'Góp cho người nhà', icon: '🤝', rule: 'needs', jar: 'NEC', color: '#12a594' },
   'gop-in': { type: 'income', name: 'Nhận góp', icon: '🤝', color: '#12a594' },
+  'trich-in': { type: 'income', name: 'Trích từ người nhà', icon: '🔄', color: '#8e4ec6' },
+  'trich-out': { type: 'expense', name: 'Bị trích cho người nhà', icon: '🔄', rule: 'needs', jar: 'NEC', color: '#8e4ec6' },
 };
 
 function seedRows() {
@@ -263,6 +265,42 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   return put('transactions', {
     ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
     note: note || `Góp cho ${to.name}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: to.name },
+  });
+}
+
+/** Số dư hiện tại của một tài khoản trong sổ người khác. */
+export async function peerBalance(profileId, accountId) {
+  const peer = dbOf(profileId);
+  const acc = (await peer.getAll('accounts')).find((a) => a.id === accountId);
+  if (!acc) return 0;
+  let b = Number(acc.initial) || 0;
+  for (const t of await peer.getAll('transactions')) b += txEffect(t, accountId);
+  return b;
+}
+
+/**
+ * Trích tiền (ngược với Góp): lấy tiền từ tài khoản của người khác về tài khoản của mình.
+ * Sổ mình ghi khoản THU "Trích từ …", sổ người kia ghi khoản CHI "Bị … trích". Người kia phải đủ số dư.
+ */
+export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note }) {
+  const me = currentProfile();
+  const from = getProfiles().find((p) => p.id === fromProfileId);
+  if (!from || from.id === me.id) throw new Error('Chọn người bị trích khác');
+  const { peer, cats, accs } = await openPeerBook(from.id);
+  const have = await peerBalance(from.id, fromAccountId);
+  if (amount > have) {
+    const acc = accs.find((a) => a.id === fromAccountId);
+    throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${from.name} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
+  }
+  const gid = uid();
+  const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
+  await peer.put('transactions', {
+    ...base, id: uid(), type: 'expense', categoryId: cats.find((c) => c.sys === 'trich-out').id, accountId: fromAccountId,
+    note: note || `Bị ${me.name} trích`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: me.name }, updatedAt: Date.now(),
+  });
+  return put('transactions', {
+    ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
+    note: note || `Trích từ ${from.name}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: from.name },
   });
 }
 
@@ -469,7 +507,8 @@ export function allocation(range) {
   if (!m) return null;
   const t = totals(range);
   const exp = Number(state.settings.expectedIncome) || 0;
-  const scale = range.type === 'week' ? 7 / 30.4 : range.type === 'year' ? 12 : 1;
+  // Thu nhập dự kiến là theo tháng → quy đổi theo độ dài kỳ (ngày, quý, năm, khoảng tự chọn).
+  const scale = range.type === 'month' ? 1 : range.type === 'year' ? 12 : range.type === 'quarter' ? 3 : range.days / 30.44;
   const base = t.income > 0 ? t.income : Math.round(exp * scale);
   const spentBy = new Map();
   for (const tx of txIn(range)) {
