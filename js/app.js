@@ -47,6 +47,11 @@ document.addEventListener('click', (e) => {
   });
 });
 
+// Chọn ngày ở thanh kỳ (ô date ẩn đè lên nhãn kỳ).
+document.addEventListener('change', (e) => {
+  if (e.target.matches('[data-period-date]')) actions['period-date'](e.target);
+});
+
 /** Gửi thông báo hệ thống cho các mục cần chú ý (mỗi mục 1 lần). */
 async function notifyAlerts() {
   if (!state.settings.notify || !('Notification' in window) || Notification.permission !== 'granted') return;

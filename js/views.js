@@ -466,8 +466,8 @@ function reportsView() {
     <div><small>Chi trung bình/ngày</small><b>${fmt(elapsed ? t.expense / elapsed : 0)}</b><em>${elapsed} ngày đã qua</em></div>
   </section>
 
-  ${sectionTitle('Theo thời gian')}
-  <section class="card"><div class="legend-inline"><span><i class="dot b-in"></i>Thu</span><span><i class="dot b-ex"></i>Chi</span></div>${bars(trendBuckets(r))}</section>
+  ${r.type === 'day' ? '' : `${sectionTitle('Theo thời gian')}
+  <section class="card"><div class="legend-inline"><span><i class="dot b-in"></i>Thu</span><span><i class="dot b-ex"></i>Chi</span></div>${bars(trendBuckets(r))}</section>`}
 
   ${sectionTitle('Theo danh mục', `<div class="seg small">${['expense', 'income'].map((x) => `<button type="button" data-act="report-type" data-v="${x}" class="${type === x ? 'on' : ''}">${TYPE_LABEL[x]}</button>`).join('')}</div>`)}
   <section class="card">
@@ -1589,8 +1589,21 @@ actions.currencies = () => {
 };
 
 // ================= Điều hướng chung =================
-actions['period-type'] = (el) => { currentRange(); ui.period.type = el.dataset.v; refresh(); };
+actions['period-type'] = (el) => {
+  const r = currentRange();
+  const today = todayISO();
+  // Chuyển sang xem theo ngày khi đang ở kỳ hiện tại → mở luôn ngày hôm nay.
+  if (el.dataset.v === 'day' && today >= r.start && today <= r.end) ui.period.anchor = today;
+  ui.period.type = el.dataset.v;
+  refresh();
+};
 actions['period-shift'] = (el) => { currentRange(); ui.period.anchor = shiftAnchor(ui.period.type, ui.period.anchor, Number(el.dataset.v)); refresh(); };
+actions['period-date'] = (el) => {
+  if (!el.value) return;
+  currentRange();
+  ui.period.anchor = el.value;
+  refresh();
+};
 actions['period-today'] = () => { currentRange(); ui.period.anchor = todayISO(); refresh(); };
 
 const VIEWS = {

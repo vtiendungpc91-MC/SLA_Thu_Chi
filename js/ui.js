@@ -62,14 +62,16 @@ export function periodBar() {
   const r = currentRange();
   return `
   <div class="period">
-    <div class="seg">${['month', 'year'].map((t) =>
+    <div class="seg">${['day', 'month', 'year'].map((t) =>
       `<button type="button" data-act="period-type" data-v="${t}" class="${ui.period.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
     </div>
     <div class="period-nav">
       <button type="button" class="icon-btn" data-act="period-shift" data-v="-1" aria-label="Kỳ trước">‹</button>
-      <button type="button" class="period-label" data-act="period-today" title="Về kỳ hiện tại">${esc(r.label)}</button>
+      <label class="period-label" title="Chọn ngày">${esc(r.label)} <span class="cal">📅</span>
+        <input type="date" data-period-date value="${esc(ui.period.anchor)}" aria-label="Chọn ngày"></label>
       <button type="button" class="icon-btn" data-act="period-shift" data-v="1" aria-label="Kỳ sau">›</button>
     </div>
+    ${todayISO() < r.start || todayISO() > r.end ? `<button type="button" class="link center" data-act="period-today">↺ Về ${ui.period.type === 'day' ? 'hôm nay' : 'kỳ hiện tại'}</button>` : ''}
   </div>`;
 }
 

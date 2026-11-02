@@ -106,10 +106,11 @@ export function nextDate(date, freq, interval = 1, anchorDay) {
 }
 
 // ---------- Kỳ báo cáo ----------
-export const PERIOD_LABEL = { week: 'Tuần', month: 'Tháng', year: 'Năm' };
+export const PERIOD_LABEL = { day: 'Ngày', week: 'Tuần', month: 'Tháng', year: 'Năm' };
 
 export function getRange(type, anchor, weekStart = 1) {
   const d = parseISO(anchor);
+  if (type === 'day') return { type, start: anchor, end: anchor, days: 1, label: fmtDayHeader(anchor) };
   if (type === 'week') {
     const off = (d.getDay() - weekStart + 7) % 7;
     const start = addDays(anchor, -off);
@@ -126,6 +127,7 @@ export function getRange(type, anchor, weekStart = 1) {
 }
 
 export function shiftAnchor(type, anchor, dir) {
+  if (type === 'day') return addDays(anchor, dir);
   if (type === 'week') return addDays(anchor, 7 * dir);
   if (type === 'year') return `${parseISO(anchor).getFullYear() + dir}-01-01`;
   return addMonths(anchor, dir, 1);

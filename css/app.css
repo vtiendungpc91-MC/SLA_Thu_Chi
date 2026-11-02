@@ -155,7 +155,10 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 /* ---------- Chọn kỳ ---------- */
 .period { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .period-nav { display: flex; align-items: center; justify-content: space-between; }
-.period-label { background: none; border: 0; font-weight: 700; font-size: 16px; padding: 6px 10px; }
+.period-label { position: relative; background: none; border: 0; font-weight: 700; font-size: 16px; padding: 6px 10px; cursor: pointer; }
+.period-label .cal { font-size: 14px; opacity: .75; }
+.period-label input[type=date] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.period .link.center { align-self: center; padding: 0; }
 
 .seg { display: flex; background: var(--soft); border-radius: 12px; padding: 3px; gap: 2px; }
 .seg > * {
