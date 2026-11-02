@@ -1078,7 +1078,11 @@ actions['pending-open'] = (el) => {
 };
 
 // ================= Form giao dịch =================
-export function openTxForm({ tx = null, type = 'expense', preset = null, fromRecurring = null, repeat = 'none' } = {}) {
+/**
+ * returnTo: hồ sơ cần quay về sau khi đóng form (khi đang ghi hộ vào sổ người khác).
+ * catName: giữ danh mục theo tên khi chuyển sang sổ người khác (mỗi sổ có id danh mục riêng).
+ */
+export function openTxForm({ tx = null, type = 'expense', preset = null, fromRecurring = null, repeat = 'none', returnTo = null, catName = null } = {}) {
   const st = state.settings;
   const isEdit = !!tx;
   const f = tx ? JSON.parse(JSON.stringify(tx)) : {
@@ -1089,7 +1093,15 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   if (!S.accById(f.accountId)) f.accountId = accs[0]?.id;
   if (f.type === 'transfer' && !f.toAccountId) f.toAccountId = accs.find((a) => a.id !== f.accountId)?.id;
   const ensureCat = () => { if (f.type !== 'transfer' && !S.catsOf(f.type).some((c) => c.id === f.categoryId)) f.categoryId = st.lastCat?.[f.type] && S.catById(st.lastCat[f.type]) ? st.lastCat[f.type] : S.catsOf(f.type)[0]?.id; };
+  if (catName) {
+    const same = S.catsOf(f.type).find((c) => c.name === catName);
+    if (same) f.categoryId = same.id;
+  }
   ensureCat();
+  // Chọn người dùng để ghi vào đúng sổ (chỉ khi thêm mới và có từ 2 người dùng).
+  const origin = returnTo || S.currentProfile().id;
+  const showWho = !isEdit && !fromRecurring && S.getProfiles().length > 1;
+  let switching = false;
   const rate0 = f.rate || S.rateOf(f.currency);
   let splitRows = f.splits && f.splits.length ? f.splits.map((p) => ({ categoryId: p.categoryId, amount: fmtNum(p.amountVnd / rate0) })) : [];
   const keepPhotos = [...(f.photoIds || [])];
@@ -1101,6 +1113,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   openSheet({
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     body: `<form class="form txf" autocomplete="off">
+      ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.getProfiles().map((p) =>
+        `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button><button type="button" id="tf-trich">🔄 Trích</button>' : ''}</div>
@@ -1130,9 +1144,29 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         <button class="btn primary">Lưu</button>
       </div>
     </form>`,
-    onClose() { added.forEach((p) => URL.revokeObjectURL(p.url)); },
+    onClose() {
+      added.forEach((p) => URL.revokeObjectURL(p.url));
+      // Ghi hộ xong (hoặc hủy) → quay lại sổ đang xem trước đó.
+      if (!switching && origin !== S.currentProfile().id) S.switchProfile(origin);
+    },
     onMount(sh, close) {
       const amtIn = $(sh, '#tf-amt'), hint = $(sh, '#tf-hint');
+
+      // Đổi người dùng: mở lại form trong sổ của người đó, giữ nguyên số tiền, ngày, ghi chú, tag, danh mục (theo tên).
+      $(sh, '#tf-who')?.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-who]');
+        if (!b || b.dataset.who === S.currentProfile().id) return;
+        const keep = {
+          amount: parseAmount(amtIn.value) || null, date: $(sh, '#tf-date').value || todayISO(),
+          note: $(sh, '#tf-note').value.trim(), tags: splitTags($(sh, '#tf-tags').value),
+        };
+        const keepCat = S.catById(f.categoryId)?.name || null;
+        const keepType = f.type;
+        switching = true;
+        close();
+        await S.switchProfile(b.dataset.who);
+        openTxForm({ type: keepType, preset: keep, returnTo: origin, catName: keepCat });
+      });
       const curSel = $(sh, '#tf-cur');
       const curCode = () => (curSel ? curSel.value : 'VND');
 
@@ -1363,9 +1397,11 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         await S.setSetting('lastAccount', accountId, { silent: true });
         if (repVal !== 'none') await S.processRecurring();
         S.emit();
-        close();
-        toast(isEdit ? 'Đã cập nhật' : 'Đã lưu ' + (obj.type === 'expense' ? 'khoản chi ' : obj.type === 'income' ? 'khoản thu ' : '') + fmt(amountVnd));
+        const owner = S.currentProfile();
         if (obj.type === 'expense') budgetWarn(obj);
+        close();
+        toast(isEdit ? 'Đã cập nhật' : 'Đã lưu ' + (obj.type === 'expense' ? 'khoản chi ' : obj.type === 'income' ? 'khoản thu ' : '') + fmt(amountVnd)
+          + (owner.id !== origin ? ` vào sổ của ${owner.name}` : ''), 3000);
       });
 
       $(sh, '#tf-del')?.addEventListener('click', async () => {
