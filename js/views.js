@@ -164,7 +164,19 @@ function profileTile(p, cur) {
       </span>
     </button>
     <button type="button" class="ptile-edit" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
+    ${p.kind !== 'card' && S.userProfiles().length <= 1 ? '' : `<button type="button" class="ptile-del" data-del="${esc(p.id)}" aria-label="Xóa">🗑</button>`}
   </div>`;
+}
+
+/** Xóa người dùng/thẻ (hỏi xác nhận 2 lần). Trả về true nếu đã xóa. */
+async function confirmDeleteProfile(p) {
+  const noun = p.kind === 'card' ? 'thẻ chi tiêu' : 'người dùng';
+  if (!confirm(`Xóa ${noun} "${p.name}" và TOÀN BỘ dữ liệu của ${p.kind === 'card' ? 'thẻ' : 'người'} này? Không thể hoàn tác. Nên sao lưu trước!`)) return false;
+  if (prompt('Gõ XOA để xác nhận') !== 'XOA') return false;
+  ui.period = null;
+  try { await S.deleteProfile(p.id); } catch (err) { toast(err.message); return false; }
+  toast('Đã xóa ' + noun);
+  return true;
 }
 
 /** Điền số dư (người dùng) hoặc số tiền chưa thanh toán (thẻ) vào các ô [data-psum]. */
@@ -204,6 +216,12 @@ actions.profiles = () => {
         const sw = e.target.closest('[data-switch]');
         const ed = e.target.closest('[data-edit]');
         const add = e.target.closest('[data-add]');
+        const del = e.target.closest('[data-del]');
+        if (del) {
+          const p = S.getProfiles().find((x) => x.id === del.dataset.del);
+          if (p && await confirmDeleteProfile(p)) { close(); refresh(); setTimeout(() => actions.profiles(), 260); }
+          return;
+        }
         if (sw) { close(); await switchTo(sw.dataset.switch); }
         else if (ed) { close(); profileForm(S.getProfiles().find((p) => p.id === ed.dataset.edit)); }
         else if (add) { close(); profileForm(null, add.dataset.add); }
@@ -288,11 +306,7 @@ function profileForm(p, kind = 'user') {
         if (p) { refresh(); toast('Đã lưu'); } else await switchTo(saved.id);
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
-        if (!confirm(`Xóa ${noun} "${p.name}" và TOÀN BỘ dữ liệu của ${card ? 'thẻ' : 'người'} này? Không thể hoàn tác. Nên sao lưu trước!`)) return;
-        if (prompt('Gõ XOA để xác nhận') !== 'XOA') return;
-        ui.period = null;
-        try { await S.deleteProfile(p.id); } catch (err) { return toast(err.message); }
-        close(); refresh(); toast('Đã xóa ' + noun);
+        if (await confirmDeleteProfile(p)) { close(); refresh(); }
       });
     },
   });
@@ -319,7 +333,7 @@ function cardView() {
   const groups = new Map();
   for (const t of list) { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); }
   return `
-  <header class="top"><div>${profileChip()}<h1>${esc(p.name)}</h1></div></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(p.name)}</h1></div>${summaryBtn()}</header>
   <section class="card hero">
     <div class="hero-net"><small>Đã chi, chưa thanh toán · ${open.length} khoản</small><strong class="expense">${fmt(sumAmt(open))}</strong></div>
     <div class="hero-bal"><span>Đã thanh toán ${esc(m.label.toLowerCase())}</span><b class="income">${fmt(paidMonth)}</b></div>
@@ -398,9 +412,11 @@ function cardItemForm(item) {
   const f = item ? { ...item } : { amountVnd: 0, source: state.settings.lastSource || 'MoMo', categoryId: state.settings.lastCat?.expense, date: todayISO(), note: '' };
   const cats = S.catsOf('expense').filter((c) => !/^(gop|trich)/.test(c.sys || ''));
   if (!cats.some((c) => c.id === f.categoryId)) f.categoryId = cats[0]?.id;
+  const ciFormId = 'cif-' + Date.now();
   openSheet({
     title: item ? 'Sửa khoản chi' : 'Thêm khoản chi của thẻ',
-    body: `<form class="form">
+    headAction: `<button type="submit" form="${ciFormId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form" id="${ciFormId}">
       ${amountField('ci-amt', f.amountVnd)}
       <div class="field"><span>Nguồn chi</span>
         <div class="chips" id="ci-src">${S.CARD_SOURCES.map((s) => `<button type="button" class="chip ${s === f.source ? 'on' : ''}" data-src="${esc(s)}">${srcIcon(s)} ${esc(s)}</button>`).join('')}</div>
@@ -408,7 +424,6 @@ function cardItemForm(item) {
       ${field('Danh mục', `<select id="ci-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
       ${field('Nội dung', `<input id="ci-note" value="${esc(f.note)}" placeholder="vd: Đổ xăng, đi chợ, nạp điện thoại">`)}
       ${field('Ngày chi', `<input type="date" id="ci-date" value="${esc(f.date)}">`)}
-      <div class="actions"><button class="btn primary">Lưu</button></div>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'ci-amt');
@@ -515,7 +530,7 @@ function homeView() {
   const greet = hour < 11 ? '☀️ Chào buổi sáng' : hour < 14 ? '🍱 Chào buổi trưa' : hour < 18 ? '🌤️ Chào buổi chiều' : '🌙 Chào buổi tối';
 
   return `
-  <header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>${greet}! · ${fmtDayHeader(today)}</small></div></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>${greet}! · ${fmtDayHeader(today)}</small></div>${summaryBtn()}</header>
   ${periodBar()}
   <section class="card hero">
     <div class="hero-row">
@@ -1698,6 +1713,93 @@ function budgetWarn(tx) {
 function viewImage(src) {
   openSheet({ title: 'Ảnh hóa đơn', body: `<img src="${src}" class="full-img" alt="">`, wide: true });
 }
+
+// ================= Tóm tắt (mỗi người dùng / thẻ chi tiêu) =================
+const summaryBtn = () => `<button type="button" class="btn ghost small" data-act="summary">📊 Tóm tắt</button>`;
+
+function userSummary(r) {
+  const p = S.currentProfile();
+  const t = S.totals(r);
+  const pt = S.totals(prevRange(r, state.settings.weekStart));
+  const lines = [
+    `📊 Tóm tắt của ${p.name} – ${r.label}`,
+    `• Thu: ${fmt(t.income)}`,
+    `• Chi: ${fmt(t.expense)}${pt.expense ? ` (${pctChange(t.expense, pt.expense)})` : ''}`,
+    `• Chênh lệch: ${fmtSigned(t.net)}`,
+    `• Tổng số dư tài khoản: ${fmt(S.totalBalance())}`,
+  ];
+  const accs = S.activeAccounts();
+  if (accs.length > 1) accs.forEach((a) => lines.push(`   – ${a.name}: ${fmt(S.accountBalance(a))}`));
+  const top = S.byCategory(r, 'expense').slice(0, 5);
+  if (top.length) {
+    lines.push('', 'Chi nhiều nhất:');
+    top.forEach((x, i) => lines.push(`${i + 1}. ${x.cat.icon} ${x.cat.name}: ${fmt(x.amount)}`));
+  }
+  const over = state.budgets.map((b) => ({ b, st: S.budgetStatus(b) })).filter((x) => x.st.ratio >= 1);
+  if (over.length) {
+    lines.push('', 'Vượt ngân sách:');
+    over.forEach(({ b, st }) => lines.push(`⛔ ${S.budgetName(b)}: ${fmt(st.spent)} / ${fmt(b.amount)}`));
+  }
+  const debts = state.debts.filter((d) => !d.done && diffDays(todayISO(), d.dueDate) <= 14);
+  if (debts.length) {
+    lines.push('', 'Sắp đến hạn trả nợ:');
+    debts.forEach((d) => lines.push(`🏦 ${S.debtName(d)}: ${fmt(d.amount)} – ${fmtDate(d.dueDate)}`));
+  }
+  return lines.join('\n');
+}
+
+function cardSummary() {
+  const p = S.currentProfile();
+  const items = sortTx([...state.transactions]);
+  const open = items.filter((t) => !isDone(t));
+  const m = getRange('month', todayISO());
+  const inMonth = items.filter((t) => t.date >= m.start && t.date <= m.end);
+  const paidMonth = items.filter((t) => isDone(t) && t.paid && t.paid.date >= m.start && t.paid.date <= m.end);
+  const lines = [
+    `💳 Tóm tắt thẻ ${p.name}`,
+    `• Chưa thanh toán: ${fmt(sumAmt(open))} (${open.length} khoản)`,
+    `• Đã chi ${m.label.toLowerCase()}: ${fmt(sumAmt(inMonth))} (${inMonth.length} khoản)`,
+    `• Đã thanh toán ${m.label.toLowerCase()}: ${fmt(sumAmt(paidMonth))}`,
+  ];
+  const bySrc = new Map();
+  for (const t of inMonth) bySrc.set(t.source, (bySrc.get(t.source) || 0) + t.amountVnd);
+  if (bySrc.size) {
+    lines.push('', `Theo nguồn (${m.label.toLowerCase()}):`);
+    [...bySrc.entries()].sort((a, b) => b[1] - a[1]).forEach(([s, v]) => lines.push(`${srcIcon(s)} ${s}: ${fmt(v)}`));
+  }
+  const byPayer = new Map();
+  for (const t of paidMonth) byPayer.set(t.paid.profileName, (byPayer.get(t.paid.profileName) || 0) + t.amountVnd);
+  if (byPayer.size) {
+    lines.push('', 'Người đã thanh toán:');
+    [...byPayer.entries()].forEach(([n, v]) => lines.push(`✅ ${n}: ${fmt(v)}`));
+  }
+  if (open.length) {
+    lines.push('', 'Các khoản chưa thanh toán:');
+    open.slice(0, 15).forEach((t) => lines.push(`• ${fmtDate(t.date)} ${t.note || t.source} (${t.source}): ${fmt(t.amountVnd)}`));
+    if (open.length > 15) lines.push(`… và ${open.length - 15} khoản khác`);
+  }
+  return lines.join('\n');
+}
+
+actions.summary = () => {
+  const card = S.isCard();
+  const text = card ? cardSummary() : userSummary(currentRange());
+  openSheet({
+    title: card ? 'Tóm tắt thẻ chi tiêu' : 'Tóm tắt ' + currentRange().label,
+    body: `<pre class="summary">${esc(text)}</pre>
+      <div class="actions"><button type="button" class="btn ghost" data-copy>📋 Sao chép</button><button type="button" class="btn primary" data-share>📤 Chia sẻ</button></div>
+      <p class="muted small">${card ? '' : 'Tóm tắt theo kỳ đang xem (Ngày/Tháng) ở Tổng quan. '}Chia sẻ qua Zalo, Messenger, Email… hoặc lưu vào Ghi chú.</p>`,
+    onMount(sh) {
+      $(sh, '[data-copy]').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(text); toast('Đã sao chép'); } catch { toast('Không sao chép được'); }
+      });
+      $(sh, '[data-share]').addEventListener('click', async () => {
+        if (navigator.share) { try { await navigator.share({ title: 'Tóm tắt thu chi', text }); } catch { /* người dùng hủy */ } }
+        else { try { await navigator.clipboard.writeText(text); toast('Thiết bị không hỗ trợ chia sẻ – đã sao chép'); } catch { toast('Không chia sẻ được'); } }
+      });
+    },
+  });
+};
 
 actions.add = (el) => openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
 

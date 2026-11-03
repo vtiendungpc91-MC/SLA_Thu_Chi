@@ -102,10 +102,22 @@ export function showLock() {
       }
     }
 
+    // Bấm phím bằng pointerdown (nhanh, không trễ) và chặn mọi cử chỉ phóng to trên màn khóa.
+    let lastPointer = 0;
+    el.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('[data-k]');
+      if (!b) return;
+      e.preventDefault();
+      lastPointer = Date.now();
+      press(b.dataset.k);
+    });
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-k]');
-      if (b) press(b.dataset.k);
+      if (b && Date.now() - lastPointer > 600) press(b.dataset.k); // dự phòng khi không có pointer event
     });
+    for (const ev of ['dblclick', 'gesturestart', 'gesturechange', 'touchend']) {
+      el.addEventListener(ev, (e) => { if (ev !== 'touchend' || e.target.closest('[data-k]')) e.preventDefault(); }, { passive: false });
+    }
     function onKey(e) {
       if (/^\d$/.test(e.key)) press(e.key);
       else if (e.key === 'Backspace') press('del');

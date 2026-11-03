@@ -38,6 +38,8 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* Chạm nhanh liên tiếp không phóng to màn hình (iOS double-tap zoom) */
+html, body, button, a, label { touch-action: manipulation; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
   font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -370,9 +372,10 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .ptile-main { width: 100%; display: flex; align-items: center; gap: 8px; padding: 12px 8px 10px; background: none; border: 0; text-align: left; }
 .ptile-left { flex: 0 0 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .ptile-left b { font-size: 12.5px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-.ptile-right { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding-top: 14px; }
+.ptile-right { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 3px; padding: 18px 0 30px; }
 .ptile-av { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; background: color-mix(in srgb, var(--c) 18%, transparent); }
-.ptile .psum { align-items: flex-start; text-align: left; white-space: normal; max-width: 100%; }
+.ptile .psum { align-items: center; text-align: center; white-space: normal; max-width: 100%; }
+.ptile-del { position: absolute; bottom: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--over-soft); font-size: 13px; }
 .ptile .psum b { font-size: 13px; white-space: nowrap; letter-spacing: -.2px; }
 .ptile-left { flex-basis: 56px; }
 .ptile-left b { max-width: 60px; }
@@ -413,6 +416,7 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 /* ---------- Khóa ứng dụng ---------- */
 .lock {
   position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   background: var(--bg); padding: calc(var(--safe-t) + 20px) 20px calc(var(--safe-b) + 20px);
 }
 .lock-box { width: 100%; max-width: 320px; text-align: center; }
