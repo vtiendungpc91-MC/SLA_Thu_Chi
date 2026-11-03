@@ -402,6 +402,15 @@ body.no-tabbar .main { padding-bottom: calc(30px + var(--safe-b)); }
 /* Lưới ô người dùng / mục trong danh sách chọn */
 .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; align-items: stretch; }
 .ptile-add.block { width: 100%; margin: 4px 0 10px; }
+/* Danh sách người dùng: mỗi người một hàng ngang hết chiều rộng */
+.tile-grid.one-col { grid-template-columns: 1fr; }
+.tile-grid.one-col .ptile-main { padding: 12px 44px 12px 14px; gap: 14px; }
+.tile-grid.one-col .ptile-left { flex: 0 0 auto; flex-direction: row; gap: 12px; }
+.tile-grid.one-col .ptile-left b { max-width: none; font-size: 16px; -webkit-line-clamp: 1; text-align: left; }
+.tile-grid.one-col .ptile-right { align-items: flex-end; text-align: right; padding: 0; }
+.tile-grid.one-col .ptile .psum, .tile-grid.one-col .psum { align-items: flex-end; text-align: right; }
+.tile-grid.one-col .psum b { font-size: 16px; }
+.grp-h small { font-weight: 500; }
 
 /* Form nhập: ngày ở trên ô số tiền; hàng [+000 | Danh mục] dưới ô số tiền */
 .date-line { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }

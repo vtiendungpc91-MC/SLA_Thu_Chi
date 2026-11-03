@@ -217,7 +217,7 @@ actions.users = () => {
   openSheet({
     title: 'Người dùng',
     headAction: '<button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt">⚙️</button>',
-    body: `<div class="tile-grid">${users.map((u) => tileHtml({
+    body: `<div class="tile-grid one-col">${users.map((u) => tileHtml({
       attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name, on: u.id === cur,
       sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: users.length > 1,
     })).join('')}</div>
@@ -252,12 +252,12 @@ actions.books = () => {
     title: `Mục của ${u.name}`,
     body: Object.entries(S.BOOK_KINDS).map(([kind, k]) => {
       const list = mine.filter((b) => (b.kind || 'bank') === kind);
-      return `<h4 class="grp-h">${k.icon} ${k.label}</h4>
+      return `<h4 class="grp-h">${k.icon} ${k.label} <small>(${list.length}/${S.MAX_PER_KIND})</small></h4>
         <div class="tile-grid">${list.map((b) => tileHtml({
           attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name, on: b.id === cur,
           sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1,
         })).join('')}
-        <button type="button" class="ptile-add" data-add="${kind}">＋ ${k.label}</button></div>`;
+        ${list.length < S.MAX_PER_KIND ? `<button type="button" class="ptile-add" data-add="${kind}">＋ ${k.label}</button>` : ''}</div>`;
     }).join(''),
     onMount(sh, close) {
       fillProfileSums(sh);
@@ -416,7 +416,8 @@ function bookForm(b, kind = 'bank') {
         const name = $(sh, '#pf-name').value.trim();
         if (!name) return toast('Nhập tên mục');
         if (S.userBooks(owner.id).some((x) => x.id !== f.id && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên mục này đã có');
-        const saved = S.saveProfile({ ...f, name });
+        let saved;
+        try { saved = S.saveProfile({ ...f, name }); } catch (err) { return toast(err.message); }
         close();
         if (b) { refresh(); toast('Đã lưu'); } else await switchTo(saved.id);
       });

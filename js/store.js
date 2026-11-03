@@ -106,6 +106,7 @@ const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
 export const MAX_USERS = 3;
+export const MAX_PER_KIND = 2; // mỗi người dùng: tối đa 2 mục cho mỗi loại (Ngân hàng / Đầu tư / Thẻ chi tiêu)
 export const PROFILE_COLORS = ['#1f6feb', '#d6409f', '#30a46c', '#f76b15', '#8e4ec6', '#0d74ce'];
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦' },
@@ -213,6 +214,10 @@ export async function deleteUser(userId) {
 export function saveProfile(p) {
   const list = getProfiles();
   if (!p.id) {
+    const same = list.filter((b) => b.owner === p.owner && (b.kind || 'bank') === (p.kind || 'bank'));
+    if (p.owner && same.length >= MAX_PER_KIND) {
+      throw new Error(`Mỗi người dùng tối đa ${MAX_PER_KIND} mục ${BOOK_KINDS[p.kind || 'bank'].label}`);
+    }
     p.id = uid().replace(/-/g, '').slice(0, 12);
     p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
     list.push(p);
