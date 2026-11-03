@@ -2,7 +2,7 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import {
-  ui, currentRange, reportRange, periodState, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, rangeFor, periodState, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
@@ -166,6 +166,7 @@ function topBar(sub = '', right = '') {
 function resetViewState() {
   ui.period = null;
   ui.reportPeriod = null;
+  ui.cardPeriod = null;
   ui.txFilter = { type: 'all', q: '', categoryId: null, tag: null, accountId: null };
 }
 
@@ -463,25 +464,35 @@ const isDone = (t) => t.status === 'done';
 function cardView() {
   const p = S.currentProfile();
   const items = sortTx([...state.transactions]);
-  const open = items.filter((t) => !isDone(t));
-  const m = getRange('month', todayISO());
-  const paidMonth = sumAmt(items.filter((t) => isDone(t) && t.paid && t.paid.date >= m.start && t.paid.date <= m.end));
+  // Tổng chưa thanh toán luôn tính trên toàn bộ thời gian để không sót khoản cũ.
+  const openAll = items.filter((t) => !isDone(t));
+  const r = rangeFor('card');
+  const inR = items.filter((t) => t.date >= r.start && t.date <= r.end);
+  const open = inR.filter((t) => !isDone(t));
+  const spent = sumAmt(inR);
+  const paid = sumAmt(items.filter((t) => isDone(t) && t.paid && t.paid.date >= r.start && t.paid.date <= r.end));
   const filter = ui.cardFilter || 'open';
-  const list = filter === 'open' ? open : filter === 'done' ? items.filter(isDone) : items;
+  const list = filter === 'open' ? open : filter === 'done' ? inR.filter(isDone) : inR;
   const groups = new Map();
   for (const t of list) { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); }
+  const olderOpen = openAll.length - open.length;
   return `
   ${topBar('💳 Thẻ chi tiêu', summaryBtn())}
   <section class="card hero">
-    <div class="hero-net"><small>Đã chi, chưa thanh toán · ${open.length} khoản</small><strong class="expense">${fmt(sumAmt(open))}</strong></div>
-    <div class="hero-bal"><span>Đã thanh toán ${esc(m.label.toLowerCase())}</span><b class="income">${fmt(paidMonth)}</b></div>
-    ${open.length > 1 ? `<button type="button" class="btn primary block" data-act="card-pay-all">💸 Trích thanh toán tất cả (${fmt(sumAmt(open))})</button>` : ''}
+    <div class="hero-net"><small>Đã chi, chưa thanh toán (tất cả) · ${openAll.length} khoản</small><strong class="expense">${fmt(sumAmt(openAll))}</strong></div>
+    ${openAll.length > 1 ? `<button type="button" class="btn primary block" data-act="card-pay-all">💸 Trích thanh toán tất cả (${fmt(sumAmt(openAll))})</button>` : ''}
   </section>
+  ${periodBar('card')}
+  <section class="card stats two-col">
+    <div><small>Đã chi trong kỳ</small><b class="expense">${fmt(spent)}</b><em>${inR.length} khoản</em></div>
+    <div><small>Đã thanh toán trong kỳ</small><b class="income">${fmt(paid)}</b><em>Chưa TT trong kỳ: ${fmt(sumAmt(open))}</em></div>
+  </section>
+  ${olderOpen > 0 && filter === 'open' ? `<p class="muted small center">Còn ${olderOpen} khoản chưa thanh toán ngoài kỳ đang xem.</p>` : ''}
   <div class="seg small">${[['open', `Chưa thanh toán (${open.length})`], ['done', 'Done'], ['all', 'Tất cả']].map(([k, l]) =>
     `<button type="button" data-act="card-filter" data-v="${k}" class="${filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
   ${list.length ? [...groups.entries()].map(([d, arr]) => `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span><span>${fmt(sumAmt(arr))}</span></div>
     <div class="card list">${arr.map(cardRow).join('')}</div></div>`).join('')
-    : empty('💳', filter === 'open' ? 'Không còn khoản nào chưa thanh toán. Bấm <b>+</b> để ghi khoản chi mới.' : 'Chưa có khoản chi nào.')}
+    : empty('💳', filter === 'open' ? 'Không có khoản chưa thanh toán trong kỳ này. Bấm <b>+</b> để ghi khoản chi mới.' : 'Chưa có khoản chi nào trong kỳ này.')}
   <button type="button" class="fab" data-act="card-add" aria-label="Thêm khoản chi">+</button>`;
 }
 
@@ -752,6 +763,7 @@ function txListHtml() {
 
 function txView() {
   const f = ui.txFilter;
+  if (f.type === 'transfer') f.type = 'all';
   const chips = [];
   if (f.categoryId) chips.push(['categoryId', (S.catById(f.categoryId) || UNKNOWN_CAT).name]);
   if (f.tag) chips.push(['tag', '#' + f.tag]);
@@ -762,7 +774,7 @@ function txView() {
   ${periodBar()}
   <div class="filters">
     <input id="tx-q" type="search" placeholder="Tìm ghi chú, danh mục, tag, số tiền…" value="${esc(f.q)}">
-    <div class="seg small">${['all', 'expense', 'income', 'transfer'].map((t) =>
+    <div class="seg small">${['all', 'expense', 'income'].map((t) =>
       `<button type="button" data-act="tx-type" data-v="${t}" class="${f.type === t ? 'on' : ''}">${t === 'all' ? 'Tất cả' : TYPE_LABEL[t]}</button>`).join('')}</div>
     <div class="chips">
       ${chips.map(([k, label]) => `<button type="button" class="chip on" data-act="tx-unfilter" data-v="${k}">${esc(label)} ✕</button>`).join('')}
@@ -831,20 +843,21 @@ function openGopForm() {
     return actions.profiles();
   }
   const me = S.currentProfile();
+  const formId = 'gf-' + Date.now();
   openSheet({
     title: 'Góp tiền cho người khác',
-    body: `<form class="form">
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🤝 Góp</button>`,
+    body: `<form class="form" id="${formId}">
       <p class="muted small">Sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
       <div class="field"><span>Góp cho</span><div class="chips" id="gf-to">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>
-      ${amountField('gf-amt', 0)}
-      <div class="two">
-        ${field('Từ tài khoản của ' + esc(S.bookLabel(me)), `<select id="gf-from">${accOptions(state.settings.lastAccount, true)}</select>`)}
-        ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc"><option>Đang tải…</option></select>`)}
+      <div class="meta-row">
+        ${field('📅 Ngày', `<input type="date" id="gf-date" value="${todayISO()}">`)}
+        ${field('Từ tài khoản', `<select id="gf-from">${accOptions(state.settings.lastAccount, true)}</select>`)}
       </div>
       <em class="hint" id="gf-bal"></em>
-      ${field('Ngày', `<input type="date" id="gf-date" value="${todayISO()}">`)}
+      ${amountField('gf-amt', 0)}
+      ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc"><option>Đang tải…</option></select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Góp tiền chợ tháng 11">`)}
-      <div class="actions"><button class="btn primary">🤝 Góp</button></div>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'gf-amt');
@@ -928,20 +941,21 @@ function openTrichForm() {
     return actions.profiles();
   }
   const me = S.currentProfile();
+  const formId = 'tr-' + Date.now();
   openSheet({
     title: 'Trích tiền từ người khác',
-    body: `<form class="form">
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🔄 Trích</button>`,
+    body: `<form class="form" id="${formId}">
       <p class="muted small">Sổ người bị trích ghi một khoản <b class="expense">chi</b>, sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="income">thu</b>. Người bị trích phải đủ số dư.</p>
       <div class="field"><span>Trích từ</span><div class="chips" id="tr-from">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>
-      ${amountField('tr-amt', 0)}
-      <div class="two">
+      <div class="meta-row">
+        ${field('📅 Ngày', `<input type="date" id="tr-date" value="${todayISO()}">`)}
         ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
-        ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to">${accOptions(state.settings.lastAccount)}</select>`)}
       </div>
       <em class="hint" id="tr-bal"></em>
-      ${field('Ngày', `<input type="date" id="tr-date" value="${todayISO()}">`)}
+      ${amountField('tr-amt', 0)}
+      ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to">${accOptions(state.settings.lastAccount)}</select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Trích tiền học cho con">`)}
-      <div class="actions"><button class="btn primary">🔄 Trích</button></div>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'tr-amt');
@@ -1585,7 +1599,11 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}</div>
-      <label class="date-line">📅 Ngày <input type="date" id="tf-date" value="${esc(f.date)}" required></label>
+      <div class="meta-row">
+        ${field('📅 Ngày', `<input type="date" id="tf-date" value="${esc(f.date)}" required>`)}
+        ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc">${accOptions(f.accountId, true)}</select>`)}
+      </div>
+      <em class="hint" id="tf-bal"></em>
       <div class="amount-row">
         <input id="tf-amt" class="amount-input" inputmode="decimal" placeholder="0" value="${f.amount ? esc(fmtNum(f.amount)) : ''}" aria-label="Số tiền">
         <div class="zero-sug" data-zero-for="tf-amt" hidden></div>
@@ -1597,10 +1615,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       </div>
       <label class="check" id="tf-split-wrap"><input type="checkbox" id="tf-split" ${splitRows.length ? 'checked' : ''}> Chia thành nhiều danh mục</label>
       <div id="tf-splits"></div>
-      <div class="two">
-        ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc">${accOptions(f.accountId, true)}</select><em class="hint" id="tf-bal"></em>`)}
-        ${field('Đến tài khoản', `<select id="tf-to">${accOptions(f.toAccountId)}</select>`, 'id="tf-to-wrap"')}
-      </div>
+      ${field('Đến tài khoản', `<select id="tf-to">${accOptions(f.toAccountId)}</select>`, 'id="tf-to-wrap"')}
       ${field('Ghi chú', `<input id="tf-note" value="${esc(f.note)}" placeholder="vd: Ăn trưa với đồng nghiệp">`)}
       ${isEdit || fromRecurring ? '' : `<div class="two">${field('Lặp lại', `<select id="tf-rep"><option value="none">Không</option>${Object.entries(FREQ_LABEL).map(([k, v]) => `<option value="${k}" ${repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
         <label class="check" id="tf-auto-wrap"><input type="checkbox" id="tf-auto" checked> Tự động ghi khi đến kỳ</label></div>`}
@@ -2325,11 +2340,12 @@ actions.currencies = () => {
 
 // ================= Điều hướng chung =================
 // data-p="main" (Tổng quan/Giao dịch) hoặc "report" (Báo cáo)
-const pOf = (el) => periodState(el.dataset.p === 'report' ? 'report' : 'main');
+const pKey = (el) => (['report', 'card'].includes(el.dataset.p) ? el.dataset.p : 'main');
+const pOf = (el) => periodState(pKey(el));
 
 actions['period-type'] = (el) => {
   const p = pOf(el);
-  const r = el.dataset.p === 'report' ? reportRange() : currentRange();
+  const r = rangeFor(pKey(el));
   const today = todayISO();
   // Chuyển sang xem theo ngày khi đang ở kỳ hiện tại → mở luôn ngày hôm nay.
   if (el.dataset.v === 'day' && today >= r.start && today <= r.end) p.anchor = today;

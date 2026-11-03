@@ -526,3 +526,10 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 @media (min-width: 520px) {
   .cat-grid { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* ---------- Hàng Ngày (1/3) | Tài khoản (2/3) trên ô số tiền ---------- */
+.meta-row { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: end; }
+.meta-row .field { min-width: 0; }
+.meta-row input[type=date] { padding: 10px 6px; font-size: 14px; min-width: 0; width: 100%; }
+.meta-row select { min-width: 0; width: 100%; text-overflow: ellipsis; }
+.meta-row + .hint { margin-top: -6px; }

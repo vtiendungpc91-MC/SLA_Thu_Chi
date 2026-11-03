@@ -12,15 +12,16 @@ export const ui = {
 };
 
 /** Các loại kỳ cho từng nơi: "main" = Tổng quan/Giao dịch, "report" = Báo cáo. */
-export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'] };
+export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['week', 'month', 'custom'] };
 
 export function periodState(key = 'main') {
-  if (key === 'report') {
-    if (!ui.reportPeriod) {
+  if (key === 'report' || key === 'card') {
+    const prop = key === 'report' ? 'reportPeriod' : 'cardPeriod';
+    if (!ui[prop]) {
       const t = todayISO();
-      ui.reportPeriod = { type: 'month', anchor: t, from: addDays(t, -29), to: t };
+      ui[prop] = { type: 'month', anchor: t, from: addDays(t, -29), to: t };
     }
-    return ui.reportPeriod;
+    return ui[prop];
   }
   if (!ui.period) ui.period = { type: state.settings.period === 'day' ? 'day' : 'month', anchor: todayISO() };
   return ui.period;
@@ -31,6 +32,7 @@ function rangeOf(p) {
 }
 export const currentRange = () => rangeOf(periodState('main'));
 export const reportRange = () => rangeOf(periodState('report'));
+export const rangeFor = (key) => rangeOf(periodState(key));
 
 // ---------- Ô nhập số tiền: phân cách hàng nghìn + gợi ý thêm 000 ----------
 // Áp dụng cho mọi ô tiền (class money, amount-input hoặc có data-money).
