@@ -594,3 +594,20 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .settle-btn { flex: 0 0 auto; background: #e3f5ea; color: #18794e; border: 1px solid #b7e4c7; white-space: nowrap; }
 .settle-tag { flex: 0 0 auto; background: none; border: 0; font-size: 11px; line-height: 1.3; color: var(--income); text-align: center; padding: 2px; }
 @media (prefers-color-scheme: dark) { .settle-btn { background: #113222; color: #4ee39b; border-color: #1f5a3c; } }
+.settle-btn { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 18px; display: inline-grid; place-items: center; }
+
+/* Dòng "đang dùng / đang mở": nền cam nhạt */
+.is-current, .ptile.on.is-current, .row.user-pick.is-current, .row.book-row.is-current {
+  background: #fff4e6 !important; border-color: #ffb870 !important;
+}
+.row.is-current { box-shadow: inset 3px 0 0 #ff9f43; }
+@media (prefers-color-scheme: dark) {
+  .is-current, .ptile.on.is-current, .row.user-pick.is-current, .row.book-row.is-current { background: #3a2a17 !important; border-color: #a8692a !important; }
+}
+
+/* Các nút nhanh nằm chung 1 dòng, chia đều theo số nút đang hiện */
+.quick-btns { display: flex; gap: 6px; margin-top: 10px; }
+.quick-btns .quick-btn {
+  flex: 1 1 0; min-width: 0; padding: 8px 4px; font-size: 12.5px; line-height: 1.25;
+  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: center;
+}

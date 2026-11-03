@@ -87,6 +87,19 @@ function seedRows() {
 }
 
 /** Bổ sung danh mục hệ thống còn thiếu vào danh sách `cats` của một sổ; trả về các danh mục mới tạo. */
+// Mục Đầu tư dùng danh sách danh mục ngắn riêng (3 chi, 3 thu).
+const INVEST_CATS = [
+  { invest: 'stock', type: 'expense', name: 'Chứng khoán', icon: '📈', color: '#3e63dd', rule: 'savings', jar: 'FFA' },
+  { invest: 'saving', type: 'expense', name: 'Gửi tiết kiệm', icon: '🏦', color: '#12a594', rule: 'savings', jar: 'LTSS' },
+  { invest: 'gold', type: 'expense', name: 'Vàng & khác', icon: '🥇', color: '#ffb224', rule: 'savings', jar: 'FFA' },
+  { invest: 'profit', type: 'income', name: 'Lãi / Cổ tức', icon: '💹', color: '#30a46c' },
+  { invest: 'sell', type: 'income', name: 'Bán / Tất toán', icon: '💰', color: '#0091ff' },
+  { invest: 'capital', type: 'income', name: 'Nạp vốn', icon: '➕', color: '#8e4ec6' },
+];
+const missingInvestCats = (cats) => INVEST_CATS
+  .filter((ic) => !cats.some((c) => c.invest === ic.invest))
+  .map((ic, i) => ({ id: uid(), ...ic, order: i }));
+
 function missingSysCats(cats) {
   return Object.entries(SYS_CATS)
     .filter(([sys]) => !cats.some((c) => c.sys === sys))
@@ -268,6 +281,7 @@ export async function loadAll() {
     state.accounts = accs;
   }
   const extra = missingSysCats(state.categories);
+  if (currentProfile().kind === 'invest') extra.push(...missingInvestCats(state.categories));
   if (extra.length) {
     await db.bulkPut('categories', extra);
     state.categories.push(...extra);
@@ -447,7 +461,13 @@ export async function setSetting(key, value, { silent = false } = {}) {
 export const catById = (id) => state.categories.find((c) => c.id === id);
 export const accById = (id) => state.accounts.find((a) => a.id === id);
 export const sysCat = (sys) => state.categories.find((c) => c.sys === sys);
-export const catsOf = (type) => state.categories.filter((c) => c.type === type && !c.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+/** Danh mục đang dùng; mục Đầu tư chỉ hiện danh sách ngắn riêng (kèm danh mục hệ thống góp/trích). */
+export const catsOf = (type) => {
+  const invest = currentProfile().kind === 'invest';
+  return state.categories
+    .filter((c) => c.type === type && !c.archived && (!invest || c.invest || /^(gop|trich)/.test(c.sys || '')))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+};
 export const activeAccounts = () => state.accounts.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 export const rateOf = (code) => (state.settings.currencies.find((c) => c.code === code) || { rate: 1 }).rate;
 

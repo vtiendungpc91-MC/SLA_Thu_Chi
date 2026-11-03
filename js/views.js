@@ -68,7 +68,7 @@ function txRow(t) {
     <button type="button" class="grow-btn" data-act="tx-edit" data-id="${t.id}">${inner}</button>
     ${settled
     ? `<button type="button" class="settle-tag" data-act="tx-edit" data-id="${settled.id}">✅ Đã chốt<br>${fmtSigned(settled.amountVnd - t.amountVnd)}</button>`
-    : `<button type="button" class="btn small settle-btn" data-act="invest-settle" data-id="${t.id}">📈 Chốt lãi</button>`}
+    : `<button type="button" class="btn small settle-btn" data-act="invest-settle" data-id="${t.id}" title="Chốt lãi" aria-label="Chốt lãi">📈</button>`}
   </div>`;
 }
 
@@ -252,7 +252,7 @@ actions['user-switch'] = (el) => switchToUser(el.dataset.id);
 
 /** Ô chọn (người dùng hoặc mục): trái = avatar + tên; phải = số liệu (điền sau) + trạng thái. */
 function tileHtml({ attr, id, color, av, name, on, sum, del }) {
-  return `<div class="ptile ${on ? 'on' : ''}" style="--c:${esc(color)}">
+  return `<div class="ptile ${on ? 'on is-current' : ''}" style="--c:${esc(color)}">
     <button type="button" class="ptile-main" data-${attr}="${esc(id)}">
       <span class="ptile-left">${av}<b>${esc(name)}</b></span>
       <span class="ptile-right">${sum}${on ? '<i class="ptile-on">✓ Đang dùng</i>' : '<i class="ptile-go">Chuyển sang ›</i>'}</span>
@@ -2158,7 +2158,7 @@ function settingsView() {
 
   ${sectionTitle(`Người dùng (${S.getUsers().length}/${S.MAX_USERS})`, `<button type="button" class="link" data-act="users">Quản lý</button>`)}
   <section class="card list">${S.getUsers().map((u) => `
-    <button type="button" class="row user-pick ${u.id === settingsUser().id ? 'picked' : ''}" data-act="settings-user" data-id="${esc(u.id)}" style="--c:${esc(u.color)}">
+    <button type="button" class="row user-pick ${u.id === settingsUser().id ? 'picked' : ''} ${u.id === S.currentUser().id ? 'is-current' : ''}" data-act="settings-user" data-id="${esc(u.id)}" style="--c:${esc(u.color)}">
       ${avatar(u)}<span class="grow"><b>${esc(u.name)}</b>
       <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
@@ -2168,7 +2168,7 @@ function settingsView() {
   ${sectionTitle(`Các mục & khóa của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
   ${[settingsUser()].map((u) => `
   <section class="card list">${S.userBooks(u.id).map((p) => `
-    <div class="row book-row ${p.locked ? 'is-locked' : ''}">
+    <div class="row book-row ${p.locked ? 'is-locked' : ''} ${p.id === S.currentProfile().id ? 'is-current' : ''}">
       <button type="button" class="grow-btn" data-act="profile-switch" data-id="${esc(p.id)}">
         ${avatar(p)}<span class="grow"><b>${esc(p.name)}${p.locked ? ' 🔒' : ''}</b>
         <small>${esc(kindOf(p).label)} · ${p.id === S.currentProfile().id ? 'Đang mở' : 'Bấm để mở'}</small></span>
@@ -2463,7 +2463,7 @@ function accountForm(a) {
 actions.categories = () => {
   let tab = 'expense';
   const render = () => `<div class="seg small">${['expense', 'income'].map((t) => `<button type="button" data-tab="${t}" class="${tab === t ? 'on' : ''}">${TYPE_LABEL[t]}</button>`).join('')}</div>
-    <div class="list">${state.categories.filter((c) => c.type === tab).sort((a, b) => (!!a.archived - !!b.archived) || (a.order ?? 0) - (b.order ?? 0)).map((c) => {
+    <div class="list">${state.categories.filter((c) => c.type === tab && (S.currentProfile().kind !== 'invest' || c.invest)).sort((a, b) => (!!a.archived - !!b.archived) || (a.order ?? 0) - (b.order ?? 0)).map((c) => {
       const m = S.METHODS[state.settings.method];
       const grp = m && tab === 'expense' ? m.groups.find((g) => g.key === c[m.field])?.name || 'Chưa gán nhóm' : '';
       return `<button type="button" class="row ${c.archived ? 'off' : ''}" data-cat="${c.id}">${catIcon(c)}<span class="grow"><b>${esc(c.name)}</b><small>${esc(grp)}${c.archived ? ' · đã ẩn' : ''}</small></span>›</button>`;
@@ -2505,7 +2505,7 @@ function categoryForm(c, type) {
       });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        await S.put('categories', { ...f, name: $(sh, '#cf-name').value.trim(), icon: $(sh, '#cf-icon').value.trim() || '🏷️', rule: $(sh, '#cf-rule')?.value || f.rule, jar: $(sh, '#cf-jar')?.value || f.jar });
+        await S.put('categories', { ...f, ...(S.currentProfile().kind === 'invest' && !f.invest ? { invest: 'custom-' + Date.now() } : {}), name: $(sh, '#cf-name').value.trim(), icon: $(sh, '#cf-icon').value.trim() || '🏷️', rule: $(sh, '#cf-rule')?.value || f.rule, jar: $(sh, '#cf-jar')?.value || f.jar });
         close(); toast('Đã lưu danh mục');
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
