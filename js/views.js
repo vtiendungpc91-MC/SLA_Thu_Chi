@@ -1928,6 +1928,13 @@ actions.summary = () => {
 actions.add = (el) => openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
 
 // ================= Cài đặt =================
+/** Người dùng đang được chọn để xem danh sách mục trong Cài đặt (mặc định: người đang dùng). */
+function settingsUser() {
+  const users = S.getUsers();
+  return users.find((u) => u.id === ui.settingsUserId) || S.currentUser();
+}
+actions['settings-user'] = (el) => { ui.settingsUserId = el.dataset.id; refresh(); };
+
 function settingsView() {
   const s = state.settings;
   const notifState = !('Notification' in window) ? 'unsupported' : Notification.permission;
@@ -1936,14 +1943,15 @@ function settingsView() {
 
   ${sectionTitle(`Người dùng (${S.getUsers().length}/${S.MAX_USERS})`, `<button type="button" class="link" data-act="users">Quản lý</button>`)}
   <section class="card list">${S.getUsers().map((u) => `
-    <button type="button" class="row" data-act="user-switch" data-id="${esc(u.id)}">
+    <button type="button" class="row user-pick ${u.id === settingsUser().id ? 'picked' : ''}" data-act="settings-user" data-id="${esc(u.id)}" style="--c:${esc(u.color)}">
       ${avatar(u)}<span class="grow"><b>${esc(u.name)}</b>
-      <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>
-      <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === S.currentUser().id ? '<span class="income">✓</span>' : '›'}</button>`).join('')}
+      <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
+      <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
+  <p class="muted small">Chọn người dùng để xem và khóa các mục của người đó ở phần bên dưới.</p>
 
-  ${sectionTitle('Các mục & khóa', `<button type="button" class="link" data-act="books">Quản lý</button>`)}
-  ${S.getUsers().map((u) => `<h4 class="grp-h">${esc(u.icon)} ${esc(u.name)}</h4>
+  ${sectionTitle(`Các mục & khóa của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
+  ${[settingsUser()].map((u) => `
   <section class="card list">${S.userBooks(u.id).map((p) => `
     <div class="row book-row ${p.locked ? 'is-locked' : ''}">
       <button type="button" class="grow-btn" data-act="profile-switch" data-id="${esc(p.id)}">

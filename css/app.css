@@ -415,10 +415,26 @@ body.no-tabbar .main { padding-bottom: calc(30px + var(--safe-b)); }
 /* Form nhập: ngày ở trên ô số tiền; hàng [+000 | Danh mục] dưới ô số tiền */
 .date-line { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .date-line input { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 16px; background: var(--card); color: var(--text); }
-/* Ô nhập số tiền: rộng 8/10, số canh phải, nút +000 ngay bên phải */
+/* Ô nhập số tiền: rộng 8/10, có khung viền, số canh phải; nút +000 sát lề phải */
 .money-row { display: flex; align-items: center; gap: 6px; }
 .money-row input.money { flex: 0 0 80%; width: 80%; min-width: 0; text-align: right; }
-.amount-row .amount-input { flex: 0 0 80%; width: 80%; text-align: right; padding: 8px 6px 8px 4px; }
+.amount-row .amount-input {
+  flex: 0 0 80%; width: 80%; text-align: right; padding: 8px 12px;
+  border: 2px solid color-mix(in srgb, var(--muted) 45%, transparent); border-radius: 14px; background: var(--card);
+}
+.money-row input.money { border: 2px solid color-mix(in srgb, var(--muted) 45%, transparent); }
+.amount-row .amount-input:focus { border-color: var(--primary); outline: none; }
+.money-row .zero-sug, .amount-row .zero-sug { margin-left: auto !important; }
+
+/* Nút Chi / Thu trong form thêm giao dịch */
+#tf-type [data-v="expense"] { background: var(--over-soft); color: var(--expense); }
+#tf-type [data-v="income"] { background: color-mix(in srgb, var(--income) 14%, var(--card)); color: var(--income); }
+#tf-type [data-v="expense"].on { background: color-mix(in srgb, var(--expense) 26%, var(--card)); box-shadow: inset 0 0 0 2px var(--expense); }
+#tf-type [data-v="income"].on { background: color-mix(in srgb, var(--income) 28%, var(--card)); box-shadow: inset 0 0 0 2px var(--income); }
+
+/* Cài đặt: người dùng đang chọn để xem mục */
+.user-pick.picked { background: color-mix(in srgb, var(--c) 10%, transparent); }
+.pick-dot { color: var(--c); font-size: 14px; }
 .money-row .zero-sug .chip[data-zero], .amount-row .zero-sug .chip[data-zero] { padding: 6px 10px; }
 .amount-row .cur { margin-left: auto; }
 .money-row .zero-sug, .amount-row .zero-sug { flex: 0 0 auto; margin: 0; }
