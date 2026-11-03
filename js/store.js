@@ -163,6 +163,19 @@ export function currentUser() {
 }
 export const userOf = (book) => getUsers().find((u) => u.id === book.owner);
 export const userBooks = (userId) => getProfiles().filter((b) => b.owner === userId);
+// ---------- Khóa mục ----------
+// Mục bị khóa: không chuyển tiền đi được (chi, góp, chuyển khoản, trả nợ, bị trích, trả tiền thẻ; thẻ thì không ghi khoản chi mới).
+// Tiền vào (thu, nhận góp) vẫn được.
+export const isLocked = (bookId) => !!getProfiles().find((b) => b.id === bookId)?.locked;
+export function setLocked(bookId, locked) {
+  saveProfile({ id: bookId, locked: !!locked });
+  emit();
+}
+export function lockError(bookId) {
+  const b = getProfiles().find((x) => x.id === bookId);
+  return b && b.locked ? `🔒 Mục "${bookLabel(b)}" đang khóa — mở khóa trong Cài đặt để chuyển tiền đi` : null;
+}
+
 /** Nhãn đầy đủ của một mục: "Tôi · Ngân hàng". */
 export const bookLabel = (b) => `${userOf(b)?.name || '?'} · ${b.name}`;
 
@@ -306,6 +319,9 @@ export function available(accountId, ignoreTx = null) {
 
 /** Trả về thông báo lỗi nếu tài khoản không đủ tiền cho khoản chi, ngược lại trả về null. */
 export function fundsError(accountId, amountVnd, ignoreTx = null) {
+  // Mục đang khóa thì không cho chuyển tiền đi (chi, góp, trả nợ, chuyển khoản…).
+  const locked = lockError(currentProfile().id);
+  if (locked) return locked;
   const have = available(accountId, ignoreTx);
   if (amountVnd <= have) return null;
   return `Số dư "${accById(accountId)?.name || 'tài khoản'}" không đủ: còn ${fmt(have)}, cần ${fmt(amountVnd)}`;
@@ -377,6 +393,8 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const from = getProfiles().find((p) => p.id === fromProfileId);
   if (!from || from.id === me.id) throw new Error('Chọn người bị trích khác');
   const { peer, cats, accs } = await openPeerBook(from.id);
+  const locked = lockError(from.id);
+  if (locked) throw new Error(locked);
   const have = await peerBalance(from.id, fromAccountId);
   if (amount > have) {
     const acc = accs.find((a) => a.id === fromAccountId);
@@ -517,6 +535,8 @@ export async function payCardItem(item, { profileId, accountId, date }) {
   const card = currentProfile();
   const payer = getProfiles().find((p) => p.id === profileId);
   if (!payer || payer.kind === 'card') throw new Error('Chọn người dùng trả tiền');
+  const locked = lockError(profileId);
+  if (locked) throw new Error(locked);
   const { peer, cats, accs } = await openPeerBook(profileId);
   const acc = accs.find((a) => a.id === accountId);
   const have = await peerBalance(profileId, accountId);

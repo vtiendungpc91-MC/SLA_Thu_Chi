@@ -415,14 +415,29 @@ body.no-tabbar .main { padding-bottom: calc(30px + var(--safe-b)); }
 /* Form nhập: ngày ở trên ô số tiền; hàng [+000 | Danh mục] dưới ô số tiền */
 .date-line { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .date-line input { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 16px; background: var(--card); color: var(--text); }
-/* Ô nhập số tiền: rộng 3/4, nút +000 ngay bên phải */
-.money-row { display: flex; align-items: center; gap: 8px; }
-.money-row input.money { flex: 0 0 75%; width: 75%; min-width: 0; }
-.amount-row .amount-input { flex: 0 0 75%; width: 75%; text-align: left; padding-left: 4px; }
+/* Ô nhập số tiền: rộng 8/10, số canh phải, nút +000 ngay bên phải */
+.money-row { display: flex; align-items: center; gap: 6px; }
+.money-row input.money { flex: 0 0 80%; width: 80%; min-width: 0; text-align: right; }
+.amount-row .amount-input { flex: 0 0 80%; width: 80%; text-align: right; padding: 8px 6px 8px 4px; }
 .money-row .zero-sug .chip[data-zero], .amount-row .zero-sug .chip[data-zero] { padding: 6px 10px; }
 .amount-row .cur { margin-left: auto; }
 .money-row .zero-sug, .amount-row .zero-sug { flex: 0 0 auto; margin: 0; }
 .amt-tools { display: flex; align-items: center; gap: 10px; }
+/* Cảnh báo số dư không đủ / mục đang khóa: chữ đỏ */
+.hint.warn-red { color: var(--expense); font-weight: 700; }
+
+/* Khóa mục */
+.lock-badge { font-size: 20px; vertical-align: 2px; }
+.book-row { padding: 2px 8px 2px 0; gap: 6px; }
+.book-row .grow-btn { padding: 8px 6px 8px 14px; }
+.book-row.is-locked { background: color-mix(in srgb, var(--expense) 6%, transparent); }
+.lock-btn {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 60px;
+  border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 6px 8px; font-size: 18px;
+}
+.lock-btn small { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+.lock-btn.on { border-color: var(--expense); background: var(--over-soft); }
+.lock-btn.on small { color: var(--expense); }
 .amt-tools .zero-sug { flex: 0 0 auto; margin: 0; }
 .amt-tools .cat-select { flex: 1; min-width: 0; margin-left: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); min-height: 44px; }
 
