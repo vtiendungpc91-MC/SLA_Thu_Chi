@@ -1464,7 +1464,7 @@ actions['rec-open'] = (el) => {
     title: 'Khoản định kỳ',
     body: `<form class="form">
       <p class="muted">${TYPE_LABEL[t.type]}</p>
-      <div class="two">${amountField('rf-amt', t.amount)}${state.settings.currencies.length > 1 ? field('Tiền tệ', `<select id="rf-cur">${curOpts}</select>`, 'style="flex:0 0 96px"') : ''}</div>
+      <div class="two">${amountField('rf-amt', t.amount)}${t.currency && t.currency !== 'VND' ? field('Tiền tệ', `<select id="rf-cur">${curOpts}</select>`, 'style="flex:0 0 96px"') : ''}</div>
       ${t.type !== 'transfer' ? field('Danh mục', `<select id="rf-cat">${catOptions(t.type, t.categoryId)}</select>`) : ''}
       ${field('Tài khoản', `<select id="rf-acc">${accOptions(t.accountId)}</select>`)}
       ${field('Ghi chú', `<input id="rf-note" value="${esc(t.note || '')}">`)}
@@ -1543,7 +1543,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   let switching = false;
   const rate0 = f.rate || S.rateOf(f.currency);
   let splitRows = f.splits && f.splits.length ? f.splits.map((p) => ({ categoryId: p.categoryId, amount: fmtNum(p.amountVnd / rate0) })) : [];
-  const multiCur = st.currencies.length > 1;
+  // Bỏ chọn tiền tệ khi nhập; chỉ hiện lại khi sửa một giao dịch cũ đang là ngoại tệ.
+  const multiCur = isEdit && f.currency && f.currency !== 'VND';
 
   // id riêng cho mỗi lần mở để nút Lưu trên thanh tiêu đề trỏ đúng form (khi đổi người, form cũ còn đang đóng dần).
   const formId = 'txf-' + Date.now();
@@ -1554,8 +1555,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.moneyBooks().map((p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(S.bookLabel(p))}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
-      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
-        ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button><button type="button" id="tf-trich">🔄 Trích</button>' : ''}</div>
+      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}</div>
       <label class="date-line">📅 Ngày <input type="date" id="tf-date" value="${esc(f.date)}" required></label>
       <div class="amount-row">
         <input id="tf-amt" class="amount-input" inputmode="decimal" placeholder="0" value="${f.amount ? esc(fmtNum(f.amount)) : ''}" aria-label="Số tiền">
@@ -1633,8 +1633,6 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
 
       // --- loại giao dịch ---
       const typeBtns = sh.querySelectorAll('#tf-type button[data-v]');
-      $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(); });
-      $(sh, '#tf-trich')?.addEventListener('click', () => { close(); openTrichForm(); });
       const updType = () => {
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
         const tr = f.type === 'transfer';
