@@ -2,7 +2,7 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import { actions, render, refresh, openTxForm } from './views.js';
-import { toast } from './ui.js';
+import { toast, syncDatePick } from './ui.js';
 import { lockConfig, showLock, initAutoLock } from './lock.js';
 import { fmt, fmtDue } from './utils.js';
 
@@ -49,6 +49,11 @@ document.addEventListener('click', (e) => {
 });
 
 // Chọn ngày ở thanh kỳ (ô date ẩn đè lên nhãn kỳ).
+// Ô chọn ngày dạng "Ngày: dd/mm/yyyy": cập nhật chữ khi đổi ngày.
+for (const ev of ['input', 'change']) {
+  document.addEventListener(ev, (e) => { if (e.target.matches('.date-pick input[type=date]')) syncDatePick(e.target); });
+}
+
 document.addEventListener('change', (e) => {
   if (e.target.matches('[data-period-date], [data-range]')) actions['period-date'](e.target);
 });

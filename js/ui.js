@@ -1,5 +1,18 @@
 // Thành phần giao diện dùng chung: toast, bottom sheet, thanh chọn kỳ, chia sẻ/tải file.
-import { esc, getRange, customRange, todayISO, addDays, PERIOD_LABEL } from './utils.js';
+import { esc, getRange, customRange, todayISO, addDays, fmtDate, PERIOD_LABEL } from './utils.js';
+
+/**
+ * Ô chọn ngày hiển thị dạng "Ngày: dd/mm/yyyy" (không phụ thuộc định dạng ngày của điện thoại).
+ * Ô date thật nằm ẩn phía trên chữ, chạm vào sẽ mở lịch chọn ngày.
+ */
+export function datePick(id, value, label = 'Ngày', attrs = '') {
+  return `<label class="date-pick"><span class="dp-text" data-label="${esc(label)}">${esc(label)}: <b>${value ? fmtDate(value) : 'chưa chọn'}</b></span>
+    <span class="dp-ic">📅</span><input type="date" ${id ? `id="${id}"` : ''} value="${esc(value || '')}" aria-label="${esc(label)}" ${attrs}></label>`;
+}
+export function syncDatePick(inp) {
+  const t = inp.closest('.date-pick')?.querySelector('.dp-text');
+  if (t) t.innerHTML = `${esc(t.dataset.label)}: <b>${inp.value ? fmtDate(inp.value) : 'chưa chọn'}</b>`;
+}
 import { state } from './store.js';
 
 /** Trạng thái giao diện (không lưu vào DB). */
@@ -146,8 +159,8 @@ export function periodBar(key = 'main') {
   const k = `data-p="${key}"`;
   const nav = p.type === 'custom'
     ? `<div class="range-pick">
-        <label class="field"><span>Từ ngày</span><input type="date" ${k} data-range="from" value="${esc(p.from)}"></label>
-        <label class="field"><span>Đến ngày</span><input type="date" ${k} data-range="to" value="${esc(p.to)}"></label>
+        ${datePick('', p.from, 'Từ ngày', `${k} data-range="from"`)}
+        ${datePick('', p.to, 'Đến ngày', `${k} data-range="to"`)}
       </div><p class="muted small center">${esc(r.label)} · ${r.days} ngày</p>`
     : `<div class="period-nav">
         <button type="button" class="icon-btn" data-act="period-shift" ${k} data-v="-1" aria-label="Kỳ trước">‹</button>

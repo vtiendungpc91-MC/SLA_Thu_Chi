@@ -2,7 +2,7 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import {
-  ui, currentRange, reportRange, rangeFor, periodState, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, rangeFor, periodState, datePick, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
@@ -566,7 +566,7 @@ function cardItemForm(item) {
     title: item ? 'Sửa khoản chi' : 'Thêm khoản chi của thẻ',
     headAction: `<button type="submit" form="${ciFormId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${ciFormId}">
-      <label class="date-line">📅 Ngày chi <input type="date" id="ci-date" value="${esc(f.date)}"></label>
+      <div class="date-row">${datePick('ci-date', f.date)}</div>
       ${amountField('ci-amt', f.amountVnd)}
       <div class="amt-tools">
         <select id="ci-cat" class="cat-select" aria-label="Danh mục">${cats.map((c) => `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>
@@ -620,7 +620,7 @@ function cardPaySheet(items) {
       <div class="field"><span>Người trả</span><div class="chips" id="cp-who">${users.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>
       ${field('Từ tài khoản', `<select id="cp-acc"><option>Đang tải…</option></select>`)}
       <em class="hint" id="cp-bal"></em>
-      ${field('Ngày thanh toán', `<input type="date" id="cp-date" value="${todayISO()}">`)}
+      ${datePick('cp-date', todayISO(), 'Ngày thanh toán')}
       <p class="muted small">Sổ của người trả sẽ ghi ${items.length > 1 ? 'các' : 'một'} khoản chi tương ứng; khoản của thẻ chuyển sang ✅ Done.</p>
       <div class="actions"><button class="btn primary">💸 Trích ${fmt(total)}</button></div>
     </form>`,
@@ -850,10 +850,8 @@ function openGopForm() {
     body: `<form class="form" id="${formId}">
       <p class="muted small">Sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
       <div class="field"><span>Góp cho</span><div class="chips" id="gf-to">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>
-      <div class="meta-row">
-        ${field('📅 Ngày', `<input type="date" id="gf-date" value="${todayISO()}">`)}
-        ${field('Từ tài khoản', `<select id="gf-from">${accOptions(state.settings.lastAccount, true)}</select>`)}
-      </div>
+      <div class="date-row">${datePick('gf-date', todayISO())}</div>
+      ${field('Từ tài khoản', `<select id="gf-from">${accOptions(state.settings.lastAccount, true)}</select>`)}
       <em class="hint" id="gf-bal"></em>
       ${amountField('gf-amt', 0)}
       ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc"><option>Đang tải…</option></select>`)}
@@ -948,10 +946,8 @@ function openTrichForm() {
     body: `<form class="form" id="${formId}">
       <p class="muted small">Sổ người bị trích ghi một khoản <b class="expense">chi</b>, sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="income">thu</b>. Người bị trích phải đủ số dư.</p>
       <div class="field"><span>Trích từ</span><div class="chips" id="tr-from">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>
-      <div class="meta-row">
-        ${field('📅 Ngày', `<input type="date" id="tr-date" value="${todayISO()}">`)}
-        ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
-      </div>
+      <div class="date-row">${datePick('tr-date', todayISO())}</div>
+      ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
       <em class="hint" id="tr-bal"></em>
       ${amountField('tr-amt', 0)}
       ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to">${accOptions(state.settings.lastAccount)}</select>`)}
@@ -1230,7 +1226,7 @@ actions['goal-edit'] = (el) => {
       ${field('Tên mục tiêu', `<input id="gf-name" required value="${esc(f.name)}" placeholder="vd: Mua xe máy">`, 'style="flex:3"')}</div>
       ${amountField('gf-target', f.target, 'Số tiền cần đạt')}
       ${g ? '' : amountField('gf-saved', 0, 'Đã có sẵn (không bắt buộc)')}
-      ${field('Hạn hoàn thành (không bắt buộc)', `<input type="date" id="gf-dl" value="${esc(f.deadline || '')}">`)}
+      ${datePick('gf-dl', f.deadline || '', 'Hạn hoàn thành')}
       <div class="actions">${g ? '<button type="button" class="btn danger" data-del>Xóa</button>' : ''}<button class="btn primary">Lưu</button></div>
     </form>`,
     onMount(sh, close) {
@@ -1281,7 +1277,7 @@ function goalContribute(g, dir) {
     body: `<form class="form">
       ${amountField('gc-amt', 0)}
       ${field(dir > 0 ? 'Lấy từ tài khoản' : 'Đưa về tài khoản', `<select id="gc-acc">${accOptions(state.settings.lastAccount, dir > 0)}</select>`)}
-      ${field('Ngày', `<input type="date" id="gc-date" value="${todayISO()}">`)}
+      ${datePick('gc-date', todayISO())}
       <label class="check"><input type="checkbox" id="gc-tx" ${dir > 0 ? 'checked' : ''}> ${dir > 0
         ? `Ghi thành khoản chi "${esc(savingCat?.name || 'Tiết kiệm')}" (trừ số dư tài khoản)`
         : 'Ghi thành khoản thu vào tài khoản'}</label>
@@ -1353,7 +1349,7 @@ actions['debt-edit'] = (el) => {
       ${field('Ngân hàng / Công ty tài chính', `<input id="df-bank" list="bank-list" required value="${esc(f.bank)}" placeholder="vd: Vietcombank"><datalist id="bank-list">${BANKS.map((b) => `<option value="${esc(b)}">`).join('')}</datalist>`)}
       ${field('Nội dung khoản nợ', `<input id="df-title" value="${esc(f.title)}" placeholder="vd: Vay mua xe, Thẻ tín dụng, Trả góp iPhone">`)}
       ${amountField('df-amt', f.amount, 'Số tiền mỗi kỳ')}
-      <div class="two">${field('Ngày đến hạn', `<input type="date" id="df-date" required value="${esc(f.dueDate)}">`)}
+      <div class="two">${datePick('df-date', f.dueDate, 'Ngày đến hạn')}
       ${field('Nhắc trước (ngày)', `<input type="number" id="df-rem" min="0" max="30" value="${esc(f.remindDays ?? 3)}">`)}</div>
       <div class="two">${field('Lặp lại', `<select id="df-rep"><option value="monthly" ${f.repeat === 'monthly' ? 'selected' : ''}>Hằng tháng</option><option value="none" ${f.repeat === 'none' ? 'selected' : ''}>Một lần</option></select>`)}
       ${field('Số kỳ còn lại', `<input type="number" id="df-left" min="1" placeholder="Không giới hạn" value="${f.periodsLeft ?? ''}">`, 'data-left')}</div>
@@ -1435,7 +1431,7 @@ function debtPay(d) {
       <p class="muted">${esc(S.debtName(d))} · kỳ ${fmtDate(d.dueDate)}</p>
       ${amountField('dp-amt', d.amount, 'Số tiền đã trả')}
       ${field('Trả từ tài khoản', `<select id="dp-acc">${accOptions(d.accountId || state.settings.lastAccount, true)}</select>`)}
-      ${field('Ngày trả', `<input type="date" id="dp-date" value="${todayISO()}">`)}
+      ${datePick('dp-date', todayISO(), 'Ngày trả')}
       <p class="muted">App sẽ ghi một khoản chi "Trả nợ ngân hàng"${d.repeat === 'monthly' ? ' và chuyển sang kỳ tháng sau' : ''}.</p>
       <div class="actions"><button class="btn primary">Xác nhận</button></div>
     </form>`,
@@ -1512,9 +1508,9 @@ actions['rec-open'] = (el) => {
       ${field('Tài khoản', `<select id="rf-acc">${accOptions(t.accountId)}</select>`)}
       ${field('Ghi chú', `<input id="rf-note" value="${esc(t.note || '')}">`)}
       <div class="two">${field('Lặp lại', `<select id="rf-freq">${Object.entries(FREQ_LABEL).map(([k, v]) => `<option value="${k}" ${r.freq === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
-      ${field('Kỳ tới', `<input type="date" id="rf-next" value="${esc(r.nextDate)}">`)}</div>
+      ${datePick('rf-next', r.nextDate, 'Kỳ tới')}</div>
       <div class="two">${field('Nhắc trước (ngày)', `<input type="number" id="rf-rem" min="0" max="30" value="${esc(r.remindDays ?? 0)}">`)}
-      ${field('Kết thúc (không bắt buộc)', `<input type="date" id="rf-end" value="${esc(r.endDate || '')}">`)}</div>
+      ${datePick('rf-end', r.endDate || '', 'Kết thúc')}</div>
       <label class="check"><input type="checkbox" id="rf-auto" ${r.autoAdd ? 'checked' : ''}> Tự động ghi khi đến ngày</label>
       <label class="check"><input type="checkbox" id="rf-active" ${r.active ? 'checked' : ''}> Đang hoạt động</label>
       <div class="actions"><button type="button" class="btn danger" data-del>Xóa</button><button type="button" class="btn ghost" data-ics>📅 Lịch</button><button class="btn primary">Lưu</button></div>
@@ -1599,10 +1595,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}</div>
-      <div class="meta-row">
-        ${field('📅 Ngày', `<input type="date" id="tf-date" value="${esc(f.date)}" required>`)}
-        ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc">${accOptions(f.accountId, true)}</select>`)}
-      </div>
+      <div class="date-row">${datePick('tf-date', f.date)}</div>
+      ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc">${accOptions(f.accountId, true)}</select>`)}
       <em class="hint" id="tf-bal"></em>
       <div class="amount-row">
         <input id="tf-amt" class="amount-input" inputmode="decimal" placeholder="0" value="${f.amount ? esc(fmtNum(f.amount)) : ''}" aria-label="Số tiền">

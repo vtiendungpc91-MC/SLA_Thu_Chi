@@ -533,3 +533,22 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .meta-row input[type=date] { padding: 10px 6px; font-size: 14px; min-width: 0; width: 100%; }
 .meta-row select { min-width: 0; width: 100%; text-overflow: ellipsis; }
 .meta-row + .hint { margin-top: -6px; }
+
+/* ---------- Ô chọn ngày "Ngày: dd/mm/yyyy" ---------- */
+.date-row { display: flex; justify-content: center; }
+.date-pick {
+  position: relative; display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+  font-size: 15px; color: var(--text); cursor: pointer; min-height: 44px; max-width: 100%;
+}
+.date-pick .dp-text { white-space: nowrap; }
+.date-pick .dp-text b { font-variant-numeric: tabular-nums; }
+.date-pick .dp-ic { font-size: 16px; }
+/* Ô date thật phủ trong suốt lên trên: chạm vào là mở lịch của điện thoại. */
+.date-pick input[type=date] {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; margin: 0;
+  cursor: pointer; font-size: 16px; min-height: 0;
+}
+.date-pick:focus-within { outline: 2px solid var(--primary); outline-offset: -1px; }
+.field + .date-pick, .form > .date-pick { align-self: flex-start; }
+.range-pick .date-pick { width: 100%; justify-content: space-between; }
