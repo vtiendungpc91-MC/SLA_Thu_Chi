@@ -11,7 +11,22 @@ export function datePick(id, value, label = 'Ngày', attrs = '') {
 }
 export function syncDatePick(inp) {
   const t = inp.closest('.date-pick')?.querySelector('.dp-text');
-  if (t) t.innerHTML = `${esc(t.dataset.label)}: <b>${inp.value ? fmtDate(inp.value) : 'chưa chọn'}</b>`;
+  if (!t) return;
+  const d = inp.value ? fmtDate(inp.value) : 'chưa chọn';
+  t.innerHTML = t.dataset.mini ? `<small>${esc(t.dataset.label)}</small><b>${d}</b>` : `${esc(t.dataset.label)}: <b>${d}</b>`;
+}
+
+/**
+ * Hàng nhập tiền dùng chung cho Thu/Chi, Góp, Trích, Thẻ chi tiêu:
+ * [Ngày 20%] [Ô số tiền 60%] [+000 20%].
+ */
+export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false }) {
+  return `<div class="amt-line">
+    <label class="date-pick mini"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
+      <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}"></label>
+    <input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">
+    <div class="zero-cell"><div class="zero-sug" data-zero-for="${amtId}" hidden></div></div>
+  </div><em class="hint center" data-hint-for="${amtId}"></em>`;
 }
 import { state } from './store.js';
 

@@ -557,3 +557,40 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .date-pick .dp-ic { font-size: 13px; }
 .range-pick { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 .range-pick .date-pick { flex: 0 1 auto; font-size: 12.5px; padding: 4px 8px; min-height: 32px; }
+/* ---------- Hàng nhập tiền: [Ngày 20%] [Số tiền 60%] [+000 20%] ---------- */
+.amt-line { display: grid; grid-template-columns: 20% 1fr 20%; gap: 6px; align-items: center; }
+.amt-line > input { width: 100%; min-width: 0; text-align: right; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); padding: 8px 10px; min-height: 48px; }
+.amt-line > input.amount-input { font-size: 26px; font-weight: 700; }
+.amt-line > input.money { font-size: 20px; font-weight: 700; }
+.amt-line > input:focus { outline: none; border-color: var(--primary); }
+.date-pick.mini { flex-direction: column; justify-content: center; align-items: center; gap: 0; width: 100%; min-height: 48px; padding: 4px 2px; border-radius: 12px; }
+.date-pick.mini .dp-text { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.date-pick.mini .dp-text small { font-size: 10px; color: var(--muted); }
+.date-pick.mini .dp-text b { font-size: 10.5px; letter-spacing: -.2px; }
+.zero-cell { display: flex; justify-content: flex-end; min-width: 0; }
+.zero-cell .zero-sug { margin: 0; width: 100%; }
+.zero-cell .zero-sug .chip { width: 100%; padding: 10px 2px; font-size: 13px; }
+.cur-row { display: flex; justify-content: center; }
+/* ---------- Mẫu nhập nhanh ---------- */
+.quick-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.quick-btn { font-size: 14px; padding: 10px 8px; border: 1px solid transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-btn.q-expense { background: #fde7e8; color: #c62f35; }
+.quick-btn.q-income { background: #e3f5ea; color: #18794e; }
+.quick-btn.q-gop, .quick-btn.q-card { background: #e6f6f4; color: #0b7a6e; }
+.quick-btn.q-trich { background: #f0e9fb; color: #6e3fb0; }
+@media (prefers-color-scheme: dark) {
+  .quick-btn.q-expense { background: #3b1219; color: #ff8a8f; }
+  .quick-btn.q-income { background: #113222; color: #4ee39b; }
+  .quick-btn.q-gop, .quick-btn.q-card { background: #0f2e2b; color: #4fd1c1; }
+  .quick-btn.q-trich { background: #2a1d40; color: #c4a5f2; }
+}
+.quick-row { gap: 8px; }
+.quick-row .grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 0; }
+.quick-info { text-align: center; margin: 0; font-weight: 600; }
+.quick-info small { font-weight: 400; color: var(--muted); }
+/* ---------- Mục Đầu tư: nút Chốt lãi trên dòng chi ---------- */
+.invest-row { gap: 8px; }
+.invest-row .grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 0; }
+.settle-btn { flex: 0 0 auto; background: #e3f5ea; color: #18794e; border: 1px solid #b7e4c7; white-space: nowrap; }
+.settle-tag { flex: 0 0 auto; background: none; border: 0; font-size: 11px; line-height: 1.3; color: var(--income); text-align: center; padding: 2px; }
+@media (prefers-color-scheme: dark) { .settle-btn { background: #113222; color: #4ee39b; border-color: #1f5a3c; } }
