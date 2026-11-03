@@ -34,7 +34,7 @@ export const reportRange = () => rangeOf(periodState('report'));
 
 // ---------- Ô nhập số tiền: phân cách hàng nghìn + gợi ý thêm 000 ----------
 // Áp dụng cho mọi ô tiền (class money, amount-input hoặc có data-money).
-// Gõ "45" → hiện "45", gợi ý [+000 → 45.000] [+000.000 → 45.000.000]; gõ tắt "1tr2", "50k" vẫn dùng được.
+// Gõ "45" → gợi ý nút [+000] → "45.000"; gõ tắt "1tr2", "50k" vẫn dùng được.
 const MONEY_SEL = 'input.money, input.amount-input, input[data-money]';
 export const groupDigits = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
@@ -76,8 +76,7 @@ function zeroSuggest(inp) {
   }
   const digits = inp.value.replace(/\./g, '');
   if (isVndInput(inp) && /^\d{1,7}$/.test(digits) && Number(digits) > 0) {
-    box.innerHTML = ['000', '000000'].map((z) =>
-      `<button type="button" class="chip" data-zero="${z}">+${z === '000' ? '000' : '000.000'} → <b>${groupDigits(digits + z)}</b></button>`).join('');
+    box.innerHTML = '<button type="button" class="chip" data-zero="000">+000</button>';
     box.hidden = false;
   } else {
     box.hidden = true;

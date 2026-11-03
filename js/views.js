@@ -112,7 +112,9 @@ function bindMoney(root, id) {
   const inp = $(root, '#' + id), hint = $(root, `[data-hint-for="${id}"]`);
   const upd = () => {
     const v = readMoney(inp.value);
-    hint.textContent = inp.value && Number.isFinite(v) ? '= ' + fmt(v) : inp.value ? 'Chưa hiểu số tiền' : '';
+    // Chỉ giải nghĩa khi gõ tắt (50k, 1tr2) hoặc báo lỗi; số thường đã có dấu chấm ngay trong ô.
+    hint.textContent = !inp.value ? '' : !Number.isFinite(v) ? 'Chưa hiểu số tiền'
+      : /[^\d.\-]/.test(inp.value) ? '= ' + fmt(v) : '';
   };
   inp.addEventListener('input', upd);
   upd();
@@ -127,12 +129,18 @@ const readMoney = (s) => {
 };
 
 // ================= Người dùng =================
+/** Avatar người dùng/thẻ: ảnh riêng (nếu có) hoặc icon. */
+const avatar = (p, cls = 'ci') => (p.photo
+  ? `<span class="${cls} av" style="--c:${esc(p.color)}"><img src="${esc(p.photo)}" alt=""></span>`
+  : `<span class="${cls}" style="--c:${esc(p.color)}">${esc(p.icon)}</span>`);
+/** Avatar nhỏ trong các nút chip chọn người. */
+const chipAv = (p) => (p.photo ? `<img class="mini-av" src="${esc(p.photo)}" alt="">` : esc(p.icon));
+
 const profileChip = () => {
   const p = S.currentProfile();
   return `<button type="button" class="profile-chip" data-act="profiles" style="--c:${esc(p.color)}" title="Đổi người dùng">
-    <span>${esc(p.icon)}</span>${esc(p.name)} <i>▾</i></button>`;
+    ${avatar(p, 'chip-av')}${esc(p.name)} <i>▾</i></button>`;
 };
-const summaryBtn = (v = 'current') => `<button type="button" class="btn ghost small" data-act="summary" data-v="${v}">📊 Tóm tắt</button>`;
 
 async function switchTo(id) {
   if (id === S.currentProfile().id) return;
@@ -145,13 +153,16 @@ async function switchTo(id) {
 
 actions['profile-switch'] = (el) => switchTo(el.dataset.id);
 
-/** Dòng người dùng / thẻ trong danh sách chọn; số dư được điền sau (bất đồng bộ). */
-function profileRowHtml(p, cur) {
-  return `<div class="row profile-row ${p.id === cur ? 'on' : ''}">
-    <button type="button" class="grow-btn" data-switch="${esc(p.id)}"><span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span>
-      <span class="grow"><b>${esc(p.name)}</b><small>${p.id === cur ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>
-      <span class="psum" data-psum="${esc(p.id)}">…</span>${p.id === cur ? '<span class="income">✓</span>' : ''}</button>
-    <button type="button" class="icon-btn" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
+/** Ô người dùng / thẻ trong danh sách chọn; số dư được điền sau (bất đồng bộ). */
+function profileTile(p, cur) {
+  return `<div class="ptile ${p.id === cur ? 'on' : ''}" style="--c:${esc(p.color)}">
+    <button type="button" class="ptile-main" data-switch="${esc(p.id)}">
+      ${avatar(p, 'ptile-av')}
+      <b>${esc(p.name)}</b>
+      <span class="psum" data-psum="${esc(p.id)}">…</span>
+      ${p.id === cur ? '<i class="ptile-on">✓ Đang dùng</i>' : ''}
+    </button>
+    <button type="button" class="ptile-edit" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
   </div>`;
 }
 
@@ -174,11 +185,18 @@ actions.profiles = () => {
   const users = S.userProfiles(), cards = S.cardProfiles();
   openSheet({
     title: 'Chọn người dùng / thẻ',
-    body: `<h4 class="grp-h">👤 Người dùng</h4>
-      <div class="list">${users.map((p) => profileRowHtml(p, cur)).join('')}</div>
-      <h4 class="grp-h">💳 Thẻ chi tiêu</h4>
-      ${cards.length ? `<div class="list">${cards.map((p) => profileRowHtml(p, cur)).join('')}</div>` : '<p class="muted small">Chưa có thẻ. Thẻ dùng để ghi các khoản chi qua MoMo, ZaloPay… rồi trích tiền từ tài khoản người dùng để thanh toán.</p>'}
-      <div class="actions"><button type="button" class="btn primary" data-add="user">+ Người dùng</button><button type="button" class="btn ghost" data-add="card">+ Thẻ chi tiêu</button></div>`,
+    body: `<div class="picker-cols">
+      <div class="picker-col">
+        <h4 class="grp-h">👤 Người dùng</h4>
+        ${users.map((p) => profileTile(p, cur)).join('')}
+        <button type="button" class="ptile-add" data-add="user">＋ Người dùng</button>
+      </div>
+      <div class="picker-col">
+        <h4 class="grp-h">💳 Thẻ chi tiêu</h4>
+        ${cards.map((p) => profileTile(p, cur)).join('') || '<p class="muted small">Ghi các khoản chi MoMo, ZaloPay… rồi trích tiền từ người dùng để thanh toán.</p>'}
+        <button type="button" class="ptile-add" data-add="card">＋ Thẻ chi tiêu</button>
+      </div>
+    </div>`,
     onMount(sh, close) {
       fillProfileSums(sh);
       sh.addEventListener('click', async (e) => {
@@ -193,8 +211,16 @@ actions.profiles = () => {
   });
 };
 
-const PROFILE_ICONS = ['🧑', '👨', '👩', '👦', '👧', '👴', '👵', '👪', '💼', '🏠'];
-const CARD_ICONS = ['💳', '📱', '🛒', '🛵', '🍔', '🎮', '🏷️', '🧾', '🎁', '✈️'];
+// Icon ngộ nghĩnh cho người dùng và thẻ chi tiêu (có thể dùng ảnh riêng thay thế).
+const PROFILE_ICONS = [
+  '🧑', '👨', '👩', '👦', '👧', '👶', '👴', '👵', '🧔', '👱‍♀️', '🥷', '🦸', '🧚', '🤴', '👸', '🧑‍🍳', '🧑‍💻', '🧑‍🚀',
+  '🐱', '🐶', '🐼', '🐻', '🐰', '🦊', '🐯', '🦁', '🐸', '🐵', '🐷', '🐨', '🐧', '🐥', '🦄', '🐳', '🐙', '🦖',
+  '😎', '🤓', '🥰', '😺', '👻', '🤖', '🌸', '🌻', '⭐', '🍀', '🍓', '🍩',
+];
+const CARD_ICONS = [
+  '💳', '📱', '🛒', '🛵', '🍔', '🍜', '☕', '🧋', '🎮', '🎬', '🏷️', '🧾', '🎁', '✈️', '⛽', '🏥', '📚', '🐾',
+  '🐷', '🐣', '🦄', '🍕', '🛍️', '🎉',
+];
 
 function profileForm(p, kind = 'user') {
   if (p) kind = p.kind === 'card' ? 'card' : 'user';
@@ -208,7 +234,11 @@ function profileForm(p, kind = 'user') {
     title: (p ? 'Sửa ' : 'Thêm ') + noun,
     body: `<form class="form">
       ${field(card ? 'Tên thẻ' : 'Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="${card ? 'vd: Thẻ MoMo gia đình, Đi chợ' : 'vd: Dũng, Vợ, Con gái'}">`)}
-      <div class="field"><span>Biểu tượng</span><div class="chips" id="pf-icons">${icons.map((i) => `<button type="button" class="chip icon-chip ${i === f.icon ? 'on' : ''}" data-icon="${i}">${i}</button>`).join('')}</div></div>
+      <div class="field"><span>Ảnh đại diện</span>
+        <div class="pf-photo"><span id="pf-preview">${avatar(f, 'ptile-av')}</span>
+          <label class="btn ghost small">📷 Dùng ảnh của bạn<input type="file" accept="image/*" id="pf-file" hidden></label>
+          <button type="button" class="btn ghost small" id="pf-nophoto" ${f.photo ? '' : 'hidden'}>✕ Bỏ ảnh</button></div></div>
+      <div class="field"><span>Hoặc chọn icon</span><div class="chips icon-grid" id="pf-icons">${icons.map((i) => `<button type="button" class="chip icon-chip ${i === f.icon ? 'on' : ''}" data-icon="${i}">${i}</button>`).join('')}</div></div>
       <div class="field"><span>Màu</span><div class="colors">${S.PROFILE_COLORS.map((col) => `<button type="button" class="color ${col === f.color ? 'on' : ''}" data-color="${col}" style="--c:${col}" aria-label="${col}"></button>`).join('')}</div></div>
       ${p ? '' : card
         ? '<p class="muted small">Thẻ không có số dư: bạn ghi các khoản chi (MoMo, ZaloPay…), sau đó trích tiền từ tài khoản của một người dùng để thanh toán từng khoản.</p>'
@@ -216,17 +246,36 @@ function profileForm(p, kind = 'user') {
       <div class="actions">${p && !isOnly ? `<button type="button" class="btn danger" data-del>Xóa ${noun}</button>` : ''}<button class="btn primary">${p ? 'Lưu' : 'Thêm & chuyển sang'}</button></div>
     </form>`,
     onMount(sh, close) {
+      const preview = () => {
+        $(sh, '#pf-preview').innerHTML = avatar(f, 'ptile-av');
+        $(sh, '#pf-nophoto').hidden = !f.photo;
+      };
       $(sh, '#pf-icons').addEventListener('click', (e) => {
         const b = e.target.closest('[data-icon]');
         if (!b) return;
         f.icon = b.dataset.icon;
+        f.photo = null; // chọn icon thì bỏ ảnh
         sh.querySelectorAll('[data-icon]').forEach((x) => x.classList.toggle('on', x === b));
+        preview();
       });
+      // Ảnh riêng: nén còn ~160px để lưu gọn trong danh sách hồ sơ.
+      $(sh, '#pf-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        try {
+          const blob = await compressImage(file, 160, 0.8);
+          f.photo = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+          preview();
+        } catch (err) { toast(err.message || 'Không đọc được ảnh'); }
+      });
+      $(sh, '#pf-nophoto').addEventListener('click', () => { f.photo = null; preview(); });
       $(sh, '.colors').addEventListener('click', (e) => {
         const b = e.target.closest('[data-color]');
         if (!b) return;
         f.color = b.dataset.color;
         sh.querySelectorAll('.color').forEach((x) => x.classList.toggle('on', x === b));
+        preview();
       });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -399,7 +448,7 @@ function cardPaySheet(items) {
     title: items.length > 1 ? `Trích thanh toán ${items.length} khoản` : 'Trích thanh toán',
     body: `<form class="form">
       <div class="note-box">${items.length > 1 ? `${items.length} khoản chưa thanh toán` : esc(items[0].note || items[0].source) + ' · ' + esc(items[0].source)}<br><b class="expense big-amt">${fmt(total)}</b></div>
-      <div class="field"><span>Người trả</span><div class="chips" id="cp-who">${users.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>
+      <div class="field"><span>Người trả</span><div class="chips" id="cp-who">${users.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-who="${esc(p.id)}">${chipAv(p)} ${esc(p.name)}</button>`).join('')}</div></div>
       ${field('Từ tài khoản', `<select id="cp-acc"><option>Đang tải…</option></select>`)}
       <em class="hint" id="cp-bal"></em>
       ${field('Ngày thanh toán', `<input type="date" id="cp-date" value="${todayISO()}">`)}
@@ -462,11 +511,10 @@ function homeView() {
   const topMax = top[0]?.amount || 1;
   const hour = Number(fmtTimeVN(Date.now()).slice(0, 2));
   const loggedToday = state.transactions.some((x) => x.date === today);
-  const showMonthSum = Number(today.slice(8)) <= 3;
+  const greet = hour < 11 ? '☀️ Chào buổi sáng' : hour < 14 ? '🍱 Chào buổi trưa' : hour < 18 ? '🌤️ Chào buổi chiều' : '🌙 Chào buổi tối';
 
   return `
-  <header class="top"><div>${profileChip()}<h1>Sổ Thu Chi</h1><small>${fmtDayHeader(today)}</small></div>
-    ${summaryBtn()}</header>
+  <header class="top"><div>${profileChip()}<h1>Sổ Thu Chi</h1><small>${greet}, ${esc(S.currentProfile().name)}! · ${fmtDayHeader(today)}</small></div></header>
   ${periodBar()}
   <section class="card hero">
     <div class="hero-row">
@@ -481,7 +529,6 @@ function homeView() {
   </section>
 
   ${!loggedToday && hour >= 18 ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
-  ${showMonthSum ? `<button type="button" class="banner soft" data-act="summary" data-v="prev-month">📊 Xem tóm tắt tháng trước</button>` : ''}
 
   ${alerts.length ? `${sectionTitle('Cần chú ý')}<div class="card list">${alerts.map(alertRow).join('')}</div>` : ''}
 
@@ -631,7 +678,7 @@ function openGopForm() {
     title: 'Góp tiền cho người khác',
     body: `<form class="form">
       <p class="muted small">Sổ của <b>${esc(me.name)}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
-      <div class="field"><span>Góp cho</span><div class="chips" id="gf-to">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>
+      <div class="field"><span>Góp cho</span><div class="chips" id="gf-to">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-to="${esc(p.id)}">${chipAv(p)} ${esc(p.name)}</button>`).join('')}</div></div>
       ${amountField('gf-amt', 0)}
       <div class="two">
         ${field('Từ tài khoản của ' + esc(me.name), `<select id="gf-from">${accOptions(state.settings.lastAccount, true)}</select>`)}
@@ -721,7 +768,7 @@ function openTrichForm() {
     title: 'Trích tiền từ người khác',
     body: `<form class="form">
       <p class="muted small">Sổ người bị trích ghi một khoản <b class="expense">chi</b>, sổ của <b>${esc(me.name)}</b> ghi một khoản <b class="income">thu</b>. Người bị trích phải đủ số dư.</p>
-      <div class="field"><span>Trích từ</span><div class="chips" id="tr-from">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>
+      <div class="field"><span>Trích từ</span><div class="chips" id="tr-from">${others.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-from="${esc(p.id)}">${chipAv(p)} ${esc(p.name)}</button>`).join('')}</div></div>
       ${amountField('tr-amt', 0)}
       <div class="two">
         ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
@@ -839,7 +886,7 @@ function reportsView() {
   const tags = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return `
-  <header class="top"><div>${profileChip()}<h1>Báo cáo</h1></div>${summaryBtn('report')}</header>
+  <header class="top"><div>${profileChip()}<h1>Báo cáo</h1></div></header>
   ${periodBar('report')}
   <section class="card stats">
     <div><small>Thu</small><b class="income">${fmt(t.income)}</b><em>${pctChange(t.income, pt.income)}</em></div>
@@ -1362,9 +1409,6 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   let switching = false;
   const rate0 = f.rate || S.rateOf(f.currency);
   let splitRows = f.splits && f.splits.length ? f.splits.map((p) => ({ categoryId: p.categoryId, amount: fmtNum(p.amountVnd / rate0) })) : [];
-  const keepPhotos = [...(f.photoIds || [])];
-  const removed = [];
-  const added = []; // { blob, url }
   const multiCur = st.currencies.length > 1;
   const showVoice = voiceSupported();
 
@@ -1372,7 +1416,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     body: `<form class="form txf" autocomplete="off">
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.userProfiles().map((p) =>
-        `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>` : ''}
+        `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${chipAv(p)} ${esc(p.name)}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button><button type="button" id="tf-trich">🔄 Trích</button>' : ''}</div>
@@ -1381,7 +1425,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         ${multiCur ? `<select id="tf-cur" class="cur">${st.currencies.map((c) => `<option ${c.code === f.currency ? 'selected' : ''}>${esc(c.code)}</option>`).join('')}</select>` : ''}
         ${showVoice ? '<button type="button" class="icon-btn mic" id="tf-mic" title="Nói, vd: ăn trưa 45 nghìn">🎤</button>' : ''}
       </div>
-      <em class="hint center" id="tf-hint">Gõ nhanh: 50k · 1tr2 · 2,5tr</em>
+      <em class="hint center" id="tf-hint"></em>
       ${field('Danh mục', `<select id="tf-cat" class="cat-select"></select>`, 'id="tf-cats"')}
       <label class="check" id="tf-split-wrap"><input type="checkbox" id="tf-split" ${splitRows.length ? 'checked' : ''}> Chia thành nhiều danh mục</label>
       <div id="tf-splits"></div>
@@ -1391,9 +1435,6 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         ${field('Ngày', `<input type="date" id="tf-date" value="${esc(f.date)}" required>`)}
       </div>
       ${field('Ghi chú', `<input id="tf-note" value="${esc(f.note)}" placeholder="vd: Ăn trưa với đồng nghiệp">`)}
-      ${field('Tag (cách nhau bởi dấu phẩy)', `<input id="tf-tags" value="${esc((f.tags || []).join(', '))}" placeholder="vd: du lịch Đà Lạt, công tác"><div class="chips" id="tf-tag-sug"></div>`)}
-      <div class="field"><span>Ảnh hóa đơn</span><div class="photos" id="tf-photos"></div>
-        <label class="btn ghost small file-btn">📷 Chụp / chọn ảnh<input type="file" accept="image/*" id="tf-photo" multiple hidden></label></div>
       ${isEdit || fromRecurring ? '' : `<div class="two">${field('Lặp lại', `<select id="tf-rep"><option value="none">Không</option>${Object.entries(FREQ_LABEL).map(([k, v]) => `<option value="${k}" ${repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
         <label class="check" id="tf-auto-wrap"><input type="checkbox" id="tf-auto" checked> Tự động ghi khi đến kỳ</label></div>`}
       <div class="actions">
@@ -1403,7 +1444,6 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       </div>
     </form>`,
     onClose() {
-      added.forEach((p) => URL.revokeObjectURL(p.url));
       // Ghi hộ xong (hoặc hủy) → quay lại sổ đang xem trước đó.
       if (!switching && origin !== S.currentProfile().id) S.switchProfile(origin);
     },
@@ -1416,7 +1456,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         if (!b || b.dataset.who === S.currentProfile().id) return;
         const keep = {
           amount: parseAmount(amtIn.value) || null, date: $(sh, '#tf-date').value || todayISO(),
-          note: $(sh, '#tf-note').value.trim(), tags: splitTags($(sh, '#tf-tags').value),
+          note: $(sh, '#tf-note').value.trim(), tags: f.tags || [],
         };
         const keepCat = S.catById(f.categoryId)?.name || null;
         const keepType = f.type;
@@ -1428,12 +1468,14 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       const curSel = $(sh, '#tf-cur');
       const curCode = () => (curSel ? curSel.value : 'VND');
 
+      // Chỉ hiện dòng giải nghĩa khi gõ tắt (50k, 1tr2), ngoại tệ, hoặc nhập sai; số thường đã có dấu chấm trong ô.
       const updHint = () => {
         const v = parseAmount(amtIn.value);
-        if (!amtIn.value) { hint.textContent = 'Gõ nhanh: 50k · 1tr2 · 2,5tr'; return; }
-        if (!Number.isFinite(v)) { hint.textContent = 'Chưa hiểu số tiền'; return; }
         const c = curCode();
-        hint.textContent = c === 'VND' ? '= ' + fmt(v) : `= ${fmtCur(v, c)} ≈ ${fmt(v * S.rateOf(c))}`;
+        if (!amtIn.value) hint.textContent = '';
+        else if (!Number.isFinite(v)) hint.textContent = 'Chưa hiểu số tiền';
+        else if (c !== 'VND') hint.textContent = `= ${fmtCur(v, c)} ≈ ${fmt(v * S.rateOf(c))}`;
+        else hint.textContent = /[^\d.]/.test(amtIn.value) ? '= ' + fmt(v) : '';
         renderSplitInfo();
       };
       amtIn.addEventListener('input', updHint);
@@ -1530,51 +1572,6 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         }
       });
 
-      // --- tag gợi ý ---
-      const tagIn = $(sh, '#tf-tags');
-      const renderTagSug = () => {
-        const cur = splitTags(tagIn.value);
-        $(sh, '#tf-tag-sug').innerHTML = S.allTags().filter((g) => !cur.includes(g)).slice(0, 8)
-          .map((g) => `<button type="button" class="chip" data-tag="${esc(g)}">#${esc(g)}</button>`).join('');
-      };
-      $(sh, '#tf-tag-sug').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-tag]');
-        if (!b) return;
-        tagIn.value = [...splitTags(tagIn.value), b.dataset.tag].join(', ');
-        renderTagSug();
-      });
-      tagIn.addEventListener('input', debounce(renderTagSug, 200));
-      renderTagSug();
-
-      // --- ảnh ---
-      const photoBox = $(sh, '#tf-photos');
-      async function renderPhotos() {
-        const items = [];
-        for (const id of keepPhotos) {
-          const p = await S.getPhoto(id);
-          if (p) items.push(`<div class="ph"><img src="${URL.createObjectURL(p.blob)}" alt="" data-view><button type="button" data-rm-old="${id}">✕</button></div>`);
-        }
-        added.forEach((p, i) => items.push(`<div class="ph"><img src="${p.url}" alt="" data-view><button type="button" data-rm-new="${i}">✕</button></div>`));
-        photoBox.innerHTML = items.join('');
-      }
-      photoBox.addEventListener('click', (e) => {
-        const t = e.target;
-        if (t.dataset.rmOld) { keepPhotos.splice(keepPhotos.indexOf(t.dataset.rmOld), 1); removed.push(t.dataset.rmOld); renderPhotos(); }
-        else if (t.dataset.rmNew != null) { URL.revokeObjectURL(added[t.dataset.rmNew].url); added.splice(Number(t.dataset.rmNew), 1); renderPhotos(); }
-        else if (t.hasAttribute('data-view')) viewImage(t.src);
-      });
-      $(sh, '#tf-photo').addEventListener('change', async (e) => {
-        for (const file of e.target.files) {
-          try {
-            const blob = await compressImage(file);
-            added.push({ blob, url: URL.createObjectURL(blob) });
-          } catch (err) { toast(err.message); }
-        }
-        e.target.value = '';
-        renderPhotos();
-      });
-      renderPhotos();
-
       // --- giọng nói ---
       const mic = $(sh, '#tf-mic');
       mic?.addEventListener('click', async () => {
@@ -1625,15 +1622,14 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         }
         if (f.type !== 'transfer' && !splits && !f.categoryId) return toast('Chọn danh mục');
 
-        for (const id of removed) await S.deletePhoto(id);
-        const photoIds = [...keepPhotos];
-        for (const p of added) photoIds.push(await S.savePhoto(p.blob));
+        // Tag và ảnh không còn nhập trong form; giữ nguyên dữ liệu cũ nếu giao dịch đã có.
+        const photoIds = f.photoIds || [];
 
         const date = $(sh, '#tf-date').value || todayISO();
         const obj = {
           ...f, amount, currency, rate, amountVnd, date, accountId, toAccountId,
           categoryId: f.type === 'transfer' ? null : splits ? splits[0].categoryId : f.categoryId,
-          splits, note: $(sh, '#tf-note').value.trim(), tags: splitTags(tagIn.value), photoIds,
+          splits, note: $(sh, '#tf-note').value.trim(), tags: f.tags || [], photoIds,
           createdAt: f.createdAt || Date.now(),
         };
         if (fromRecurring) obj.recurringId = fromRecurring.id;
@@ -1702,59 +1698,6 @@ function viewImage(src) {
 
 actions.add = (el) => openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
 
-// ================= Tóm tắt & chia sẻ =================
-function summaryText(r) {
-  const t = S.totals(r);
-  const prev = prevRange(r, state.settings.weekStart);
-  const pt = S.totals(prev);
-  const top = S.byCategory(r, 'expense').slice(0, 5);
-  const lines = [
-    `📊 Tóm tắt thu chi – ${r.label}`,
-    `• Thu: ${fmt(t.income)}`,
-    `• Chi: ${fmt(t.expense)}${pt.expense ? ` (${pctChange(t.expense, pt.expense)})` : ''}`,
-    `• Chênh lệch: ${fmtSigned(t.net)}`,
-  ];
-  if (top.length) {
-    lines.push('', 'Chi nhiều nhất:');
-    top.forEach((x, i) => lines.push(`${i + 1}. ${x.cat.icon} ${x.cat.name}: ${fmt(x.amount)}`));
-  }
-  const over = state.budgets.map((b) => ({ b, st: S.budgetStatus(b, r.end < todayISO() ? r.end : todayISO()) })).filter((x) => x.st.ratio >= 1);
-  if (over.length) {
-    lines.push('', 'Vượt ngân sách:');
-    over.forEach(({ b, st }) => lines.push(`⛔ ${S.budgetName(b)}: ${fmt(st.spent)} / ${fmt(b.amount)}`));
-  }
-  const debts = state.debts.filter((d) => !d.done && diffDays(todayISO(), d.dueDate) <= 14);
-  if (debts.length) {
-    lines.push('', 'Sắp đến hạn trả nợ:');
-    debts.forEach((d) => lines.push(`🏦 ${S.debtName(d)}: ${fmt(d.amount)} – ${fmtDate(d.dueDate)}`));
-  }
-  return lines.join('\n');
-}
-
-actions.summary = (el) => {
-  const v = el.dataset.v;
-  const today = todayISO();
-  const ws = state.settings.weekStart;
-  const r = v === 'prev-week' ? getRange('week', addDays(today, -7), ws)
-    : v === 'prev-month' ? getRange('month', addMonths(today, -1, 1), ws) : v === 'report' ? reportRange() : currentRange();
-  const text = summaryText(r);
-  openSheet({
-    title: 'Tóm tắt ' + r.label,
-    body: `<pre class="summary">${esc(text)}</pre>
-      <div class="actions"><button type="button" class="btn ghost" data-copy>📋 Sao chép</button><button type="button" class="btn primary" data-share>📤 Chia sẻ</button></div>
-      <p class="muted small">Chia sẻ qua Zalo, Messenger, Email… hoặc lưu vào Ghi chú.</p>`,
-    onMount(sh) {
-      $(sh, '[data-copy]').addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(text); toast('Đã sao chép'); } catch { toast('Không sao chép được'); }
-      });
-      $(sh, '[data-share]').addEventListener('click', async () => {
-        if (navigator.share) { try { await navigator.share({ title: 'Tóm tắt thu chi', text }); } catch { /* người dùng hủy */ } }
-        else { try { await navigator.clipboard.writeText(text); toast('Thiết bị không hỗ trợ chia sẻ – đã sao chép'); } catch { toast('Không chia sẻ được'); } }
-      });
-    },
-  });
-};
-
 // ================= Cài đặt =================
 function settingsView() {
   const s = state.settings;
@@ -1765,7 +1708,7 @@ function settingsView() {
   ${sectionTitle('Người dùng & thẻ chi tiêu', `<button type="button" class="link" data-act="profiles">Quản lý</button>`)}
   <section class="card list">${[...S.userProfiles(), ...S.cardProfiles()].map((p) => `
     <button type="button" class="row" data-act="profile-switch" data-id="${esc(p.id)}">
-      <span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span><span class="grow"><b>${esc(p.name)}</b>
+      ${avatar(p)}<span class="grow"><b>${esc(p.name)}</b>
       <small>${p.kind === 'card' ? 'Thẻ chi tiêu · ' : ''}${p.id === S.currentProfile().id ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>
       <span class="psum" data-psum="${esc(p.id)}">…</span>${p.id === S.currentProfile().id ? '<span class="income">✓</span>' : '›'}</button>`).join('')}
   </section>
