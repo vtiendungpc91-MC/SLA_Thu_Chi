@@ -611,3 +611,7 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
   flex: 1 1 0; min-width: 0; padding: 8px 4px; font-size: 12.5px; line-height: 1.25;
   white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: center;
 }
+/* Thanh dưới: mục đang chọn có nền xanh lá nhạt */
+.tabbar a { border-radius: 14px; margin: 0 3px; padding: 4px 0; transition: background .15s; }
+.tabbar a.on { background: #e3f5ea; color: #18794e; }
+@media (prefers-color-scheme: dark) { .tabbar a.on { background: #113222; color: #4ee39b; } }

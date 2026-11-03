@@ -1996,6 +1996,8 @@ const QUICK_KINDS = {
   trich: { icon: '🔄', label: 'Mẫu Trích nhanh', def: 'Trích nhanh' },
   card: { icon: '💳', label: 'Mẫu chi thẻ nhanh', def: 'Chi thẻ nhanh' },
 };
+// Chữ ngắn trên nút ⚡ ở Tổng quan (tên đầy đủ của mẫu hiện khi bấm vào).
+const QUICK_SHORT = { expense: 'Chi', income: 'Thu', gop: 'Góp', trich: 'Trích', card: 'Chi' };
 const quickKindsFor = () => (S.isCard() ? ['card'] : ['expense', 'income', 'gop', 'trich']);
 const quickOf = (k) => (state.settings.quick || {})[k] || null;
 const saveQuick = (k, q) => S.setSetting('quick', { ...(state.settings.quick || {}), [k]: q });
@@ -2015,7 +2017,7 @@ function quickButtons() {
   const list = quickKindsFor().map((k) => [k, quickOf(k)]).filter(([, q]) => q && q.show);
   if (!list.length) return '';
   return `<div class="quick-btns">${list.map(([k, q]) =>
-    `<button type="button" class="btn quick-btn q-${k}" data-act="quick-run" data-k="${k}">⚡ ${esc(q.name || QUICK_KINDS[k].def)}</button>`).join('')}</div>`;
+    `<button type="button" class="btn quick-btn q-${k}" data-act="quick-run" data-k="${k}" title="${esc(q.name || QUICK_KINDS[k].def)}">⚡ ${QUICK_SHORT[k]}</button>`).join('')}</div>`;
 }
 
 /** Bấm nút ⚡: chỉ nhập số tiền (và ngày nếu cần) rồi OK. */
