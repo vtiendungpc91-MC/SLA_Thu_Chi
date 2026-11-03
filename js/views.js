@@ -139,7 +139,7 @@ const chipAv = (p) => (p.photo ? `<img class="mini-av" src="${esc(p.photo)}" alt
 const profileChip = () => {
   const p = S.currentProfile();
   return `<button type="button" class="profile-chip" data-act="profiles" style="--c:${esc(p.color)}" title="Đổi người dùng">
-    ${avatar(p, 'chip-av')}${esc(p.name)} <i>▾</i></button>`;
+    ${avatar(p, 'chip-av')}${p.kind === 'card' ? 'Thẻ chi tiêu' : 'Người dùng'} <i>▾</i></button>`;
 };
 
 async function switchTo(id) {
@@ -157,10 +157,11 @@ actions['profile-switch'] = (el) => switchTo(el.dataset.id);
 function profileTile(p, cur) {
   return `<div class="ptile ${p.id === cur ? 'on' : ''}" style="--c:${esc(p.color)}">
     <button type="button" class="ptile-main" data-switch="${esc(p.id)}">
-      ${avatar(p, 'ptile-av')}
-      <b>${esc(p.name)}</b>
-      <span class="psum" data-psum="${esc(p.id)}">…</span>
-      ${p.id === cur ? '<i class="ptile-on">✓ Đang dùng</i>' : ''}
+      <span class="ptile-left">${avatar(p, 'ptile-av')}<b>${esc(p.name)}</b></span>
+      <span class="ptile-right">
+        <span class="psum" data-psum="${esc(p.id)}">…</span>
+        ${p.id === cur ? '<i class="ptile-on">✓ Đang dùng</i>' : '<i class="ptile-go">Chuyển sang ›</i>'}
+      </span>
     </button>
     <button type="button" class="ptile-edit" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
   </div>`;
@@ -318,7 +319,7 @@ function cardView() {
   const groups = new Map();
   for (const t of list) { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); }
   return `
-  <header class="top"><div>${profileChip()}<h1>${esc(p.name)}</h1><small>Thẻ chi tiêu</small></div></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(p.name)}</h1></div></header>
   <section class="card hero">
     <div class="hero-net"><small>Đã chi, chưa thanh toán · ${open.length} khoản</small><strong class="expense">${fmt(sumAmt(open))}</strong></div>
     <div class="hero-bal"><span>Đã thanh toán ${esc(m.label.toLowerCase())}</span><b class="income">${fmt(paidMonth)}</b></div>
@@ -514,7 +515,7 @@ function homeView() {
   const greet = hour < 11 ? '☀️ Chào buổi sáng' : hour < 14 ? '🍱 Chào buổi trưa' : hour < 18 ? '🌤️ Chào buổi chiều' : '🌙 Chào buổi tối';
 
   return `
-  <header class="top"><div>${profileChip()}<h1>Sổ Thu Chi</h1><small>${greet}, ${esc(S.currentProfile().name)}! · ${fmtDayHeader(today)}</small></div></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>${greet}! · ${fmtDayHeader(today)}</small></div></header>
   ${periodBar()}
   <section class="card hero">
     <div class="hero-row">
@@ -601,7 +602,7 @@ function txView() {
   if (f.accountId) chips.push(['accountId', accName(f.accountId)]);
   const tags = S.allTags().slice(0, 12);
   return `
-  <header class="top"><div>${profileChip()}<h1>Giao dịch</h1></div><button type="button" class="icon-btn" data-act="export-csv" title="Xuất CSV">⬇️</button></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>📒 Giao dịch</small></div><button type="button" class="icon-btn" data-act="export-csv" title="Xuất CSV">⬇️</button></header>
   ${periodBar()}
   <div class="filters">
     <input id="tx-q" type="search" placeholder="Tìm ghi chú, danh mục, tag, số tiền…" value="${esc(f.q)}">
@@ -886,7 +887,7 @@ function reportsView() {
   const tags = [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return `
-  <header class="top"><div>${profileChip()}<h1>Báo cáo</h1></div></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>📊 Báo cáo</small></div></header>
   ${periodBar('report')}
   <section class="card stats">
     <div><small>Thu</small><b class="income">${fmt(t.income)}</b><em>${pctChange(t.income, pt.income)}</em></div>
@@ -938,7 +939,7 @@ function planView(sub) {
   if (sub && PLAN_TABS[sub]) ui.planTab = sub;
   const tab = ui.planTab;
   const body = { budget: budgetTab, goals: goalsTab, debts: debtsTab, recurring: recurringTab }[tab]();
-  return `<header class="top"><div>${profileChip()}<h1>Kế hoạch</h1></div></header>
+  return `<header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>🎯 Kế hoạch</small></div></header>
   <div class="seg tabs">${Object.entries(PLAN_TABS).map(([k, v]) => `<a href="#/plan/${k}" class="${tab === k ? 'on' : ''}">${v}</a>`).join('')}</div>
   ${body}`;
 }
@@ -1412,9 +1413,12 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   const multiCur = st.currencies.length > 1;
   const showVoice = voiceSupported();
 
+  // id riêng cho mỗi lần mở để nút Lưu trên thanh tiêu đề trỏ đúng form (khi đổi người, form cũ còn đang đóng dần).
+  const formId = 'txf-' + Date.now();
   openSheet({
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
-    body: `<form class="form txf" autocomplete="off">
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form txf" id="${formId}" autocomplete="off">
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.userProfiles().map((p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${chipAv(p)} ${esc(p.name)}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
@@ -1437,11 +1441,10 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${field('Ghi chú', `<input id="tf-note" value="${esc(f.note)}" placeholder="vd: Ăn trưa với đồng nghiệp">`)}
       ${isEdit || fromRecurring ? '' : `<div class="two">${field('Lặp lại', `<select id="tf-rep"><option value="none">Không</option>${Object.entries(FREQ_LABEL).map(([k, v]) => `<option value="${k}" ${repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
         <label class="check" id="tf-auto-wrap"><input type="checkbox" id="tf-auto" checked> Tự động ghi khi đến kỳ</label></div>`}
-      <div class="actions">
+      ${isEdit || fromRecurring ? `<div class="actions">
         ${isEdit ? '<button type="button" class="btn danger" id="tf-del">Xóa</button><button type="button" class="btn ghost" id="tf-dup">Nhân bản</button>' : ''}
         ${fromRecurring ? '<button type="button" class="btn ghost" id="tf-skip">Bỏ qua kỳ này</button>' : ''}
-        <button class="btn primary">Lưu</button>
-      </div>
+      </div>` : ''}
     </form>`,
     onClose() {
       // Ghi hộ xong (hoặc hủy) → quay lại sổ đang xem trước đó.
@@ -1703,7 +1706,7 @@ function settingsView() {
   const s = state.settings;
   const notifState = !('Notification' in window) ? 'unsupported' : Notification.permission;
   return `
-  <header class="top"><div>${profileChip()}<h1>Cài đặt</h1></div></header>
+  <header class="top"><div>${profileChip()}<h1>${esc(S.currentProfile().name)}</h1><small>⚙️ Cài đặt</small></div></header>
 
   ${sectionTitle('Người dùng & thẻ chi tiêu', `<button type="button" class="link" data-act="profiles">Quản lý</button>`)}
   <section class="card list">${[...S.userProfiles(), ...S.cardProfiles()].map((p) => `
@@ -1763,8 +1766,8 @@ function settingsView() {
 
   ${sectionTitle('Sao lưu & dữ liệu')}
   <section class="card list">
-    <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu (file .json)</b><small>${s.lastBackup ? 'Lần cuối: ' + fmtDate(s.lastBackup) : 'Chưa sao lưu lần nào'}</small></span>›</button>
-    <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Thay thế toàn bộ dữ liệu hiện tại</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
+    <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Mọi người dùng + thẻ chi tiêu · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
+    <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Thay thế toàn bộ người dùng, thẻ và giao dịch</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
     <button type="button" class="row" data-act="export-csv-all"><span class="ci">📄</span><span class="grow"><b>Xuất Excel (CSV) toàn bộ giao dịch</b></span>›</button>
     <button type="button" class="row danger" data-act="wipe"><span class="ci">🗑️</span><span class="grow"><b>Xóa toàn bộ dữ liệu của ${esc(S.currentProfile().name)}</b><small>Sổ của người khác giữ nguyên</small></span></button>
   </section>
@@ -1860,11 +1863,17 @@ async function mountSettings(root) {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    if (!confirm(`Khôi phục sẽ THAY THẾ toàn bộ dữ liệu trong sổ của "${S.currentProfile().name}". Sổ của người khác không bị ảnh hưởng. Tiếp tục?`)) return;
+    let data;
+    try { data = JSON.parse(await file.text()); } catch { return toast('File không đọc được (không phải JSON)', 4000); }
+    const msg = data && data.all
+      ? `Khôi phục sẽ THAY THẾ TOÀN BỘ người dùng, thẻ chi tiêu và giao dịch trên máy này bằng bản sao lưu ngày ${fmtDate(String(data.exportedAt || '').slice(0, 10))} (${(data.profiles || []).length} người dùng/thẻ). Tiếp tục?`
+      : `Đây là bản sao lưu kiểu cũ (một sổ). Khôi phục sẽ THAY THẾ dữ liệu trong sổ của "${S.currentProfile().name}". Tiếp tục?`;
+    if (!confirm(msg)) return;
     try {
-      await S.importData(JSON.parse(await file.text()));
       ui.period = null;
-      toast('Đã khôi phục dữ liệu');
+      ui.reportPeriod = null;
+      const n = await S.importAny(data);
+      toast(n ? `Đã khôi phục ${n} người dùng/thẻ` : 'Đã khôi phục dữ liệu', 3500);
     } catch (err) { toast('Lỗi: ' + err.message, 4000); }
   });
   if (navigator.storage?.estimate) {
@@ -1878,9 +1887,8 @@ async function mountSettings(root) {
 actions['daily-ics'] = () => calendarSheet('nhac-ghi-chep.ics', buildDailyICS(state.settings.dailyTime || '21:00', todayISO()));
 
 actions.backup = async () => {
-  const data = await S.exportData();
-  const who = S.currentProfile().name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').replace(/[^\w]+/g, '-').toLowerCase();
-  await shareOrDownload(`sothuchi-${who}-${todayISO()}.json`, JSON.stringify(data), 'application/json');
+  const data = await S.exportAll();
+  await shareOrDownload(`sothuchi-tat-ca-${todayISO()}.json`, JSON.stringify(data), 'application/json');
   await S.setSetting('lastBackup', todayISO());
 };
 

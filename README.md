@@ -21,7 +21,7 @@ Dữ liệu chỉ lưu trên điện thoại (IndexedDB), không gửi lên serv
 | **Avatar** | Hơn 40 icon ngộ nghĩnh (người, thú cưng, emoji) hoặc dùng ảnh riêng làm avatar cho người dùng/thẻ |
 | **Ẩn/hiện mục** | Mỗi người dùng tự chọn ẩn/hiện mục Báo cáo, Kế hoạch (Cài đặt → Hiển thị) |
 | **Báo cáo** | Tổng quan/Giao dịch xem theo ngày/tháng; Báo cáo chọn ngày, tháng, quý, năm hoặc khoảng thời gian tự chọn, biểu đồ thu chi theo thời gian, biểu đồ tròn theo danh mục, so sánh với kỳ trước, chi theo tag |
-| **Dữ liệu** | Sao lưu và khôi phục file `.json` (kèm ảnh), xuất CSV mở bằng Excel |
+| **Dữ liệu** | Sao lưu **tất cả** người dùng + thẻ chi tiêu vào 1 file `.json` và khôi phục toàn bộ từ file đó (vẫn đọc được bản sao lưu cũ chỉ có 1 sổ); xuất CSV mở bằng Excel |
 
 ## 1. Chạy thử trên máy tính
 

@@ -86,5 +86,6 @@ export function dbOf(profileId) {
     put: (s, v) => runIn(s, 'readwrite', (os) => os.put(v)),
     del: (s, k) => runIn(s, 'readwrite', (os) => os.delete(k)),
     bulkPut: (s, arr) => runIn(s, 'readwrite', (os) => { for (const v of arr) os.put(v); }),
+    clear: (s) => runIn(s, 'readwrite', (os) => os.clear()),
   };
 }

@@ -674,6 +674,50 @@ export async function exportData({ withPhotos = true } = {}) {
   return out;
 }
 
+/** Đọc toàn bộ một sổ (người dùng hoặc thẻ) để sao lưu. */
+async function exportBook(profileId) {
+  const book = dbOf(profileId);
+  const out = { settings: {} };
+  for (const s of LIST) out[s] = await book.getAll(s);
+  for (const r of await book.getAll('settings')) out.settings[r.key] = r.value;
+  out.photos = [];
+  for (const p of await book.getAll('photos')) out.photos.push({ id: p.id, data: await blobToDataURL(p.blob) });
+  return out;
+}
+
+/** Sao lưu TẤT CẢ người dùng và thẻ chi tiêu vào một file. */
+export async function exportAll() {
+  const profiles = getProfiles();
+  const books = {};
+  for (const p of profiles) books[p.id] = await exportBook(p.id);
+  return { app: 'sothuchi', version: 2, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, profiles, books };
+}
+
+/**
+ * Khôi phục. File mới (all: true) → thay toàn bộ người dùng, thẻ và giao dịch.
+ * File cũ (chỉ một sổ) → khôi phục vào sổ đang chọn như trước.
+ */
+export async function importAny(data) {
+  if (!data || data.app !== 'sothuchi') throw new Error('File không phải bản sao lưu của Sổ Thu Chi');
+  if (!data.all) return importData(data);
+  if (!Array.isArray(data.profiles) || !data.profiles.length || !data.books) throw new Error('File sao lưu không đầy đủ');
+  const oldIds = getProfiles().map((p) => p.id);
+  for (const p of data.profiles) {
+    const b = data.books[p.id] || {};
+    const book = dbOf(p.id);
+    for (const s of STORES) await book.clear(s);
+    for (const s of LIST) await book.bulkPut(s, b[s] || []);
+    for (const ph of b.photos || []) await book.put('photos', { id: ph.id, blob: await dataURLToBlob(ph.data), createdAt: Date.now() });
+    await book.bulkPut('settings', Object.entries(b.settings || {}).map(([key, value]) => ({ key, value })));
+  }
+  saveProfiles(data.profiles);
+  const target = data.profiles.some((p) => p.id === data.current) ? data.current : data.profiles[0].id;
+  await switchProfile(target);
+  // Xóa các sổ trên máy không có trong bản sao lưu.
+  for (const id of oldIds) if (!data.profiles.some((p) => p.id === id)) await dropProfile(id);
+  return data.profiles.length;
+}
+
 export async function importData(data) {
   if (!data || data.app !== 'sothuchi') throw new Error('File không phải bản sao lưu của Sổ Thu Chi');
   for (const s of STORES) await db.clear(s);

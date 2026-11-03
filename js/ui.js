@@ -100,7 +100,8 @@ export function toast(msg, ms = 2400) {
 }
 
 /** Mở bottom sheet. onMount(sheetEl, close) để gắn sự kiện cho form. */
-export function openSheet({ title, body, onMount, onClose, wide = false }) {
+/** headAction: HTML đặt ở góc phải thanh tiêu đề (vd: nút Lưu của form). */
+export function openSheet({ title, body, onMount, onClose, wide = false, headAction = '' }) {
   const wrap = document.createElement('div');
   wrap.className = 'sheet-wrap';
   wrap.innerHTML = `
@@ -108,7 +109,7 @@ export function openSheet({ title, body, onMount, onClose, wide = false }) {
     <div class="sheet${wide ? ' wide' : ''}" role="dialog" aria-modal="true">
       <div class="sheet-head">
         <button type="button" class="icon-btn" data-close aria-label="Đóng">✕</button>
-        <h3>${esc(title)}</h3><span class="sp"></span>
+        <h3>${esc(title)}</h3>${headAction || '<span class="sp"></span>'}
       </div>
       <div class="sheet-body">${body}</div>
     </div>`;
