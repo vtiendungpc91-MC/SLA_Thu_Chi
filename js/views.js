@@ -104,7 +104,7 @@ function checkFunds(accountId, amountVnd, ignoreTx = null) {
 
 const field = (label, inner, extra = '') => `<label class="field" ${extra}><span>${label}</span>${inner}</label>`;
 const amountField = (id, value, label = 'Số tiền') =>
-  field(label, `<input id="${id}" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 50k, 1tr2" value="${value ? fmtNum(value) : ''}"><em class="hint" data-hint-for="${id}"></em>`);
+  field(label, `<div class="money-row"><input id="${id}" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 50k, 1tr2" value="${value ? fmtNum(value) : ''}"><div class="zero-sug" data-zero-for="${id}" hidden></div></div><em class="hint" data-hint-for="${id}"></em>`);
 
 /** Gắn gợi ý đọc số tiền dưới ô nhập. */
 function bindMoney(root, id) {
@@ -536,7 +536,6 @@ function cardItemForm(item) {
       <label class="date-line">📅 Ngày chi <input type="date" id="ci-date" value="${esc(f.date)}"></label>
       ${amountField('ci-amt', f.amountVnd)}
       <div class="amt-tools">
-        <div class="zero-sug" data-zero-for="ci-amt" hidden></div>
         <select id="ci-cat" class="cat-select" aria-label="Danh mục">${cats.map((c) => `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>
       </div>
       <div class="field"><span>Nguồn chi</span>
@@ -659,8 +658,8 @@ function homeView() {
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
     <div class="hero-bal"><span>Tổng số dư tài khoản</span><b>${fmt(S.totalBalance())}</b></div>
     ${otherProfiles().length ? `<div class="gop-actions">
-      <button type="button" class="btn ghost" data-act="gop">🤝 Góp cho người khác</button>
-      <button type="button" class="btn ghost" data-act="trich">🔄 Trích từ người khác</button></div>` : ''}
+      <button type="button" class="btn ghost" data-act="gop">🤝 Góp cho</button>
+      <button type="button" class="btn ghost" data-act="trich">🔄 Trích từ</button></div>` : ''}
   </section>
 
   ${!loggedToday && hour >= 18 ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
@@ -1555,16 +1554,16 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.moneyBooks().map((p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(S.bookLabel(p))}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
-      <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
+      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && otherProfiles().length ? '<button type="button" id="tf-gop">🤝 Góp</button><button type="button" id="tf-trich">🔄 Trích</button>' : ''}</div>
       <label class="date-line">📅 Ngày <input type="date" id="tf-date" value="${esc(f.date)}" required></label>
       <div class="amount-row">
         <input id="tf-amt" class="amount-input" inputmode="decimal" placeholder="0" value="${f.amount ? esc(fmtNum(f.amount)) : ''}" aria-label="Số tiền">
+        <div class="zero-sug" data-zero-for="tf-amt" hidden></div>
         ${multiCur ? `<select id="tf-cur" class="cur">${st.currencies.map((c) => `<option ${c.code === f.currency ? 'selected' : ''}>${esc(c.code)}</option>`).join('')}</select>` : ''}
       </div>
       <em class="hint center" id="tf-hint"></em>
       <div class="amt-tools">
-        <div class="zero-sug" data-zero-for="tf-amt" hidden></div>
         <select id="tf-cat" class="cat-select" aria-label="Danh mục"></select>
       </div>
       <label class="check" id="tf-split-wrap"><input type="checkbox" id="tf-split" ${splitRows.length ? 'checked' : ''}> Chia thành nhiều danh mục</label>
