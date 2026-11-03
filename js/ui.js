@@ -59,9 +59,13 @@ function reformatMoney(inp) {
 function zeroSuggest(inp) {
   let box = inp._zeroBox;
   if (!box || !box.isConnected) {
-    box = document.createElement('div');
-    box.className = 'zero-sug';
-    (inp.closest('.amount-row') || inp).insertAdjacentElement('afterend', box);
+    // Form có chỗ đặt sẵn (cạnh ô Danh mục) thì dùng chỗ đó, không thì chèn ngay dưới ô tiền.
+    box = (inp.form && inp.id && inp.form.querySelector(`[data-zero-for="${inp.id}"]`)) || null;
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'zero-sug';
+      (inp.closest('.amount-row') || inp).insertAdjacentElement('afterend', box);
+    }
     inp._zeroBox = box;
     // Giữ bàn phím khi bấm gợi ý.
     box.addEventListener('pointerdown', (e) => e.preventDefault());

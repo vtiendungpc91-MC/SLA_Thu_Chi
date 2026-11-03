@@ -13,6 +13,7 @@ Dữ liệu chỉ lưu trên điện thoại (IndexedDB), không gửi lên serv
 | **Trả nợ (A)** | Ngân hàng, số tiền mỗi kỳ, ngày đến hạn, lặp hằng tháng và số kỳ còn lại, cách thanh toán và ghi chú (STK, nội dung CK…), đánh dấu đã trả (tự ghi khoản chi), hoàn tác |
 | **Tài khoản ngân hàng** | Tiền nằm trong tài khoản ngân hàng (không có Tiền mặt): ngân hàng, số TK, chủ TK, tên gợi nhớ; thêm nhiều tài khoản; chỉnh số dư cho khớp app ngân hàng. **Không đủ số dư thì không chi, chuyển khoản, góp, trả nợ hay nạp mục tiêu được**; khoản định kỳ tự động thiếu tiền sẽ chờ xử lý |
 | **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt → Bảo mật), tự khóa khi rời app, che nội dung ở màn hình đa nhiệm, sai 5 lần phải chờ 30 giây |
+| **Người dùng & mục** | Tối đa 3 người dùng (nút góc trái trên; trong đó có ⚙️ Cài đặt). Mỗi người dùng tạo các mục 🏦 Ngân hàng, 📈 Đầu tư (sổ thu/chi có tài khoản) và 💳 Thẻ chi tiêu — chọn/tạo ở nút góc phải trên |
 | **Nhiều người dùng** | Mỗi người (bạn, vợ/chồng, con…) có sổ riêng: ví, giao dịch, ngân sách, mục tiêu, trả nợ, cài đặt tách biệt. Chuyển người bằng nút tên ở góc trên trái |
 | **Góp** | Chuyển tiền từ người này sang người khác: sổ người góp ghi khoản chi "Góp cho …", sổ người nhận ghi khoản thu "Nhận góp từ …". Xóa một bên thì bên kia tự xóa theo |
 | **Trích** | Ngược với Góp: lấy tiền từ tài khoản của người khác về tài khoản của mình (người bị trích phải đủ số dư) |

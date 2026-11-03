@@ -384,6 +384,32 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .ptile-edit { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--soft); font-size: 13px; }
 .ptile-add { border: 2px dashed var(--line); background: none; border-radius: 16px; padding: 12px 6px; color: var(--primary); font-weight: 600; font-size: 14px; }
 
+/* Đầu trang: trái = người dùng, phải = mục; nút + ở giữa */
+.topbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 6px; min-height: 44px; }
+.topbar .profile-chip { margin: 0; max-width: 40%; }
+.profile-chip span.chip-name { width: auto; height: auto; background: none; border-radius: 0; display: inline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.book-chip .chip-av { font-size: 15px; }
+.title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin: 8px 2px 12px; }
+.title-row > div { min-width: 0; }
+.title-row h1 { font-size: 26px; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-row small { color: var(--muted); }
+.title-row .btn, .title-row .icon-btn { flex: 0 0 auto; white-space: nowrap; }
+.ptile-left b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+body.no-tabbar .tabbar { display: none; }
+body.no-tabbar .main { padding-bottom: calc(30px + var(--safe-b)); }
+.sheet-head .head-gear { flex: 0 0 auto; font-size: 19px; }
+
+/* Lưới ô người dùng / mục trong danh sách chọn */
+.tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; align-items: stretch; }
+.ptile-add.block { width: 100%; margin: 4px 0 10px; }
+
+/* Form nhập: ngày ở trên ô số tiền; hàng [+000 | Danh mục] dưới ô số tiền */
+.date-line { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.date-line input { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 16px; background: var(--card); color: var(--text); }
+.amt-tools { display: flex; align-items: center; gap: 10px; }
+.amt-tools .zero-sug { flex: 0 0 auto; margin: 0; }
+.amt-tools .cat-select { flex: 1; min-width: 0; margin-left: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); min-height: 44px; }
+
 /* Gợi ý thêm 000 dưới ô nhập tiền */
 .zero-sug { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .amount-row + .zero-sug { justify-content: center; }

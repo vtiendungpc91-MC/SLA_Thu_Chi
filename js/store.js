@@ -98,33 +98,116 @@ const listeners = new Set();
 export const onChange = (fn) => listeners.add(fn);
 export const emit = () => listeners.forEach((f) => f());
 
-// ---------- Người dùng (hồ sơ) ----------
-// Danh sách hồ sơ lưu ở localStorage; dữ liệu mỗi hồ sơ nằm trong database riêng.
+// ---------- Người dùng & mục ----------
+// Người dùng (tối đa 3) lưu ở "stc-users". Mỗi người dùng có nhiều MỤC (sổ) thuộc 3 loại:
+// Ngân hàng, Đầu tư (sổ thu/chi có tài khoản) và Thẻ chi tiêu. Danh sách mục lưu ở "stc-profiles";
+// mỗi mục có database riêng. "Profile" trong code = một mục.
 const PROFILES_KEY = 'stc-profiles';
+const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
+export const MAX_USERS = 3;
 export const PROFILE_COLORS = ['#1f6feb', '#d6409f', '#30a46c', '#f76b15', '#8e4ec6', '#0d74ce'];
+export const BOOK_KINDS = {
+  bank: { label: 'Ngân hàng', icon: '🏦' },
+  invest: { label: 'Đầu tư', icon: '📈' },
+  card: { label: 'Thẻ chi tiêu', icon: '💳' },
+};
 
-export function getProfiles() {
-  let list = [];
-  try { list = JSON.parse(localStorage.getItem(PROFILES_KEY) || '[]'); } catch { list = []; }
-  if (!list.length) {
-    list = [{ id: 'main', name: 'Tôi', icon: '🧑', color: PROFILE_COLORS[0] }];
-    localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
-  }
-  return list;
-}
+const readJSON = (key) => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } };
 const saveProfiles = (list) => localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
+const saveUsers = (list) => localStorage.setItem(USERS_KEY, JSON.stringify(list));
+
+/**
+ * Chuyển dữ liệu bản cũ (mỗi hồ sơ là 1 người dùng, thẻ đứng riêng) sang mô hình người dùng → mục:
+ * mỗi hồ sơ người dùng cũ thành 1 người dùng + mục "Ngân hàng" (giữ nguyên dữ liệu), thẻ cũ thuộc người dùng đầu tiên.
+ */
+function ensureModel() {
+  let books = readJSON(PROFILES_KEY) || [];
+  let users = readJSON(USERS_KEY);
+  if (users && users.length && books.length) return;
+  if (!books.length) books = [{ id: 'main', name: 'Tôi', icon: '🧑', color: PROFILE_COLORS[0] }];
+  users = [];
+  for (const b of books) {
+    if (b.kind === 'card') continue;
+    users.push({ id: b.id, name: b.name, icon: b.icon, color: b.color, photo: b.photo || null });
+    Object.assign(b, { kind: 'bank', owner: b.id, name: BOOK_KINDS.bank.label, icon: BOOK_KINDS.bank.icon, photo: null });
+  }
+  if (!users.length) {
+    const u = { id: 'main', name: 'Tôi', icon: '🧑', color: PROFILE_COLORS[0] };
+    users.push(u);
+    books.unshift({ id: 'main', name: BOOK_KINDS.bank.label, icon: BOOK_KINDS.bank.icon, color: u.color, kind: 'bank', owner: u.id });
+  }
+  for (const b of books) if (b.kind === 'card' && !b.owner) b.owner = users[0].id;
+  saveUsers(users);
+  saveProfiles(books);
+}
+
+/** Danh sách mục (sổ) của mọi người dùng. */
+export function getProfiles() {
+  ensureModel();
+  return readJSON(PROFILES_KEY);
+}
+export function getUsers() {
+  ensureModel();
+  return readJSON(USERS_KEY);
+}
 
 export function currentProfile() {
   const list = getProfiles();
   return list.find((p) => p.id === localStorage.getItem(CURRENT_KEY)) || list[0];
 }
+export function currentUser() {
+  const users = getUsers();
+  return users.find((u) => u.id === currentProfile().owner) || users[0];
+}
+export const userOf = (book) => getUsers().find((u) => u.id === book.owner);
+export const userBooks = (userId) => getProfiles().filter((b) => b.owner === userId);
+/** Nhãn đầy đủ của một mục: "Tôi · Ngân hàng". */
+export const bookLabel = (b) => `${userOf(b)?.name || '?'} · ${b.name}`;
 
 export async function switchProfile(id) {
   localStorage.setItem(CURRENT_KEY, id);
+  // Nhớ mục dùng gần nhất của người dùng để lần sau chuyển người thì mở đúng mục đó.
+  const book = getProfiles().find((b) => b.id === id);
+  if (book) saveUsers(getUsers().map((u) => (u.id === book.owner ? { ...u, lastBook: id } : u)));
   await useProfile(id);
   await loadAll();
   emit();
+}
+
+/** Chuyển sang người dùng khác: mở mục dùng gần nhất của người đó. */
+export async function switchUser(userId) {
+  const u = getUsers().find((x) => x.id === userId);
+  const books = userBooks(userId);
+  if (!u || !books.length) return;
+  await switchProfile((books.find((b) => b.id === u.lastBook) || books[0]).id);
+}
+
+/** Thêm/sửa người dùng. Thêm mới (tối đa 3) sẽ kèm một mục Ngân hàng mặc định. */
+export function saveUser(u) {
+  const users = getUsers();
+  if (!u.id) {
+    if (users.length >= MAX_USERS) throw new Error(`Tối đa ${MAX_USERS} người dùng`);
+    u.id = uid().replace(/-/g, '').slice(0, 12);
+    u.color = u.color || PROFILE_COLORS[users.length % PROFILE_COLORS.length];
+    users.push(u);
+    saveUsers(users);
+    saveProfile({ name: BOOK_KINDS.bank.label, icon: BOOK_KINDS.bank.icon, kind: 'bank', owner: u.id, color: u.color });
+  } else {
+    saveUsers(users.map((x) => (x.id === u.id ? { ...x, ...u } : x)));
+  }
+  return u;
+}
+
+/** Xóa người dùng cùng toàn bộ các mục (sổ) của người đó. */
+export async function deleteUser(userId) {
+  const users = getUsers().filter((u) => u.id !== userId);
+  if (!users.length) throw new Error('Cần giữ ít nhất 1 người dùng');
+  const drop = userBooks(userId);
+  saveUsers(users);
+  saveProfiles(getProfiles().filter((b) => b.owner !== userId));
+  if (drop.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchUser(users[0].id);
+  for (const b of drop) await dropProfile(b.id);
 }
 
 export function saveProfile(p) {
@@ -141,12 +224,14 @@ export function saveProfile(p) {
   return p;
 }
 
-/** Xóa hồ sơ và toàn bộ dữ liệu của hồ sơ đó. */
+/** Xóa một mục (sổ) và toàn bộ dữ liệu của mục đó. Mỗi người dùng phải còn ít nhất 1 mục. */
 export async function deleteProfile(id) {
-  const list = getProfiles().filter((p) => p.id !== id);
-  if (!list.some((p) => p.kind !== 'card')) throw new Error('Cần giữ ít nhất 1 người dùng');
-  saveProfiles(list);
-  if (currentProfile().id === id || localStorage.getItem(CURRENT_KEY) === id) await switchProfile(list[0].id);
+  const book = getProfiles().find((p) => p.id === id);
+  if (!book) return;
+  const siblings = userBooks(book.owner).filter((b) => b.id !== id);
+  if (!siblings.length) throw new Error('Mỗi người dùng cần ít nhất 1 mục');
+  saveProfiles(getProfiles().filter((p) => p.id !== id));
+  if (localStorage.getItem(CURRENT_KEY) === id) await switchProfile(siblings[0].id);
   await dropProfile(id);
 }
 
@@ -260,11 +345,11 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   const { peer, cats } = await openPeerBook(to.id);
   await peer.put('transactions', {
     ...base, id: uid(), type: 'income', categoryId: cats.find((c) => c.sys === 'gop-in').id, accountId: toAccountId,
-    note: note || `Nhận góp từ ${me.name}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: me.name }, updatedAt: Date.now(),
+    note: note || `Nhận góp từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me) }, updatedAt: Date.now(),
   });
   return put('transactions', {
     ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
-    note: note || `Góp cho ${to.name}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: to.name },
+    note: note || `Góp cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to) },
   });
 }
 
@@ -290,17 +375,17 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const have = await peerBalance(from.id, fromAccountId);
   if (amount > have) {
     const acc = accs.find((a) => a.id === fromAccountId);
-    throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${from.name} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
+    throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${bookLabel(from)} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
   }
   const gid = uid();
   const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
   await peer.put('transactions', {
     ...base, id: uid(), type: 'expense', categoryId: cats.find((c) => c.sys === 'trich-out').id, accountId: fromAccountId,
-    note: note || `Bị ${me.name} trích`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: me.name }, updatedAt: Date.now(),
+    note: note || `Bị ${bookLabel(me)} trích`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me) }, updatedAt: Date.now(),
   });
   return put('transactions', {
     ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
-    note: note || `Trích từ ${from.name}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: from.name },
+    note: note || `Trích từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from) },
   });
 }
 
@@ -417,8 +502,9 @@ export async function deleteTx(tx) {
 // Thẻ chi tiêu là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
 // Mỗi khoản chi có trạng thái open/done; "Trích thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
 export const isCard = (p = currentProfile()) => p && p.kind === 'card';
-export const userProfiles = () => getProfiles().filter((p) => p.kind !== 'card');
-export const cardProfiles = () => getProfiles().filter((p) => p.kind === 'card');
+/** Các mục có tài khoản/số dư (Ngân hàng, Đầu tư) của mọi người dùng — dùng cho Góp, Trích, trả tiền thẻ. */
+export const moneyBooks = () => getProfiles().filter((p) => p.kind !== 'card');
+export const cardBooks = (userId) => getProfiles().filter((p) => p.kind === 'card' && (!userId || p.owner === userId));
 export const CARD_SOURCES = ['MoMo', 'ZaloPay', 'ShopeePay', 'VNPay', 'Viettel Money', 'Apple Pay', 'Thẻ tín dụng', 'Khác'];
 
 /** Trích thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
@@ -430,7 +516,7 @@ export async function payCardItem(item, { profileId, accountId, date }) {
   const acc = accs.find((a) => a.id === accountId);
   const have = await peerBalance(profileId, accountId);
   if (item.amountVnd > have) {
-    throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${payer.name} không đủ: còn ${fmt(have)}, cần ${fmt(item.amountVnd)}`);
+    throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${bookLabel(payer)} không đủ: còn ${fmt(have)}, cần ${fmt(item.amountVnd)}`);
   }
   // Danh mục bên sổ người trả: cùng tên với danh mục của khoản chi, không có thì "Khác".
   const catName = catById(item.categoryId)?.name;
@@ -439,12 +525,12 @@ export async function payCardItem(item, { profileId, accountId, date }) {
   const txId = uid();
   await peer.put('transactions', {
     id: txId, type: 'expense', amount: item.amountVnd, currency: 'VND', rate: 1, amountVnd: item.amountVnd, date,
-    categoryId: cat.id, accountId, note: `${card.name}: ${item.note || item.source}`, tags: [], splits: null, photoIds: [],
+    categoryId: cat.id, accountId, note: `${bookLabel(card)}: ${item.note || item.source}`, tags: [], splits: null, photoIds: [],
     createdAt: Date.now(), updatedAt: Date.now(),
-    cardPay: { cardId: card.id, cardName: card.name, itemId: item.id, source: item.source },
+    cardPay: { cardId: card.id, cardName: bookLabel(card), itemId: item.id, source: item.source },
   });
   item.status = 'done';
-  item.paid = { profileId, profileName: payer.name, accountId, accountName: acc?.name || '', txId, date, at: Date.now() };
+  item.paid = { profileId, profileName: bookLabel(payer), accountId, accountName: acc?.name || '', txId, date, at: Date.now() };
   return put('transactions', item);
 }
 
@@ -690,7 +776,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 2, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, profiles, books };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), profiles, books };
 }
 
 /**
@@ -711,7 +797,10 @@ export async function importAny(data) {
     await book.bulkPut('settings', Object.entries(b.settings || {}).map(([key, value]) => ({ key, value })));
   }
   saveProfiles(data.profiles);
-  const target = data.profiles.some((p) => p.id === data.current) ? data.current : data.profiles[0].id;
+  // Bản sao lưu cũ chưa có danh sách người dùng → để ensureModel() chuyển đổi lại từ danh sách mục.
+  if (Array.isArray(data.users) && data.users.length) saveUsers(data.users);
+  else localStorage.removeItem(USERS_KEY);
+  const target = data.profiles.some((p) => p.id === data.current) ? data.current : getProfiles()[0].id;
   await switchProfile(target);
   // Xóa các sổ trên máy không có trong bản sao lưu.
   for (const id of oldIds) if (!data.profiles.some((p) => p.id === id)) await dropProfile(id);
