@@ -144,7 +144,7 @@ export function saveProfile(p) {
 /** Xóa hồ sơ và toàn bộ dữ liệu của hồ sơ đó. */
 export async function deleteProfile(id) {
   const list = getProfiles().filter((p) => p.id !== id);
-  if (!list.length) throw new Error('Cần giữ ít nhất 1 người dùng');
+  if (!list.some((p) => p.kind !== 'card')) throw new Error('Cần giữ ít nhất 1 người dùng');
   saveProfiles(list);
   if (currentProfile().id === id || localStorage.getItem(CURRENT_KEY) === id) await switchProfile(list[0].id);
   await dropProfile(id);
@@ -409,7 +409,84 @@ export function topCategories(type, n = 6) {
 export async function deleteTx(tx) {
   for (const pid of tx.photoIds || []) await db.del('photos', pid);
   await deleteGopPeer(tx);
+  await reopenCardItem(tx);
   await remove('transactions', tx.id);
+}
+
+// ---------- Thẻ chi tiêu ----------
+// Thẻ chi tiêu là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
+// Mỗi khoản chi có trạng thái open/done; "Trích thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
+export const isCard = (p = currentProfile()) => p && p.kind === 'card';
+export const userProfiles = () => getProfiles().filter((p) => p.kind !== 'card');
+export const cardProfiles = () => getProfiles().filter((p) => p.kind === 'card');
+export const CARD_SOURCES = ['MoMo', 'ZaloPay', 'ShopeePay', 'VNPay', 'Viettel Money', 'Apple Pay', 'Thẻ tín dụng', 'Khác'];
+
+/** Trích thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
+export async function payCardItem(item, { profileId, accountId, date }) {
+  const card = currentProfile();
+  const payer = getProfiles().find((p) => p.id === profileId);
+  if (!payer || payer.kind === 'card') throw new Error('Chọn người dùng trả tiền');
+  const { peer, cats, accs } = await openPeerBook(profileId);
+  const acc = accs.find((a) => a.id === accountId);
+  const have = await peerBalance(profileId, accountId);
+  if (item.amountVnd > have) {
+    throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${payer.name} không đủ: còn ${fmt(have)}, cần ${fmt(item.amountVnd)}`);
+  }
+  // Danh mục bên sổ người trả: cùng tên với danh mục của khoản chi, không có thì "Khác".
+  const catName = catById(item.categoryId)?.name;
+  const expCats = cats.filter((c) => c.type === 'expense' && !c.archived);
+  const cat = expCats.find((c) => c.name === catName) || expCats.find((c) => c.name === 'Khác') || expCats[0];
+  const txId = uid();
+  await peer.put('transactions', {
+    id: txId, type: 'expense', amount: item.amountVnd, currency: 'VND', rate: 1, amountVnd: item.amountVnd, date,
+    categoryId: cat.id, accountId, note: `${card.name}: ${item.note || item.source}`, tags: [], splits: null, photoIds: [],
+    createdAt: Date.now(), updatedAt: Date.now(),
+    cardPay: { cardId: card.id, cardName: card.name, itemId: item.id, source: item.source },
+  });
+  item.status = 'done';
+  item.paid = { profileId, profileName: payer.name, accountId, accountName: acc?.name || '', txId, date, at: Date.now() };
+  return put('transactions', item);
+}
+
+/** Hủy thanh toán: xóa khoản chi bên sổ người trả, đưa khoản chi của thẻ về "chưa thanh toán". */
+export async function unpayCardItem(item) {
+  if (item.paid && getProfiles().some((p) => p.id === item.paid.profileId)) {
+    await dbOf(item.paid.profileId).del('transactions', item.paid.txId);
+  }
+  item.status = 'open';
+  item.paid = null;
+  return put('transactions', item);
+}
+
+/** Người trả xóa khoản thanh toán trong sổ của họ → khoản chi bên thẻ mở lại. */
+async function reopenCardItem(tx) {
+  if (!tx.cardPay || !getProfiles().some((p) => p.id === tx.cardPay.cardId)) return;
+  const cardDb = dbOf(tx.cardPay.cardId);
+  const item = (await cardDb.getAll('transactions')).find((t) => t.id === tx.cardPay.itemId);
+  if (item && item.paid && item.paid.txId === tx.id) {
+    item.status = 'open';
+    item.paid = null;
+    item.updatedAt = Date.now();
+    await cardDb.put('transactions', item);
+  }
+}
+
+/** Tóm tắt để hiện trong danh sách chọn: người dùng → tổng số dư; thẻ → số tiền đã chi chưa thanh toán. */
+export async function profileSummary(p) {
+  const isCur = p.id === currentProfile().id;
+  const txs = isCur ? state.transactions : await dbOf(p.id).getAll('transactions');
+  if (p.kind === 'card') {
+    const open = txs.filter((t) => t.status !== 'done');
+    return { kind: 'card', unpaid: open.reduce((s, t) => s + t.amountVnd, 0), count: open.length };
+  }
+  const accs = (isCur ? state.accounts : await dbOf(p.id).getAll('accounts')).filter((a) => !a.archived);
+  let balance = 0;
+  for (const a of accs) {
+    let b = Number(a.initial) || 0;
+    for (const t of txs) b += txEffect(t, a.id);
+    balance += b;
+  }
+  return { kind: 'user', balance };
 }
 
 export const savePhoto = (blob) => {

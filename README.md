@@ -16,6 +16,8 @@ Dữ liệu chỉ lưu trên điện thoại (IndexedDB), không gửi lên serv
 | **Nhiều người dùng** | Mỗi người (bạn, vợ/chồng, con…) có sổ riêng: ví, giao dịch, ngân sách, mục tiêu, trả nợ, cài đặt tách biệt. Chuyển người bằng nút tên ở góc trên trái |
 | **Góp** | Chuyển tiền từ người này sang người khác: sổ người góp ghi khoản chi "Góp cho …", sổ người nhận ghi khoản thu "Nhận góp từ …". Xóa một bên thì bên kia tự xóa theo |
 | **Trích** | Ngược với Góp: lấy tiền từ tài khoản của người khác về tài khoản của mình (người bị trích phải đủ số dư) |
+| **Thẻ chi tiêu** | Tạo trong danh sách người dùng (+ Thẻ chi tiêu). Thẻ không có số dư: ghi các khoản chi theo nguồn (MoMo, ZaloPay, ShopeePay…), sau đó **Trích thanh toán** từng khoản (hoặc tất cả) từ tài khoản của một người dùng → khoản chuyển **Done**, sổ người trả ghi khoản chi tương ứng. Hủy thanh toán / xóa bên người trả thì khoản của thẻ mở lại |
+| **Nhập số tiền** | Tự thêm dấu chấm phân cách hàng nghìn khi gõ; gợi ý nút **+000** / **+000.000** để nhập nhanh |
 | **Ẩn/hiện mục** | Mỗi người dùng tự chọn ẩn/hiện mục Báo cáo, Kế hoạch (Cài đặt → Hiển thị) |
 | **Báo cáo** | Tổng quan/Giao dịch xem theo ngày/tháng; Báo cáo chọn ngày, tháng, quý, năm hoặc khoảng thời gian tự chọn, biểu đồ thu chi theo thời gian, biểu đồ tròn theo danh mục, so sánh với kỳ trước, chi theo tag |
 | **Dữ liệu** | Sao lưu và khôi phục file `.json` (kèm ảnh), xuất CSV mở bằng Excel |

@@ -56,7 +56,7 @@ function txRow(t) {
   const title = t.note || (isTr ? 'Chuyển tiền' : catText);
   const sub = [isTr ? `${accName(t.accountId)} → ${accName(t.toAccountId)}` : (t.note && t.note !== catText ? catText + ' · ' : '') + accName(t.accountId)];
   if (t.tags && t.tags.length) sub.push(t.tags.map((g) => '#' + g).join(' '));
-  const flags = (t.photoIds && t.photoIds.length ? '📎' : '') + (t.recurringId ? '🔁' : '') + (t.debtId ? '🏦' : '');
+  const flags = (t.photoIds && t.photoIds.length ? '📎' : '') + (t.recurringId ? '🔁' : '') + (t.debtId ? '🏦' : '') + (t.cardPay ? '💳' : '');
   const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
   const foreign = t.currency && t.currency !== 'VND' ? `<small>${esc(fmtCur(t.amount, t.currency))}</small>` : '';
   return `<button type="button" class="row tx" data-act="tx-edit" data-id="${t.id}">
@@ -145,44 +145,75 @@ async function switchTo(id) {
 
 actions['profile-switch'] = (el) => switchTo(el.dataset.id);
 
+/** Dòng người dùng / thẻ trong danh sách chọn; số dư được điền sau (bất đồng bộ). */
+function profileRowHtml(p, cur) {
+  return `<div class="row profile-row ${p.id === cur ? 'on' : ''}">
+    <button type="button" class="grow-btn" data-switch="${esc(p.id)}"><span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span>
+      <span class="grow"><b>${esc(p.name)}</b><small>${p.id === cur ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>
+      <span class="psum" data-psum="${esc(p.id)}">…</span>${p.id === cur ? '<span class="income">✓</span>' : ''}</button>
+    <button type="button" class="icon-btn" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
+  </div>`;
+}
+
+/** Điền số dư (người dùng) hoặc số tiền chưa thanh toán (thẻ) vào các ô [data-psum]. */
+async function fillProfileSums(root) {
+  for (const el of root.querySelectorAll('[data-psum]')) {
+    const p = S.getProfiles().find((x) => x.id === el.dataset.psum);
+    if (!p) continue;
+    try {
+      const s = await S.profileSummary(p);
+      el.innerHTML = s.kind === 'card'
+        ? `<b class="${s.unpaid ? 'expense' : 'income'}">${fmt(s.unpaid)}</b><small>${s.count ? `${s.count} khoản chưa TT` : 'Đã thanh toán hết'}</small>`
+        : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>Số dư</small>`;
+    } catch { el.textContent = ''; }
+  }
+}
+
 actions.profiles = () => {
   const cur = S.currentProfile().id;
+  const users = S.userProfiles(), cards = S.cardProfiles();
   openSheet({
-    title: 'Chọn người dùng',
-    body: `<div class="list">${S.getProfiles().map((p) => `
-      <div class="row profile-row ${p.id === cur ? 'on' : ''}">
-        <button type="button" class="grow-btn" data-switch="${esc(p.id)}"><span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span>
-          <span class="grow"><b>${esc(p.name)}</b><small>${p.id === cur ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>${p.id === cur ? '<span class="income">✓</span>' : ''}</button>
-        <button type="button" class="icon-btn" data-edit="${esc(p.id)}" aria-label="Sửa">✎</button>
-      </div>`).join('')}</div>
-      <button type="button" class="btn primary block" data-add>+ Thêm người dùng</button>
-      <p class="muted small">Ví dụ: sổ của bạn, sổ của vợ/chồng, sổ của con… Dữ liệu mỗi người tách riêng.</p>`,
+    title: 'Chọn người dùng / thẻ',
+    body: `<h4 class="grp-h">👤 Người dùng</h4>
+      <div class="list">${users.map((p) => profileRowHtml(p, cur)).join('')}</div>
+      <h4 class="grp-h">💳 Thẻ chi tiêu</h4>
+      ${cards.length ? `<div class="list">${cards.map((p) => profileRowHtml(p, cur)).join('')}</div>` : '<p class="muted small">Chưa có thẻ. Thẻ dùng để ghi các khoản chi qua MoMo, ZaloPay… rồi trích tiền từ tài khoản người dùng để thanh toán.</p>'}
+      <div class="actions"><button type="button" class="btn primary" data-add="user">+ Người dùng</button><button type="button" class="btn ghost" data-add="card">+ Thẻ chi tiêu</button></div>`,
     onMount(sh, close) {
+      fillProfileSums(sh);
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]');
         const ed = e.target.closest('[data-edit]');
+        const add = e.target.closest('[data-add]');
         if (sw) { close(); await switchTo(sw.dataset.switch); }
         else if (ed) { close(); profileForm(S.getProfiles().find((p) => p.id === ed.dataset.edit)); }
-        else if (e.target.closest('[data-add]')) { close(); profileForm(null); }
+        else if (add) { close(); profileForm(null, add.dataset.add); }
       });
     },
   });
 };
 
 const PROFILE_ICONS = ['🧑', '👨', '👩', '👦', '👧', '👴', '👵', '👪', '💼', '🏠'];
+const CARD_ICONS = ['💳', '📱', '🛒', '🛵', '🍔', '🎮', '🏷️', '🧾', '🎁', '✈️'];
 
-function profileForm(p) {
-  const f = p ? { ...p } : { name: '', icon: S.getProfiles().length === 1 ? '👩' : '🧑', color: null };
+function profileForm(p, kind = 'user') {
+  if (p) kind = p.kind === 'card' ? 'card' : 'user';
+  const card = kind === 'card';
+  const icons = card ? CARD_ICONS : PROFILE_ICONS;
+  const f = p ? { ...p } : { name: '', kind, icon: card ? '💳' : (S.userProfiles().length === 1 ? '👩' : '🧑'), color: null };
   if (!f.color) f.color = S.PROFILE_COLORS[S.getProfiles().length % S.PROFILE_COLORS.length];
-  const isOnly = S.getProfiles().length <= 1;
+  const isOnly = !card && S.userProfiles().length <= 1;
+  const noun = card ? 'thẻ chi tiêu' : 'người dùng';
   openSheet({
-    title: p ? 'Sửa người dùng' : 'Thêm người dùng',
+    title: (p ? 'Sửa ' : 'Thêm ') + noun,
     body: `<form class="form">
-      ${field('Tên hiển thị', `<input id="pf-name" required maxlength="20" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ, Con gái">`)}
-      <div class="field"><span>Biểu tượng</span><div class="chips" id="pf-icons">${PROFILE_ICONS.map((i) => `<button type="button" class="chip icon-chip ${i === f.icon ? 'on' : ''}" data-icon="${i}">${i}</button>`).join('')}</div></div>
+      ${field(card ? 'Tên thẻ' : 'Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="${card ? 'vd: Thẻ MoMo gia đình, Đi chợ' : 'vd: Dũng, Vợ, Con gái'}">`)}
+      <div class="field"><span>Biểu tượng</span><div class="chips" id="pf-icons">${icons.map((i) => `<button type="button" class="chip icon-chip ${i === f.icon ? 'on' : ''}" data-icon="${i}">${i}</button>`).join('')}</div></div>
       <div class="field"><span>Màu</span><div class="colors">${S.PROFILE_COLORS.map((col) => `<button type="button" class="color ${col === f.color ? 'on' : ''}" data-color="${col}" style="--c:${col}" aria-label="${col}"></button>`).join('')}</div></div>
-      ${p ? '' : '<p class="muted small">Sổ mới có sẵn danh mục và 1 tài khoản ngân hàng để bạn điền thông tin. Cài đặt khác lấy giá trị mặc định.</p>'}
-      <div class="actions">${p && !isOnly ? '<button type="button" class="btn danger" data-del>Xóa người dùng</button>' : ''}<button class="btn primary">${p ? 'Lưu' : 'Thêm & chuyển sang'}</button></div>
+      ${p ? '' : card
+        ? '<p class="muted small">Thẻ không có số dư: bạn ghi các khoản chi (MoMo, ZaloPay…), sau đó trích tiền từ tài khoản của một người dùng để thanh toán từng khoản.</p>'
+        : '<p class="muted small">Sổ mới có sẵn danh mục và 1 tài khoản ngân hàng để bạn điền thông tin. Cài đặt khác lấy giá trị mặc định.</p>'}
+      <div class="actions">${p && !isOnly ? `<button type="button" class="btn danger" data-del>Xóa ${noun}</button>` : ''}<button class="btn primary">${p ? 'Lưu' : 'Thêm & chuyển sang'}</button></div>
     </form>`,
     onMount(sh, close) {
       $(sh, '#pf-icons').addEventListener('click', (e) => {
@@ -207,11 +238,11 @@ function profileForm(p) {
         if (p) { refresh(); toast('Đã lưu'); } else await switchTo(saved.id);
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
-        if (!confirm(`Xóa người dùng "${p.name}" và TOÀN BỘ dữ liệu thu chi của người này? Không thể hoàn tác. Nên sao lưu trước!`)) return;
+        if (!confirm(`Xóa ${noun} "${p.name}" và TOÀN BỘ dữ liệu của ${card ? 'thẻ' : 'người'} này? Không thể hoàn tác. Nên sao lưu trước!`)) return;
         if (prompt('Gõ XOA để xác nhận') !== 'XOA') return;
         ui.period = null;
-        await S.deleteProfile(p.id);
-        close(); refresh(); toast('Đã xóa người dùng');
+        try { await S.deleteProfile(p.id); } catch (err) { return toast(err.message); }
+        close(); refresh(); toast('Đã xóa ' + noun);
       });
     },
   });
@@ -219,6 +250,205 @@ function profileForm(p) {
 
 function sectionTitle(text, actionHtml = '') {
   return `<div class="sec-h"><h2>${text}</h2>${actionHtml}</div>`;
+}
+
+// ================= Thẻ chi tiêu =================
+const SOURCE_ICON = { MoMo: '🟪', ZaloPay: '🟦', ShopeePay: '🟧', VNPay: '🔴', 'Viettel Money': '🟥', 'Apple Pay': '🍎', 'Thẻ tín dụng': '💳', 'Khác': '🧾' };
+const srcIcon = (s) => SOURCE_ICON[s] || '🧾';
+const sumAmt = (list) => list.reduce((s, t) => s + t.amountVnd, 0);
+const isDone = (t) => t.status === 'done';
+
+function cardView() {
+  const p = S.currentProfile();
+  const items = sortTx([...state.transactions]);
+  const open = items.filter((t) => !isDone(t));
+  const m = getRange('month', todayISO());
+  const paidMonth = sumAmt(items.filter((t) => isDone(t) && t.paid && t.paid.date >= m.start && t.paid.date <= m.end));
+  const filter = ui.cardFilter || 'open';
+  const list = filter === 'open' ? open : filter === 'done' ? items.filter(isDone) : items;
+  const groups = new Map();
+  for (const t of list) { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); }
+  return `
+  <header class="top"><div>${profileChip()}<h1>${esc(p.name)}</h1><small>Thẻ chi tiêu</small></div></header>
+  <section class="card hero">
+    <div class="hero-net"><small>Đã chi, chưa thanh toán · ${open.length} khoản</small><strong class="expense">${fmt(sumAmt(open))}</strong></div>
+    <div class="hero-bal"><span>Đã thanh toán ${esc(m.label.toLowerCase())}</span><b class="income">${fmt(paidMonth)}</b></div>
+    ${open.length > 1 ? `<button type="button" class="btn primary block" data-act="card-pay-all">💸 Trích thanh toán tất cả (${fmt(sumAmt(open))})</button>` : ''}
+  </section>
+  <div class="seg small">${[['open', `Chưa thanh toán (${open.length})`], ['done', 'Done'], ['all', 'Tất cả']].map(([k, l]) =>
+    `<button type="button" data-act="card-filter" data-v="${k}" class="${filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  ${list.length ? [...groups.entries()].map(([d, arr]) => `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span><span>${fmt(sumAmt(arr))}</span></div>
+    <div class="card list">${arr.map(cardRow).join('')}</div></div>`).join('')
+    : empty('💳', filter === 'open' ? 'Không còn khoản nào chưa thanh toán. Bấm <b>+</b> để ghi khoản chi mới.' : 'Chưa có khoản chi nào.')}
+  <button type="button" class="fab" data-act="card-add" aria-label="Thêm khoản chi">+</button>`;
+}
+
+function cardRow(t) {
+  const cat = S.catById(t.categoryId);
+  return `<div class="row card-item ${isDone(t) ? 'done' : ''}">
+    <button type="button" class="grow-btn" data-act="card-open" data-id="${t.id}">
+      <span class="ci" style="--c:${esc((cat || UNKNOWN_CAT).color)}">${srcIcon(t.source)}</span>
+      <span class="grow"><b>${esc(t.note || t.source)}</b><small>${esc(t.source)}${cat ? ' · ' + esc(cat.name) : ''}</small>
+        <small class="when">${esc(txWhen(t))}</small>
+        ${isDone(t) && t.paid ? `<small class="income">✅ ${esc(t.paid.profileName)} · ${esc(t.paid.accountName)} · ${fmtDate(t.paid.date)}</small>` : ''}</span>
+      <span class="amt">${fmt(t.amountVnd)}<small class="badge ${isDone(t) ? 'done' : 'open'}">${isDone(t) ? 'Done' : 'Chưa TT'}</small></span>
+    </button>
+    ${isDone(t) ? '' : `<button type="button" class="btn primary small pay-btn" data-act="card-pay" data-id="${t.id}">💸 Trích</button>`}
+  </div>`;
+}
+
+const cardItem = (id) => state.transactions.find((t) => t.id === id);
+actions['card-filter'] = (el) => { ui.cardFilter = el.dataset.v; refresh(); };
+actions['card-add'] = () => cardItemForm(null);
+actions['card-pay'] = (el) => { const t = cardItem(el.dataset.id); if (t) cardPaySheet([t]); };
+actions['card-pay-all'] = () => cardPaySheet(state.transactions.filter((t) => !isDone(t)));
+
+actions['card-open'] = (el) => {
+  const t = cardItem(el.dataset.id);
+  if (!t) return;
+  const cat = S.catById(t.categoryId);
+  openSheet({
+    title: 'Khoản chi của thẻ',
+    body: `<div class="detail">
+      <div class="big-ic">${srcIcon(t.source)}</div>
+      <div class="kv"><span>Nội dung</span><b>${esc(t.note || '—')}</b></div>
+      <div class="kv"><span>Số tiền</span><b class="expense">${fmt(t.amountVnd)}</b></div>
+      <div class="kv"><span>Nguồn</span><b>${esc(t.source)}</b></div>
+      <div class="kv"><span>Danh mục</span><b>${esc(cat?.name || '—')}</b></div>
+      <div class="kv"><span>Ngày chi</span><b>${fmtDate(t.date)}</b></div>
+      ${t.createdAt ? `<div class="kv"><span>Ghi nhận lúc</span><b>${fmtDateTimeVN(t.createdAt)}</b></div>` : ''}
+      <div class="kv"><span>Trạng thái</span><b class="${isDone(t) ? 'income' : 'expense'}">${isDone(t) ? '✅ Done' : 'Chưa thanh toán'}</b></div>
+      ${isDone(t) && t.paid ? `<div class="kv"><span>Thanh toán bởi</span><b>${esc(t.paid.profileName)} · ${esc(t.paid.accountName)}</b></div>
+        <div class="kv"><span>Ngày thanh toán</span><b>${fmtDate(t.paid.date)}</b></div>` : ''}
+      <div class="actions">${isDone(t)
+        ? '<button type="button" class="btn ghost" data-unpay>↶ Hủy thanh toán</button>'
+        : '<button type="button" class="btn primary" data-pay>💸 Trích thanh toán</button><button type="button" class="btn ghost" data-edit>Sửa</button>'}
+        <button type="button" class="btn danger" data-del>Xóa</button></div>
+      ${isDone(t) ? '<p class="muted small">Hủy thanh toán sẽ xóa khoản chi tương ứng trong sổ của người đã trả và đưa khoản này về "Chưa thanh toán".</p>' : ''}
+    </div>`,
+    onMount(sh, close) {
+      $(sh, '[data-pay]')?.addEventListener('click', () => { close(); cardPaySheet([t]); });
+      $(sh, '[data-edit]')?.addEventListener('click', () => { close(); cardItemForm(t); });
+      $(sh, '[data-unpay]')?.addEventListener('click', async () => {
+        if (!confirm(`Hủy thanh toán? Khoản chi ${fmt(t.amountVnd)} trong sổ của ${t.paid?.profileName || 'người trả'} sẽ bị xóa.`)) return;
+        await S.unpayCardItem(t);
+        close(); toast('Đã hủy thanh toán');
+      });
+      $(sh, '[data-del]').addEventListener('click', async () => {
+        if (!confirm(isDone(t) ? 'Xóa khoản chi này? Khoản thanh toán bên sổ người trả cũng bị xóa.' : 'Xóa khoản chi này?')) return;
+        if (isDone(t)) await S.unpayCardItem(t);
+        await S.remove('transactions', t.id);
+        close(); toast('Đã xóa');
+      });
+    },
+  });
+};
+
+function cardItemForm(item) {
+  const f = item ? { ...item } : { amountVnd: 0, source: state.settings.lastSource || 'MoMo', categoryId: state.settings.lastCat?.expense, date: todayISO(), note: '' };
+  const cats = S.catsOf('expense').filter((c) => !/^(gop|trich)/.test(c.sys || ''));
+  if (!cats.some((c) => c.id === f.categoryId)) f.categoryId = cats[0]?.id;
+  openSheet({
+    title: item ? 'Sửa khoản chi' : 'Thêm khoản chi của thẻ',
+    body: `<form class="form">
+      ${amountField('ci-amt', f.amountVnd)}
+      <div class="field"><span>Nguồn chi</span>
+        <div class="chips" id="ci-src">${S.CARD_SOURCES.map((s) => `<button type="button" class="chip ${s === f.source ? 'on' : ''}" data-src="${esc(s)}">${srcIcon(s)} ${esc(s)}</button>`).join('')}</div>
+        <input id="ci-src-other" placeholder="Nguồn khác (vd: Grab, Be, thẻ siêu thị…)" value="${S.CARD_SOURCES.includes(f.source) ? '' : esc(f.source)}"></div>
+      ${field('Danh mục', `<select id="ci-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
+      ${field('Nội dung', `<input id="ci-note" value="${esc(f.note)}" placeholder="vd: Đổ xăng, đi chợ, nạp điện thoại">`)}
+      ${field('Ngày chi', `<input type="date" id="ci-date" value="${esc(f.date)}">`)}
+      <div class="actions"><button class="btn primary">Lưu</button></div>
+    </form>`,
+    onMount(sh, close) {
+      const amt = bindMoney(sh, 'ci-amt');
+      let source = S.CARD_SOURCES.includes(f.source) ? f.source : 'Khác';
+      $(sh, '#ci-src').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-src]');
+        if (!b) return;
+        source = b.dataset.src;
+        sh.querySelectorAll('[data-src]').forEach((x) => x.classList.toggle('on', x === b));
+      });
+      if (!item) setTimeout(() => amt.focus(), 250);
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = Math.round(readMoney(amt.value));
+        if (!(v > 0)) return toast('Nhập số tiền');
+        const other = $(sh, '#ci-src-other').value.trim();
+        const src = other || source;
+        const categoryId = $(sh, '#ci-cat').value;
+        await S.put('transactions', {
+          ...f, type: 'expense', amount: v, currency: 'VND', rate: 1, amountVnd: v, source: src, categoryId,
+          note: $(sh, '#ci-note').value.trim(), date: $(sh, '#ci-date').value || todayISO(),
+          accountId: null, tags: f.tags || [], splits: null, photoIds: f.photoIds || [], status: f.status || 'open',
+          createdAt: f.createdAt || Date.now(),
+        });
+        await S.setSetting('lastSource', src, { silent: true });
+        await S.setSetting('lastCat', { ...state.settings.lastCat, expense: categoryId }, { silent: true });
+        close(); toast(`Đã ghi khoản chi ${fmt(v)} (${src})`);
+      });
+    },
+  });
+}
+
+/** Trích thanh toán 1 hoặc nhiều khoản chi của thẻ từ tài khoản của một người dùng. */
+function cardPaySheet(items) {
+  const users = S.userProfiles();
+  const total = sumAmt(items);
+  openSheet({
+    title: items.length > 1 ? `Trích thanh toán ${items.length} khoản` : 'Trích thanh toán',
+    body: `<form class="form">
+      <div class="note-box">${items.length > 1 ? `${items.length} khoản chưa thanh toán` : esc(items[0].note || items[0].source) + ' · ' + esc(items[0].source)}<br><b class="expense big-amt">${fmt(total)}</b></div>
+      <div class="field"><span>Người trả</span><div class="chips" id="cp-who">${users.map((p, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>
+      ${field('Từ tài khoản', `<select id="cp-acc"><option>Đang tải…</option></select>`)}
+      <em class="hint" id="cp-bal"></em>
+      ${field('Ngày thanh toán', `<input type="date" id="cp-date" value="${todayISO()}">`)}
+      <p class="muted small">Sổ của người trả sẽ ghi ${items.length > 1 ? 'các' : 'một'} khoản chi tương ứng; khoản của thẻ chuyển sang ✅ Done.</p>
+      <div class="actions"><button class="btn primary">💸 Trích ${fmt(total)}</button></div>
+    </form>`,
+    onMount(sh, close) {
+      let whoId = users[0].id;
+      const balances = new Map();
+      const updBal = () => {
+        const have = balances.get($(sh, '#cp-acc').value);
+        if (have == null) return;
+        $(sh, '#cp-bal').textContent = `Khả dụng: ${fmt(have)}${total > have ? ' — không đủ tiền!' : ''}`;
+        $(sh, '#cp-bal').className = 'hint' + (total > have ? ' expense' : '');
+      };
+      const load = async () => {
+        const all = await S.peerAccounts(whoId);
+        const banks = all.filter((a) => a.kind !== 'cash');
+        const accs = banks.length ? banks : all;
+        balances.clear();
+        for (const a of accs) balances.set(a.id, await S.peerBalance(whoId, a.id));
+        $(sh, '#cp-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmt(balances.get(a.id))}</option>`).join('');
+        updBal();
+      };
+      $(sh, '#cp-who').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-who]');
+        if (!b) return;
+        whoId = b.dataset.who;
+        sh.querySelectorAll('[data-who]').forEach((x) => x.classList.toggle('on', x === b));
+        load();
+      });
+      $(sh, '#cp-acc').addEventListener('change', updBal);
+      load();
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const accountId = $(sh, '#cp-acc').value;
+        const have = balances.get(accountId);
+        if (have == null) return toast('Chọn tài khoản');
+        const who = users.find((p) => p.id === whoId);
+        if (total > have) return toast(`⛔ Số dư của ${who.name} không đủ: còn ${fmt(have)}, cần ${fmt(total)}`, 4500);
+        const date = $(sh, '#cp-date').value || todayISO();
+        try {
+          for (const it of items) await S.payCardItem(it, { profileId: whoId, accountId, date });
+        } catch (err) { return toast('⛔ ' + err.message, 4500); }
+        close();
+        toast(`✅ Đã trích ${fmt(total)} từ ${who.name}`);
+      });
+    },
+  });
 }
 
 // ================= Tổng quan =================
@@ -354,11 +584,39 @@ actions['tx-tag'] = (el) => { ui.txFilter.tag = el.dataset.v; refresh(); };
 actions['tx-unfilter'] = (el) => { ui.txFilter[el.dataset.v] = null; refresh(); };
 actions['tx-edit'] = (el) => {
   const tx = state.transactions.find((t) => t.id === el.dataset.id);
-  if (tx) (tx.gop ? gopDetail(tx) : openTxForm({ tx }));
+  if (tx) (tx.gop ? gopDetail(tx) : tx.cardPay ? cardPayDetail(tx) : openTxForm({ tx }));
 };
 
+/** Khoản chi trong sổ người dùng được tạo khi trích thanh toán cho thẻ chi tiêu. */
+function cardPayDetail(tx) {
+  const cp = tx.cardPay;
+  const cardExists = S.getProfiles().some((p) => p.id === cp.cardId);
+  openSheet({
+    title: 'Thanh toán thẻ chi tiêu',
+    body: `<div class="detail">
+      <div class="big-ic">💳</div>
+      <div class="kv"><span>Thẻ</span><b>${esc(cp.cardName)}${cardExists ? '' : ' (đã xóa)'}</b></div>
+      <div class="kv"><span>Nội dung</span><b>${esc(tx.note)}</b></div>
+      <div class="kv"><span>Nguồn chi</span><b>${esc(cp.source || '—')}</b></div>
+      <div class="kv"><span>Số tiền</span><b class="expense">${fmtSigned(-tx.amountVnd)}</b></div>
+      <div class="kv"><span>Từ tài khoản</span><b>${esc(accName(tx.accountId))}</b></div>
+      <div class="kv"><span>Ngày</span><b>${fmtDate(tx.date)}</b></div>
+      <p class="muted small">Xóa khoản này thì khoản chi bên thẻ sẽ quay về "Chưa thanh toán".</p>
+      <div class="actions"><button type="button" class="btn danger" data-del>Xóa khoản thanh toán</button></div>
+    </div>`,
+    onMount(sh, close) {
+      $(sh, '[data-del]').addEventListener('click', async () => {
+        if (!confirm('Xóa khoản thanh toán này? Khoản chi bên thẻ sẽ quay về "Chưa thanh toán".')) return;
+        await S.deleteTx(tx);
+        close(); toast('Đã xóa khoản thanh toán');
+      });
+    },
+  });
+}
+
 // ================= Góp tiền giữa các người dùng =================
-const otherProfiles = () => S.getProfiles().filter((p) => p.id !== S.currentProfile().id);
+// Người dùng khác (không tính thẻ chi tiêu) — dùng cho Góp, Trích, chọn sổ để ghi.
+const otherProfiles = () => S.userProfiles().filter((p) => p.id !== S.currentProfile().id);
 
 actions.gop = () => openGopForm();
 
@@ -1100,7 +1358,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   ensureCat();
   // Chọn người dùng để ghi vào đúng sổ (chỉ khi thêm mới và có từ 2 người dùng).
   const origin = returnTo || S.currentProfile().id;
-  const showWho = !isEdit && !fromRecurring && S.getProfiles().length > 1;
+  const showWho = !isEdit && !fromRecurring && S.userProfiles().length > 1;
   let switching = false;
   const rate0 = f.rate || S.rateOf(f.currency);
   let splitRows = f.splits && f.splits.length ? f.splits.map((p) => ({ categoryId: p.categoryId, amount: fmtNum(p.amountVnd / rate0) })) : [];
@@ -1113,7 +1371,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   openSheet({
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     body: `<form class="form txf" autocomplete="off">
-      ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.getProfiles().map((p) =>
+      ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.userProfiles().map((p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${['expense', 'income', 'transfer'].map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
@@ -1504,14 +1762,19 @@ function settingsView() {
   return `
   <header class="top"><div>${profileChip()}<h1>Cài đặt</h1></div></header>
 
-  ${sectionTitle('Người dùng', `<button type="button" class="link" data-act="profiles">Quản lý</button>`)}
-  <section class="card list">${S.getProfiles().map((p) => `
+  ${sectionTitle('Người dùng & thẻ chi tiêu', `<button type="button" class="link" data-act="profiles">Quản lý</button>`)}
+  <section class="card list">${[...S.userProfiles(), ...S.cardProfiles()].map((p) => `
     <button type="button" class="row" data-act="profile-switch" data-id="${esc(p.id)}">
       <span class="ci" style="--c:${esc(p.color)}">${esc(p.icon)}</span><span class="grow"><b>${esc(p.name)}</b>
-      <small>${p.id === S.currentProfile().id ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>${p.id === S.currentProfile().id ? '<span class="income">✓</span>' : '›'}</button>`).join('')}
+      <small>${p.kind === 'card' ? 'Thẻ chi tiêu · ' : ''}${p.id === S.currentProfile().id ? 'Đang dùng' : 'Bấm để chuyển sang'}</small></span>
+      <span class="psum" data-psum="${esc(p.id)}">…</span>${p.id === S.currentProfile().id ? '<span class="income">✓</span>' : '›'}</button>`).join('')}
   </section>
   <p class="muted small">Mỗi người có sổ riêng: tài khoản, giao dịch, ngân sách, mục tiêu, trả nợ và cài đặt hoàn toàn tách biệt.</p>
 
+  ${S.isCard() ? `${sectionTitle('Danh mục của thẻ')}
+  <section class="card list">
+    <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục chi</b><small>${state.categories.filter((c) => !c.archived && c.type === 'expense').length} danh mục</small></span>›</button>
+  </section>` : `
   ${sectionTitle(`Hiển thị (riêng của ${esc(S.currentProfile().name)})`)}
   <section class="card form">
     ${field('Kỳ xem mặc định ở Tổng quan / Giao dịch', `<select data-set="period">${['day', 'month'].map((p) => `<option value="${p}" ${(s.period === 'day' ? 'day' : 'month') === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`)}
@@ -1534,7 +1797,7 @@ function settingsView() {
     ${field('Thu nhập dự kiến/tháng (dùng khi chưa ghi khoản thu)', `<input class="money" inputmode="decimal" data-set="expectedIncome" data-money value="${s.expectedIncome ? fmtNum(s.expectedIncome) : ''}" placeholder="vd: 15tr">`)}
     ${field('Quỹ dự phòng = số tháng chi tiêu', `<select data-set="emergencyMonths" data-num>${[3, 4, 6, 9, 12].map((n) => `<option value="${n}" ${Number(s.emergencyMonths) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`)}
     <p class="muted small">Gán nhóm 50/30/20 hoặc lọ JARS cho từng danh mục trong "Danh mục thu chi".</p>
-  </section>
+  </section>`}
 
   ${sectionTitle('Bảo mật')}
   <section class="card form">
@@ -1545,7 +1808,7 @@ function settingsView() {
     <p class="muted small">Mật khẩu dùng chung cho mọi người dùng trên máy này. Quên mật khẩu sẽ không mở được app, hãy ghi nhớ kỹ và sao lưu dữ liệu định kỳ.</p>
   </section>
 
-  ${sectionTitle('Nhắc nhở')}
+  ${S.isCard() ? '' : `${sectionTitle('Nhắc nhở')}
   <section class="card form">
     ${field('Nhắc trước hạn trả nợ / hóa đơn (ngày)', `<input type="number" min="0" max="30" data-set="remindDays" data-num value="${esc(s.remindDays)}">`)}
     <div class="row-between"><span>Thông báo khi mở app<br><small class="muted">${notifState === 'unsupported' ? 'Thiết bị/trình duyệt chưa hỗ trợ. Trên iPhone cần iOS 16.4+ và mở app từ màn hình chính.' : notifState === 'granted' ? 'Đã cho phép' : notifState === 'denied' ? 'Đã bị chặn – bật lại trong Cài đặt của điện thoại' : 'Chưa cấp quyền'}</small></span>
@@ -1553,7 +1816,7 @@ function settingsView() {
     <div class="two">${field('Nhắc ghi chép hằng ngày lúc', `<input type="time" data-set="dailyTime" value="${esc(s.dailyTime)}">`)}
       <button type="button" class="btn ghost" data-act="daily-ics" style="align-self:end">📅 Thêm vào Lịch</button></div>
     <p class="muted small">💡 Web app không tự đặt chuông khi đang đóng. Để nhắc chắc chắn, hãy thêm hạn trả nợ và nhắc ghi chép vào <b>app Lịch</b> của điện thoại. App Lịch sẽ báo cả khi offline.</p>
-  </section>
+  </section>`}
 
   ${sectionTitle('Sao lưu & dữ liệu')}
   <section class="card list">
@@ -1614,6 +1877,7 @@ actions['pin-change'] = () => {
 };
 
 async function mountSettings(root) {
+  fillProfileSums(root);
   root.querySelectorAll('[data-tab-toggle]').forEach((el) => el.addEventListener('change', async () => {
     await S.setSetting(el.dataset.tabToggle, el.checked);
     toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');
@@ -1888,7 +2152,7 @@ actions['period-date'] = (el) => {
 actions['period-today'] = (el) => { pOf(el).anchor = todayISO(); refresh(); };
 
 const VIEWS = {
-  home: { html: homeView },
+  home: { html: () => (S.isCard() ? cardView() : homeView()) },
   tx: { html: txView, mount: mountTx },
   reports: { html: reportsView },
   plan: { html: planView },
@@ -1900,6 +2164,8 @@ let current = { route: 'home', sub: null };
 /** Mục bị ẩn theo cài đặt của người dùng hiện tại. */
 const hiddenTabs = () => {
   const s = state.settings;
+  // Thẻ chi tiêu chỉ dùng màn hình Thẻ (ở tab Tổng quan) và Cài đặt.
+  if (S.isCard()) return new Set(['tx', 'reports', 'plan']);
   return new Set([s.showReports === false && 'reports', s.showPlan === false && 'plan'].filter(Boolean));
 };
 

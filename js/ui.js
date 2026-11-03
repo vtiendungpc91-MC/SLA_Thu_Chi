@@ -32,6 +32,65 @@ function rangeOf(p) {
 export const currentRange = () => rangeOf(periodState('main'));
 export const reportRange = () => rangeOf(periodState('report'));
 
+// ---------- Ô nhập số tiền: phân cách hàng nghìn + gợi ý thêm 000 ----------
+// Áp dụng cho mọi ô tiền (class money, amount-input hoặc có data-money).
+// Gõ "45" → hiện "45", gợi ý [+000 → 45.000] [+000.000 → 45.000.000]; gõ tắt "1tr2", "50k" vẫn dùng được.
+const MONEY_SEL = 'input.money, input.amount-input, input[data-money]';
+export const groupDigits = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+/** Ô đang nhập ngoại tệ (USD…) thì không tự chèn dấu chấm để còn gõ số thập phân. */
+function isVndInput(inp) {
+  const cur = inp.form && inp.form.querySelector('#tf-cur');
+  return !cur || cur.value === 'VND';
+}
+
+function reformatMoney(inp) {
+  const v = inp.value;
+  // Chỉ định dạng khi toàn chữ số/dấu chấm; có chữ (k, tr) hoặc dấu phẩy thì để nguyên cho cách gõ tắt.
+  if (!/^[\d.]+$/.test(v) || v.endsWith('.')) return;
+  const digits = v.replace(/\./g, '').replace(/^0+(?=\d)/, '');
+  const nv = groupDigits(digits);
+  if (nv !== v) {
+    inp.value = nv;
+    try { inp.setSelectionRange(nv.length, nv.length); } catch { /* một số ô không hỗ trợ */ }
+  }
+}
+
+function zeroSuggest(inp) {
+  let box = inp._zeroBox;
+  if (!box || !box.isConnected) {
+    box = document.createElement('div');
+    box.className = 'zero-sug';
+    (inp.closest('.amount-row') || inp).insertAdjacentElement('afterend', box);
+    inp._zeroBox = box;
+    // Giữ bàn phím khi bấm gợi ý.
+    box.addEventListener('pointerdown', (e) => e.preventDefault());
+    box.addEventListener('mousedown', (e) => e.preventDefault());
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-zero]');
+      if (!b) return;
+      inp.value = groupDigits(inp.value.replace(/\./g, '') + b.dataset.zero);
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.focus();
+    });
+  }
+  const digits = inp.value.replace(/\./g, '');
+  if (isVndInput(inp) && /^\d{1,7}$/.test(digits) && Number(digits) > 0) {
+    box.innerHTML = ['000', '000000'].map((z) =>
+      `<button type="button" class="chip" data-zero="${z}">+${z === '000' ? '000' : '000.000'} → <b>${groupDigits(digits + z)}</b></button>`).join('');
+    box.hidden = false;
+  } else {
+    box.hidden = true;
+  }
+}
+
+document.addEventListener('input', (e) => {
+  const inp = e.target;
+  if (!inp.matches || !inp.matches(MONEY_SEL)) return;
+  if (isVndInput(inp)) reformatMoney(inp);
+  zeroSuggest(inp);
+});
+
 let toastTimer;
 export function toast(msg, ms = 2400) {
   const el = document.getElementById('toast');
