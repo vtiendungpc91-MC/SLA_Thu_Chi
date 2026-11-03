@@ -551,4 +551,9 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 }
 .date-pick:focus-within { outline: 2px solid var(--primary); outline-offset: -1px; }
 .field + .date-pick, .form > .date-pick { align-self: flex-start; }
-.range-pick .date-pick { width: 100%; justify-content: space-between; }
+
+/* Ô chọn ngày gọn hơn; khoảng "Từ ngày – Đến ngày" nằm giữa, không tràn dòng */
+.date-pick { padding: 5px 10px; gap: 5px; font-size: 13px; min-height: 34px; border-radius: 10px; }
+.date-pick .dp-ic { font-size: 13px; }
+.range-pick { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.range-pick .date-pick { flex: 0 1 auto; font-size: 12.5px; padding: 4px 8px; min-height: 32px; }
