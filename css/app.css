@@ -644,3 +644,20 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .check-list.one { grid-template-columns: 1fr; }
 #uf-kind button { font-size: 13px; }
+/* Nút Transfer / Withdraw trong form + có màu như Thu / Chi */
+#tf-type .seg-gop { background: color-mix(in srgb, #12a594 16%, var(--card)); color: #0b7a6e; }
+#tf-type .seg-trich { background: color-mix(in srgb, #8e4ec6 16%, var(--card)); color: #6e3fb0; }
+#tf-type .seg-gop:active, #tf-type .seg-trich:active { box-shadow: inset 0 0 0 2px currentColor; }
+@media (prefers-color-scheme: dark) { #tf-type .seg-gop { color: #4fd1c1; } #tf-type .seg-trich { color: #c4a5f2; } }
+#tf-type button { font-size: 13px; }
+.cat-close { width: 38px; height: 38px; font-size: 17px; }
+#tf-type button { font-size: 12.5px; padding: 8px 2px; white-space: nowrap; letter-spacing: -.2px; }
+
+/* Thẻ chi tiêu: 3 mẫu chi nhanh, mỗi mẫu 1 dòng */
+.quick-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.quick-row-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 12px; background: color-mix(in srgb, #e5484d 10%, var(--card)); border: 1px solid color-mix(in srgb, #e5484d 25%, var(--line)); }
+.quick-row-btn .qr-ic { font-size: 22px; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--card); flex: 0 0 auto; }
+.quick-row-btn .qr-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.quick-row-btn .qr-txt b { color: var(--expense); font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-row-btn .qr-txt small { color: var(--muted); font-weight: 400; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-row-btn .qr-go { color: var(--muted); font-size: 18px; }

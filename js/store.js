@@ -629,6 +629,13 @@ export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
 export const kindOfBook = (p) => p.kind || 'bank';
+// Ngân hàng mặc định: mở khi đóng một Category.
+const DEFAULT_BANK_KEY = 'stc-default-bank';
+export const defaultBank = () => {
+  const banks = moneyBooks();
+  return banks.find((b) => b.id === localStorage.getItem(DEFAULT_BANK_KEY)) || banks[0];
+};
+export const setDefaultBank = (id) => localStorage.setItem(DEFAULT_BANK_KEY, id);
 
 /**
  * Đích Transfer / Withdraw theo loại mục đang mở:
