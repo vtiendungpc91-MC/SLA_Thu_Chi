@@ -643,11 +643,13 @@ export const setDefaultBank = (id) => localStorage.setItem(DEFAULT_BANK_KEY, id)
  * - Tiết kiệm: chỉ transfer/withdraw với các mục Ngân hàng.
  * - Đầu tư, Thẻ chi tiêu: không transfer/withdraw.
  */
-export function transferTargets(mode, from = currentProfile()) {
+export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
   const allowed = k === 'bank' ? (mode === 'gop' ? ['bank', 'saving', 'neo', 'outflow'] : ['bank', 'saving', 'neo'])
     : k === 'saving' ? ['bank'] : [];
-  return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)));
+  // Secrecy đang ẩn thì không hiện trong form; mẫu nhanh đã thiết lập gọi thẳng gop/trich nên vẫn chạy.
+  const hide = !includeHidden && secrecyHidden();
+  return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && !(hide && p.owner === SECRECY));
 }
 
 // ---------- Secrecy: NEOBANK & Cash Outflow ----------

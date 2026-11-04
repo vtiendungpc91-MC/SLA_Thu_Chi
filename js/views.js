@@ -12,6 +12,7 @@ import {
 import { donut, bars } from './charts.js';
 import { iconPickerHtml, bindIconPicker } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
+import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile } from './autosave.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay } from './lock.js';
 
 export const actions = {};
@@ -92,6 +93,11 @@ function accOptions(selected, withBalance = false) {
 }
 
 /** Dòng phụ mô tả tài khoản ngân hàng: ngân hàng · STK · chủ TK. */
+/** Dòng nhỏ dưới Tổng số dư: tài khoản đang gắn với mục. */
+const accLine = () => {
+  const list = S.activeAccounts();
+  return list.map((a) => a.icon + ' ' + [a.name, a.number && 'STK ' + a.number].filter(Boolean).join(' · ') + (list.length > 1 ? ' · ' + fmt(S.accountBalance(a)) : '')).join('  |  ');
+};
 const accSub = (a) => [a.bank, a.number && 'STK ' + a.number, a.holder].filter(Boolean).join(' · ')
   || (a.kind === 'cash' ? 'Tiền mặt (bản cũ)' : 'Chưa có thông tin ngân hàng — bấm để bổ sung');
 
@@ -280,9 +286,11 @@ actions.users = () => {
     title: 'User / Category',
     headAction: '<button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt chung">⚙️</button>',
     body: `${group('user')}${group('category')}
-      <p class="muted small">👤 User: mục 🏦 Ngân hàng (3), 🐷 Tiết kiệm (3), 💳 Thẻ chi tiêu (2) — chọn/tạo ở nút góc phải trên cùng.<br>🗂️ Category: theo dõi 🔁 Transfer/Withdraw hoặc 📊 Thu/Chi, chọn là vào xem luôn.</p>`,
+      <p class="muted small">👤 User: mục 🏦 Ngân hàng (3), 🐷 Tiết kiệm (3), 💳 Thẻ chi tiêu (2) — chọn/tạo ở nút góc phải trên cùng.<br>🗂️ Category: theo dõi 🔁 Transfer/Withdraw hoặc 📊 Thu/Chi, chọn là vào xem luôn.</p>
+      <div class="quick-save"><button type="button" class="btn primary" data-quick-save>💾 Save</button><small class="muted" data-save-status>${esc(saveStatusText())}</small></div>`,
     onMount(sh, close) {
       sh.querySelector('[data-settings]').addEventListener('click', () => { close(); location.hash = '#/settings'; });
+      sh.querySelector('[data-quick-save]').addEventListener('click', () => quickSave(sh));
       fillProfileSums(sh);
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
@@ -902,6 +910,7 @@ function homeView() {
     </div>
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
     <div class="hero-bal"><span>Tổng số dư tài khoản</span><b>${fmt(S.totalBalance())}</b></div>
+    <div class="acc-line">${esc(accLine())}</div>
     ${quickButtons()}
   </section>
 
@@ -909,12 +918,6 @@ function homeView() {
 
   ${alerts.length ? `${sectionTitle('⚠️ Cảnh báo từ Kế hoạch')}<div class="card list">${alerts.map(alertRow).join('')}</div>` : ''}
 
-  ${sectionTitle('Tài khoản ngân hàng', `<button type="button" class="link" data-act="accounts">Quản lý</button>`)}
-  <div class="card list">${S.activeAccounts().map((a) => {
-    const b = S.accountBalance(a);
-    return `<button type="button" class="row" data-act="acc-edit" data-id="${a.id}"><span class="ci" style="--c:#3e63dd">${esc(a.icon)}</span><span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}</small></span><span class="amt ${b < 0 ? 'expense' : ''}">${fmt(b)}</span></button>`;
-  }).join('')}
-  ${canAddAccount() ? `<button type="button" class="row add-row" data-act="acc-edit"><span class="ci">＋</span><span class="grow"><b>Thêm tài khoản ngân hàng</b></span></button>` : ''}</div>
 
 
   ${sectionTitle('Gần đây', `<a class="link" href="#/tx">Tất cả</a>`)}
@@ -2318,7 +2321,9 @@ actions['quick-edit'] = (el) => {
   const k = el.dataset.k;
   const q = { ...(quickOf(k) || { name: QUICK_KINDS[k].def, show: true }) };
   const isPeer = k === 'gop' || k === 'trich';
+  // Secrecy đang ẩn thì không hiện để chọn mới, nhưng giữ mục mẫu đã chọn trước đó.
   const others = isPeer ? otherProfiles(k) : [];
+  if (isPeer && peerOf(q) && !others.some((p) => p.id === q.peerId)) others.push(peerOf(q));
   if (isPeer && !others.length) return toast('Cần có thêm người dùng / mục khác để thiết lập mẫu này');
   const catType = k === 'income' ? 'income' : 'expense';
   const cats = S.catsOf(catType).filter((c) => !/^(gop|trich)/.test(c.sys || ''));
@@ -2374,7 +2379,7 @@ actions['quick-edit'] = (el) => {
 function secrecyHtml() {
   const hidden = S.secrecyHidden();
   const head = sectionTitle('🔐 Secrecy', `<label class="switch" title="Hiện mục Secrecy"><input type="checkbox" data-secrecy-toggle ${hidden ? '' : 'checked'}><i></i></label>`);
-  if (hidden) return `${head}<p class="muted small">Đang ẩn. Transfer vào Cash Outflow và Withdraw từ NEOBANK vẫn dùng được. Bật công tắc để xem.</p>`;
+  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Transfer/Withdraw. Các mẫu nhanh đã thiết lập với NEOBANK/Cash Outflow vẫn hoạt động. Bật công tắc để xem.</p>`;
   return `${head}${['neo', 'outflow'].map((kind) => {
     const k = S.BOOK_KINDS[kind];
     const list = S.secrecyBooks(kind);
@@ -2500,6 +2505,7 @@ function settingsView() {
 
   ${sectionTitle('Sao lưu & dữ liệu')}
   <section class="card list">
+    <button type="button" class="row" data-act="backup-pick"><span class="ci">📁</span><span class="grow"><b>Nơi lưu file sao lưu tự động</b><small data-save-status>${esc(saveStatusText())}</small></span>›</button>
     <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Mọi người dùng + thẻ chi tiêu · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
     <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Thay thế toàn bộ người dùng, thẻ và giao dịch</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
     <button type="button" class="row" data-act="export-csv-all"><span class="ci">📄</span><span class="grow"><b>Xuất Excel (CSV) toàn bộ giao dịch</b></span>›</button>
@@ -2545,9 +2551,15 @@ function bookSettingsView() {
 
     ${quickSettingsHtml()}
 
+    ${sectionTitle('Tài khoản ngân hàng')}
+    <section class="card list">${S.activeAccounts().map((a) => {
+      const b = S.accountBalance(a);
+      return `<button type="button" class="row" data-act="acc-edit" data-id="${a.id}"><span class="ci" style="--c:#3e63dd">${esc(a.icon)}</span><span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}</small></span><span class="amt ${b < 0 ? 'expense' : ''}">${fmt(b)}</span></button>`;
+    }).join('')}
+    ${canAddAccount() ? `<button type="button" class="row add-row" data-act="acc-edit"><span class="ci">＋</span><span class="grow"><b>Thêm tài khoản ngân hàng</b></span></button>` : ''}</section>
+
     ${sectionTitle('Dữ liệu nền')}
     <section class="card list">
-      <button type="button" class="row" data-act="accounts"><span class="ci">🏦</span><span class="grow"><b>Tài khoản ngân hàng</b><small>${S.activeAccounts().length} tài khoản</small></span>›</button>
       <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục thu chi</b><small>${state.categories.filter((c) => !c.archived).length} danh mục</small></span>›</button>
     </section>
 
@@ -2691,6 +2703,54 @@ async function mountSettings(root) {
 
 actions['daily-ics'] = () => calendarSheet('nhac-ghi-chep.ics', buildDailyICS(state.settings.dailyTime || '21:00', todayISO()));
 
+// ----- File sao lưu tự động + nút Save nhanh -----
+const saveStatusText = () => {
+  const st = saveStatus();
+  return st ? `${st.name} · lưu lúc ${fmtDateTimeVN(st.at)}` : `Chưa lưu · file ${AUTO_FILE_NAME}`;
+};
+const showSaveStatus = (root) => root.querySelectorAll('[data-save-status]').forEach((el) => { el.textContent = saveStatusText(); });
+const fail = (err) => { if (err.name !== 'AbortError') toast('⛔ Không lưu được: ' + err.message, 4500); };
+
+/** iPhone/Android: chuẩn bị xong mới hiện nút, vì iOS chỉ mở bảng Chia sẻ ngay sau một lần chạm. */
+async function shareBackupSheet(root) {
+  const file = new File([await backupJson()], AUTO_FILE_NAME, { type: 'application/json' });
+  openSheet({
+    title: '💾 Lưu file sao lưu',
+    body: `<p>Điện thoại không cho app tự ghi vào file. Bấm nút dưới, chọn <b>Lưu vào Tệp</b>, chọn thư mục rồi bấm <b>Thay thế</b> nếu đã có file ${AUTO_FILE_NAME}.</p>
+      <div class="actions"><button type="button" class="btn primary" data-go>📤 Lưu file</button></div>`,
+    onMount(sh, close) {
+      $(sh, '[data-go]').addEventListener('click', async () => {
+        try {
+          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: AUTO_FILE_NAME });
+          else download(AUTO_FILE_NAME, file);
+          markSaved(AUTO_FILE_NAME);
+          showSaveStatus(root);
+          close(); toast('💾 Đã gửi file sao lưu');
+        } catch (err) { fail(err); }
+      });
+    },
+  });
+}
+
+actions['backup-pick'] = async (el) => {
+  const root = el.closest('#main') || document;
+  if (!canPickFile()) return shareBackupSheet(root);
+  try {
+    const name = await pickBackupFile();
+    showSaveStatus(root);
+    toast('💾 Đã tạo file sao lưu: ' + name);
+  } catch (err) { fail(err); }
+};
+
+async function quickSave(root) {
+  if (!canPickFile()) return shareBackupSheet(root);
+  try {
+    const name = await saveToPickedFile() || await pickBackupFile();
+    showSaveStatus(root);
+    toast('💾 Đã lưu vào ' + name);
+  } catch (err) { fail(err); }
+}
+
 actions.backup = async () => {
   const data = await S.exportAll();
   await shareOrDownload(`sothuchi-tat-ca-${todayISO()}.json`, JSON.stringify(data), 'application/json');
@@ -2720,22 +2780,6 @@ actions.wipe = async () => {
 
 // ----- Tài khoản ngân hàng -----
 actions['acc-edit'] = (el) => accountForm(state.accounts.find((a) => a.id === el.dataset.id));
-
-actions.accounts = () => {
-  const render = () => `<div class="list">${state.accounts.sort((a, b) => (!!a.archived - !!b.archived) || (a.order ?? 0) - (b.order ?? 0)).map((a) => `
-    <button type="button" class="row ${a.archived ? 'off' : ''}" data-acc="${a.id}"><span class="ci">${esc(a.icon)}</span>
-    <span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}${a.archived ? ' · đã ẩn' : ''}</small></span><span class="amt">${fmt(S.accountBalance(a))}</span></button>`).join('')}</div>
-    ${canAddAccount() ? '<button type="button" class="btn primary block" data-acc="">+ Thêm tài khoản ngân hàng</button>' : '<p class="muted small center">Mỗi mục Ngân hàng / Đầu tư chỉ gắn 1 tài khoản ngân hàng.</p>'}`;
-  openSheet({
-    title: 'Tài khoản ngân hàng', body: render(),
-    onMount(sh, close) {
-      sh.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-acc]');
-        if (b) { close(); accountForm(state.accounts.find((a) => a.id === b.dataset.acc)); }
-      });
-    },
-  });
-};
 
 /** Mỗi mục Ngân hàng / Đầu tư chỉ gắn 1 tài khoản ngân hàng. */
 const canAddAccount = () => S.activeAccounts().length < 1;
