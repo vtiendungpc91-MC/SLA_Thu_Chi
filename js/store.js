@@ -633,7 +633,16 @@ export async function peerCategories(bookId) {
 }
 
 // ---------- Đầu tư: đọc giao dịch từ 1 mục Ngân hàng theo danh mục đã chọn ----------
-/** source = { bookId, income: [catId], expense: [catId] } lưu trong mục Đầu tư. */
+/** Phân loại dòng tiền Góp/Trích để mục Đầu tư chọn lấy vào. */
+export const GOP_FLOWS = {
+  'gop-out': { label: 'Góp đi (chi)', icon: '🤝', type: 'expense' },
+  'gop-in': { label: 'Nhận góp (thu)', icon: '🤝', type: 'income' },
+  'trich-in': { label: 'Trích về (thu)', icon: '🔄', type: 'income' },
+  'trich-out': { label: 'Bị trích (chi)', icon: '🔄', type: 'expense' },
+};
+const gopFlowKey = (t) => (t.gop.mode === 'trich' ? 'trich' : 'gop') + (t.gop.dir === 'out' ? '-out' : '-in');
+
+/** source = { bookId, income: [catId], expense: [catId], flows: ['gop-out', …] } lưu trong mục Đầu tư. */
 export async function loadInvestMirror(book) {
   const src = book.source;
   const bank = src && getProfiles().find((p) => p.id === src.bookId);
@@ -642,8 +651,15 @@ export async function loadInvestMirror(book) {
   const cats = await peer.getAll('categories');
   const accs = await peer.getAll('accounts');
   const inc = new Set(src.income || []), exp = new Set(src.expense || []);
+  const flows = new Set(src.flows || []);
   const txs = [];
   for (const t of await peer.getAll('transactions')) {
+    // Dòng tiền Góp/Trích: lấy theo phân loại đã chọn (không theo danh mục).
+    if (t.gop) {
+      const key = gopFlowKey(t);
+      if (flows.has(key)) txs.push({ ...t, splits: null, mirror: true, flow: key, accName: accs.find((a) => a.id === t.accountId)?.name || '' });
+      continue;
+    }
     const want = t.type === 'income' ? inc : t.type === 'expense' ? exp : null;
     if (!want) continue;
     const parts = t.splits && t.splits.length ? t.splits : [{ categoryId: t.categoryId, amountVnd: t.amountVnd }];

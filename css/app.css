@@ -620,3 +620,4 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .check-list .check { font-size: 13.5px; }
 .mirror-row { cursor: default; }
 .sec-h .switch { flex: 0 0 auto; }
+.seg .seg-gop { color: #0b7a6e; } .seg .seg-trich { color: #6e3fb0; }

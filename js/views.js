@@ -500,15 +500,18 @@ async function investSourceForm(book) {
           .filter((c) => c.type === type && !c.archived && !/^(gop|trich)/.test(c.sys || ''))
           .map((c) => `<label class="check"><input type="checkbox" data-cat="${type}" value="${esc(c.id)}" ${same && (picked || []).includes(c.id) ? 'checked' : ''}> ${esc(c.icon + ' ' + c.name)}</label>`).join('')}</div></div>`;
         $(sh, '#is-cats').innerHTML = box('income', '💹 Danh mục THU lấy vào (lãi, cổ tức, bán, được tặng…)', src.income)
-          + box('expense', '📈 Danh mục CHI lấy vào (mua cổ phiếu, gửi tiết kiệm, cho/biếu…)', src.expense);
+          + box('expense', '📈 Danh mục CHI lấy vào (mua cổ phiếu, gửi tiết kiệm, cho/biếu…)', src.expense)
+          + `<div class="field"><span>🔁 Phân loại GÓP / TRÍCH lấy vào</span><div class="check-list">${Object.entries(S.GOP_FLOWS).map(([key, fl]) =>
+            `<label class="check"><input type="checkbox" data-flow value="${key}" ${same && (src.flows || []).includes(key) ? 'checked' : ''}> ${fl.icon} ${esc(fl.label)}</label>`).join('')}</div></div>`;
       };
       $(sh, '#is-bank').addEventListener('change', load);
       load();
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const pick = (type) => [...sh.querySelectorAll(`[data-cat="${type}"]:checked`)].map((x) => x.value);
-        const source = { bookId: bankId, income: pick('income'), expense: pick('expense') };
-        if (!source.income.length && !source.expense.length) return toast('Chọn ít nhất 1 danh mục');
+        const flows = [...sh.querySelectorAll('[data-flow]:checked')].map((x) => x.value);
+        const source = { bookId: bankId, income: pick('income'), expense: pick('expense'), flows };
+        if (!source.income.length && !source.expense.length && !flows.length) return toast('Chọn ít nhất 1 danh mục hoặc phân loại');
         S.saveProfile({ id: book.id, source });
         close();
         if (S.currentProfile().id === book.id) { await S.loadAll(); S.emit(); }
@@ -602,7 +605,7 @@ function investView() {
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong></div>
     <div class="hero-bal"><span>Lũy kế (thu − chi)</span><b>${fmtSigned(allInc - allExp)}</b></div>
   </section>
-  <p class="muted small center">Danh mục lấy vào: ${esc([...(p.source.income || []), ...(p.source.expense || [])].map((id) => catOf(id).name).join(', ') || '—')}</p>
+  <p class="muted small center">Lấy vào: ${esc([...[...(p.source.income || []), ...(p.source.expense || [])].map((id) => catOf(id).name), ...(p.source.flows || []).map((k) => S.GOP_FLOWS[k]?.label)].filter(Boolean).join(', ') || '—')}</p>
   ${list.length ? [...groups.entries()].map(([d, arr]) => `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span></div>
     <div class="card list">${arr.map(row).join('')}</div></div>`).join('')
     : empty('📭', 'Không có giao dịch phù hợp trong kỳ này.')}`;
@@ -803,9 +806,6 @@ function homeView() {
     </div>
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
     <div class="hero-bal"><span>Tổng số dư tài khoản</span><b>${fmt(S.totalBalance())}</b></div>
-    ${S.transferTargets('gop').length || S.transferTargets('trich').length ? `<div class="gop-actions">
-      ${S.transferTargets('gop').length ? '<button type="button" class="btn ghost" data-act="gop">🤝 Góp cho</button>' : ''}
-      ${S.transferTargets('trich').length ? '<button type="button" class="btn ghost" data-act="trich">🔄 Trích từ</button>' : ''}</div>` : ''}
     ${quickButtons()}
   </section>
 
@@ -827,7 +827,7 @@ function homeView() {
 
   ${sectionTitle('Gần đây', `<a class="link" href="#/tx">Tất cả</a>`)}
   ${recent.length ? `<div class="card list">${recent.map(txRow).join('')}</div>` : empty('🪙', 'Chưa có giao dịch nào. Bấm nút <b>+</b> để ghi khoản đầu tiên.')}
-  ${S.currentProfile().kind === 'saving' ? '' : fab()}`;
+  ${fab()}`;
 }
 
 function alertRow(a) {
@@ -896,7 +896,7 @@ function txView() {
     </div>
   </div>
   <div id="tx-list">${txListHtml()}</div>
-  ${S.currentProfile().kind === 'saving' ? '' : fab()}`;
+  ${fab()}`;
 }
 
 function mountTx(root) {
@@ -1715,7 +1715,9 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span><div class="chips" id="tf-who">${S.moneyBooks().map((p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(S.bookLabel(p))}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
-      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}</div>
+      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${TYPE_LABEL[t]}</button>`).join('')}
+        ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Góp</button>' : ''}
+        ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Trích</button>' : ''}</div>
       ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc">${accOptions(f.accountId, true)}</select>`)}
       <em class="hint" id="tf-bal"></em>
       ${amountLine({ dateId: 'tf-date', date: f.date, amtId: 'tf-amt', amount: f.amount ? fmtNum(f.amount) : '', big: true })}
@@ -1787,6 +1789,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
 
       // --- loại giao dịch ---
       const typeBtns = sh.querySelectorAll('#tf-type button[data-v]');
+      $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(); });
+      $(sh, '#tf-trich')?.addEventListener('click', () => { close(); openTrichForm(); });
       const updType = () => {
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
         const tr = f.type === 'transfer';
@@ -2051,7 +2055,30 @@ actions.summary = () => {
   });
 };
 
-actions.add = (el) => openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
+/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Góp/Trích); Tiết kiệm chỉ có Góp/Trích. */
+actions.add = (el) => {
+  if (S.currentProfile().kind === 'saving') return gopTrichChooser();
+  openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
+};
+
+function gopTrichChooser() {
+  const g = S.transferTargets('gop').length, t = S.transferTargets('trich').length;
+  if (!g && !t) return toast('Chưa có mục Ngân hàng nào để góp/trích');
+  openSheet({
+    title: 'Chọn thao tác',
+    body: `<div class="actions col">
+      ${g ? '<button type="button" class="btn primary" data-x="gop">🤝 Góp cho mục khác</button>' : ''}
+      ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Trích từ mục khác</button>' : ''}</div>`,
+    onMount(sh, close) {
+      sh.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-x]');
+        if (!b) return;
+        close();
+        (b.dataset.x === 'gop' ? openGopForm : openTrichForm)();
+      });
+    },
+  });
+}
 
 // ================= Mẫu nhập nhanh =================
 // Mỗi mục Ngân hàng/Đầu tư có 4 mẫu (Chi, Thu, Góp, Trích); thẻ chi tiêu có 1 mẫu.
