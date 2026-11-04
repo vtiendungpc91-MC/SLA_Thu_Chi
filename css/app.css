@@ -629,3 +629,18 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .rule-row .icon-btn { width: 32px; height: 32px; justify-self: end; }
 .rule-arrow { font-weight: 700; color: var(--muted); }
 .flow-rules { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+/* Bộ chọn biểu tượng có tìm kiếm */
+.icon-picker { display: flex; flex-direction: column; gap: 6px; }
+.icon-picker .ip-q { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); font-size: 16px; }
+.icon-picker .ip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 4px; max-height: 200px; overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.icon-picker .icon-chip { font-size: 20px; padding: 4px 0; min-height: 38px; }
+#cf-icon-now { font-size: 18px; margin-left: 6px; }
+.colors { gap: 6px; }
+
+/* Cài đặt chung: tiêu đề + nút đóng */
+.settings-head { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.settings-head h1 { font-size: 22px; }
+.close-settings { width: 40px; height: 40px; font-size: 18px; }
+body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
+.check-list.one { grid-template-columns: 1fr; }
+#uf-kind button { font-size: 13px; }

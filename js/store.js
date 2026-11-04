@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS = {
   notified: {},
 };
 
-export const PALETTE = ['#e5484d', '#f76b15', '#ffb224', '#30a46c', '#12a594', '#0091ff', '#3e63dd', '#8e4ec6', '#d6409f', '#978365', '#6f6e77', '#0d74ce'];
+export const PALETTE = ['#e5484d', '#f76b15', '#ffb224', '#30a46c', '#12a594', '#0091ff', '#3e63dd', '#8e4ec6', '#d6409f', '#978365', '#6f6e77', '#0d74ce', '#46a758', '#94ba2c', '#ab4aba', '#6e56cf', '#ad7f58', '#f5a524'];
 
 export const METHODS = {
   '503020': {
@@ -59,19 +59,19 @@ const SEED_EXPENSE = [
   ['Trả nợ ngân hàng', '🏦', 'savings', 'NEC', 'debt'],
   ['Tiết kiệm', '🐷', 'savings', 'LTSS', 'saving'],
   ['Đầu tư', '📈', 'savings', 'FFA'],
-  ['Góp cho người nhà', '🤝', 'needs', 'NEC', 'gop-out'],
+  ['Transfer cho người nhà', '🤝', 'needs', 'NEC', 'gop-out'],
   ['Khác', '📦', 'wants', 'PLAY'],
 ];
 const SEED_INCOME = [
   ['Lương', '💰'], ['Thưởng', '🎉'], ['Kinh doanh', '💼'], ['Lãi tiết kiệm/Đầu tư', '📈'], ['Được tặng', '🎁'],
-  ['Nhận góp', '🤝', 'gop-in'], ['Thu khác', '➕'],
+  ['Nhận transfer', '🤝', 'gop-in'], ['Thu khác', '➕'],
 ];
 // Danh mục hệ thống cần có ở mọi sổ (kể cả sổ tạo từ bản cũ).
 const SYS_CATS = {
-  'gop-out': { type: 'expense', name: 'Góp cho người nhà', icon: '🤝', rule: 'needs', jar: 'NEC', color: '#12a594' },
-  'gop-in': { type: 'income', name: 'Nhận góp', icon: '🤝', color: '#12a594' },
-  'trich-in': { type: 'income', name: 'Trích từ người nhà', icon: '🔄', color: '#8e4ec6' },
-  'trich-out': { type: 'expense', name: 'Bị trích cho người nhà', icon: '🔄', rule: 'needs', jar: 'NEC', color: '#8e4ec6' },
+  'gop-out': { type: 'expense', name: 'Transfer cho người nhà', icon: '🤝', rule: 'needs', jar: 'NEC', color: '#12a594' },
+  'gop-in': { type: 'income', name: 'Nhận transfer', icon: '🤝', color: '#12a594' },
+  'trich-in': { type: 'income', name: 'Withdraw từ người nhà', icon: '🔄', color: '#8e4ec6' },
+  'trich-out': { type: 'expense', name: 'Bị withdraw cho người nhà', icon: '🔄', rule: 'needs', jar: 'NEC', color: '#8e4ec6' },
 };
 
 function seedRows() {
@@ -118,21 +118,27 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// Chủ sở hữu (nút trái trên cùng) có 2 loại: User (Ngân hàng, Thẻ chi tiêu) và Category (Đầu tư, Tiết kiệm).
+// Chủ sở hữu (nút trái trên cùng) có 2 loại:
+// - User (tối đa 2): các mục Ngân hàng (3), Tiết kiệm (3), Thẻ chi tiêu (2).
+// - Category (tối đa 5): mỗi Category là đúng 1 mục theo dõi (Transfer/Withdraw hoặc Thu/Chi), chọn là vào xem luôn.
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt): NEOBANK và Cash Outflow.
-export const MAX_USERS = 3;
-export const MAX_CATEGORIES = 3;
+export const MAX_USERS = 2;
+export const MAX_CATEGORIES = 5;
 export const SECRECY = 'secrecy';
 export const OWNER_TYPES = {
-  user: { label: 'User', icon: '👤', max: MAX_USERS, kinds: ['bank', 'card'], first: 'bank' },
-  category: { label: 'Category', icon: '🗂️', max: MAX_CATEGORIES, kinds: ['invest', 'saving'], first: 'saving' },
+  user: { label: 'User', icon: '👤', max: MAX_USERS, kinds: ['bank', 'saving', 'card'], first: 'bank' },
+  category: { label: 'Category', icon: '🗂️', max: MAX_CATEGORIES, kinds: ['invest', 'track'], first: 'invest' },
 };
-export const PROFILE_COLORS = ['#1f6feb', '#d6409f', '#30a46c', '#f76b15', '#8e4ec6', '#0d74ce'];
+export const PROFILE_COLORS = [
+  '#1f6feb', '#0d74ce', '#0091ff', '#12a594', '#30a46c', '#46a758', '#94ba2c', '#ffb224', '#f5a524', '#f76b15',
+  '#e5484d', '#d6409f', '#ab4aba', '#8e4ec6', '#6e56cf', '#3e63dd', '#978365', '#ad7f58', '#6f6e77', '#1c2024',
+];
 export const BOOK_KINDS = {
-  bank: { label: 'Ngân hàng', icon: '🏦', max: 4 },
-  card: { label: 'Thẻ chi tiêu', icon: '💳', max: 2 },
-  invest: { label: 'Đầu tư', icon: '📈', max: 3 },
+  bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 3 },
+  card: { label: 'Thẻ chi tiêu', icon: '💳', max: 2 },
+  invest: { label: 'Theo dõi Transfer/Withdraw', icon: '🔁', max: 1 },
+  track: { label: 'Theo dõi Thu/Chi', icon: '📊', max: 1 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
   outflow: { label: 'Cash Outflow', icon: '📤', max: 2 },
 };
@@ -189,16 +195,47 @@ function migrateV4() {
   localStorage.setItem('stc-model', '4');
 }
 
+/**
+ * Bản 5: Tiết kiệm thuộc User (không còn trong Category); mỗi Category chỉ chứa đúng 1 mục theo dõi.
+ * - Mục Tiết kiệm đang nằm trong Category → chuyển sang User đầu tiên (giữ nguyên dữ liệu).
+ * - Category có nhiều mục theo dõi → mục thứ 2 trở đi tách thành Category riêng.
+ * - Category không còn mục theo dõi nào → bỏ Category đó.
+ */
+function migrateV5() {
+  if (localStorage.getItem('stc-model5') === '1') return;
+  const books = readJSON(PROFILES_KEY) || [];
+  let users = readJSON(USERS_KEY) || [];
+  const firstUser = users.find((u) => ownerType(u) === 'user');
+  if (firstUser) {
+    for (const cat of users.filter((u) => ownerType(u) === 'category')) {
+      const mine = books.filter((b) => b.owner === cat.id);
+      for (const b of mine.filter((x) => x.kind === 'saving')) b.owner = firstUser.id;
+      const trackers = mine.filter((x) => x.kind === 'invest' || x.kind === 'track');
+      trackers.slice(1).forEach((b) => {
+        const nc = { id: uid().replace(/-/g, '').slice(0, 12), type: 'category', name: b.name, icon: b.icon || '🔁', color: b.color || cat.color };
+        users.push(nc);
+        b.owner = nc.id;
+      });
+      if (!trackers.length) users = users.filter((u) => u.id !== cat.id);
+    }
+    saveUsers(users);
+    saveProfiles(books);
+  }
+  localStorage.setItem('stc-model5', '1');
+}
+
 /** Danh sách mục (sổ) của mọi người dùng. */
 export function getProfiles() {
   ensureModel();
   migrateV4();
+  migrateV5();
   return readJSON(PROFILES_KEY);
 }
 /** Chủ sở hữu (User + Category); type = 'user' | 'category' để lọc. */
 export function getUsers(type) {
   ensureModel();
   migrateV4();
+  migrateV5();
   const all = readJSON(USERS_KEY);
   return type ? all.filter((u) => ownerType(u) === type) : all;
 }
@@ -214,8 +251,8 @@ export function currentUser() {
 export const userOf = (book) => getUsers().find((u) => u.id === book.owner);
 export const userBooks = (userId) => getProfiles().filter((b) => b.owner === userId);
 // ---------- Khóa mục ----------
-// Mục bị khóa: không chuyển tiền đi được (chi, góp, chuyển khoản, trả nợ, bị trích, trả tiền thẻ; thẻ thì không ghi khoản chi mới).
-// Tiền vào (thu, nhận góp) vẫn được.
+// Mục bị khóa: không chuyển tiền đi được (chi, transfer, chuyển khoản, trả nợ, bị withdraw, trả tiền thẻ; thẻ thì không ghi khoản chi mới).
+// Tiền vào (thu, nhận transfer) vẫn được.
 export const isLocked = (bookId) => !!getProfiles().find((b) => b.id === bookId)?.locked;
 export function setLocked(bookId, locked) {
   saveProfile({ id: bookId, locked: !!locked });
@@ -254,12 +291,15 @@ export function saveUser(u) {
     const t = OWNER_TYPES[ownerType(u)];
     u.type = ownerType(u);
     if (users.filter((x) => ownerType(x) === u.type).length >= t.max) throw new Error(`Tối đa ${t.max} ${t.label}`);
+    // Category: chọn kiểu theo dõi khi tạo (trackKind = 'invest' | 'track'); mục theo dõi mang tên của Category.
+    const kind = u.type === 'category' ? (u.trackKind === 'track' ? 'track' : 'invest') : t.first;
+    delete u.trackKind;
     u.id = uid().replace(/-/g, '').slice(0, 12);
     u.color = u.color || PROFILE_COLORS[users.length % PROFILE_COLORS.length];
     users.push(u);
     saveUsers(users);
-    const k = BOOK_KINDS[t.first];
-    saveProfile({ name: k.label, icon: k.icon, kind: t.first, owner: u.id, color: u.color });
+    const k = BOOK_KINDS[kind];
+    saveProfile({ name: u.type === 'category' ? u.name : k.label, icon: u.type === 'category' ? u.icon : k.icon, kind, owner: u.id, color: u.color });
   } else {
     saveUsers(users.map((x) => (x.id === u.id ? { ...x, ...u } : x)));
   }
@@ -327,7 +367,7 @@ export async function loadAll() {
   }
   await migrateCash();
   state.profileKind = currentProfile().kind || 'bank';
-  state.mirror = currentProfile().kind === 'invest' ? await loadInvestMirror(currentProfile()) : null;
+  state.mirror = isTracker() ? await loadTrackerMirror(currentProfile()) : null;
 }
 
 /**
@@ -374,7 +414,7 @@ export function available(accountId, ignoreTx = null) {
 
 /** Trả về thông báo lỗi nếu tài khoản không đủ tiền cho khoản chi, ngược lại trả về null. */
 export function fundsError(accountId, amountVnd, ignoreTx = null) {
-  // Mục đang khóa thì không cho chuyển tiền đi (chi, góp, trả nợ, chuyển khoản…).
+  // Mục đang khóa thì không cho chuyển tiền đi (chi, transfer, trả nợ, chuyển khoản…).
   const locked = lockError(currentProfile().id);
   if (locked) return locked;
   const have = available(accountId, ignoreTx);
@@ -382,7 +422,7 @@ export function fundsError(accountId, amountVnd, ignoreTx = null) {
   return `Số dư "${accById(accountId)?.name || 'tài khoản'}" không đủ: còn ${fmt(have)}, cần ${fmt(amountVnd)}`;
 }
 
-// ---------- Góp tiền giữa các người dùng ----------
+// ---------- Transfer tiền giữa các người dùng ----------
 /** Đọc sổ của người khác; nếu sổ chưa từng mở thì tạo dữ liệu mặc định. */
 async function openPeerBook(profileId) {
   const peer = dbOf(profileId);
@@ -407,7 +447,7 @@ export async function peerAccounts(profileId) {
 }
 
 /**
- * Góp tiền: sổ người góp ghi khoản CHI "Góp cho …", sổ người nhận ghi khoản THU "Nhận góp từ …".
+ * Transfer tiền: sổ người transfer ghi khoản CHI "Transfer cho …", sổ người nhận ghi khoản THU "Nhận transfer từ …".
  * Hai giao dịch liên kết qua gop.id để xóa đồng bộ.
  */
 export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null }) {
@@ -421,11 +461,11 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   const { peer, cats } = await openPeerBook(to.id);
   await peer.put('transactions', {
     ...base, id: uid(), type: 'income', categoryId: cats.find((c) => c.sys === 'gop-in').id, accountId: toAccountId,
-    note: note || `Nhận góp từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(),
+    note: note || `Nhận transfer từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(),
   });
   return put('transactions', {
     ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
-    note: note || `Góp cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat },
+    note: note || `Transfer cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat },
   });
 }
 
@@ -440,13 +480,13 @@ export async function peerBalance(profileId, accountId) {
 }
 
 /**
- * Trích tiền (ngược với Góp): lấy tiền từ tài khoản của người khác về tài khoản của mình.
- * Sổ mình ghi khoản THU "Trích từ …", sổ người kia ghi khoản CHI "Bị … trích". Người kia phải đủ số dư.
+ * Withdraw tiền (ngược với Transfer): lấy tiền từ tài khoản của người khác về tài khoản của mình.
+ * Sổ mình ghi khoản THU "Withdraw từ …", sổ người kia ghi khoản CHI "Bị … withdraw". Người kia phải đủ số dư.
  */
 export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null }) {
   const me = currentProfile();
   const from = getProfiles().find((p) => p.id === fromProfileId);
-  if (!from || from.id === me.id) throw new Error('Chọn người bị trích khác');
+  if (!from || from.id === me.id) throw new Error('Chọn người bị withdraw khác');
   const { peer, cats, accs } = await openPeerBook(from.id);
   const locked = lockError(from.id);
   if (locked) throw new Error(locked);
@@ -459,11 +499,11 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
   await peer.put('transactions', {
     ...base, id: uid(), type: 'expense', categoryId: cats.find((c) => c.sys === 'trich-out').id, accountId: fromAccountId,
-    note: note || `Bị ${bookLabel(me)} trích`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(),
+    note: note || `Bị ${bookLabel(me)} withdraw`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(),
   });
   return put('transactions', {
     ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
-    note: note || `Trích từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat },
+    note: note || `Withdraw từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat },
   });
 }
 
@@ -502,7 +542,7 @@ export async function setSetting(key, value, { silent = false } = {}) {
 export const catById = (id) => state.categories.find((c) => c.id === id);
 export const accById = (id) => state.accounts.find((a) => a.id === id);
 export const sysCat = (sys) => state.categories.find((c) => c.sys === sys);
-/** Danh mục đang dùng; mục Đầu tư chỉ hiện danh sách ngắn riêng (kèm danh mục hệ thống góp/trích). */
+/** Danh mục đang dùng; mục Đầu tư chỉ hiện danh sách ngắn riêng (kèm danh mục hệ thống transfer/withdraw). */
 export const catsOf = (type) => {
   const invest = currentProfile().kind === 'invest';
   return state.categories
@@ -584,17 +624,17 @@ export async function deleteTx(tx) {
 
 // ---------- Thẻ chi tiêu ----------
 // Thẻ chi tiêu là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
-// Mỗi khoản chi có trạng thái open/done; "Trích thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
+// Mỗi khoản chi có trạng thái open/done; "Withdraw thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
 export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
 export const kindOfBook = (p) => p.kind || 'bank';
 
 /**
- * Đích Góp / Trích theo loại mục đang mở:
- * - Ngân hàng: góp cho Ngân hàng khác, Tiết kiệm, NEOBANK, Cash Outflow; trích từ Ngân hàng khác, Tiết kiệm, NEOBANK.
- * - Tiết kiệm: chỉ góp/trích với các mục Ngân hàng.
- * - Đầu tư, Thẻ chi tiêu: không góp/trích.
+ * Đích Transfer / Withdraw theo loại mục đang mở:
+ * - Ngân hàng: transfer cho Ngân hàng khác, Tiết kiệm, NEOBANK, Cash Outflow; withdraw từ Ngân hàng khác, Tiết kiệm, NEOBANK.
+ * - Tiết kiệm: chỉ transfer/withdraw với các mục Ngân hàng.
+ * - Đầu tư, Thẻ chi tiêu: không transfer/withdraw.
  */
 export function transferTargets(mode, from = currentProfile()) {
   const k = kindOfBook(from);
@@ -634,7 +674,7 @@ export async function peerCategories(bookId) {
 }
 
 // ---------- Đầu tư: đọc giao dịch từ 1 mục Ngân hàng theo danh mục đã chọn ----------
-// ---------- Danh mục Góp / Trích (dùng chung mọi mục, cho phép thêm) ----------
+// ---------- Danh mục Transfer / Withdraw (dùng chung mọi mục, cho phép thêm) ----------
 const FLOW_CATS_KEY = 'stc-flow-cats';
 const DEFAULT_FLOW_CATS = [
   { id: 'fc-invest', name: 'Đầu tư', icon: '📈' },
@@ -658,12 +698,12 @@ export function addFlowCat(name, icon = '🏷️') {
 }
 export const flowCatById = (id) => flowCats().find((c) => c.id === id);
 
-// ---------- Đầu tư: chỉ lấy dòng tiền Góp/Trích theo luồng "từ mục → đến mục" ----------
+// ---------- Đầu tư: chỉ lấy dòng tiền Transfer/Withdraw theo luồng "từ mục → đến mục" ----------
 /**
  * source = { rules: [{ from, to, as: 'income'|'expense' }], flowCats: [id] }.
- * Mỗi khoản Góp/Trích được ghi ở mục nguồn (from) là một khoản "ra" có gop.peer = mục đích (to).
- * Đọc trực tiếp từ mục nguồn nên khi xóa giao dịch góp/trích, mục Đầu tư cũng mất theo.
- * flowCats rỗng = lấy mọi danh mục góp/trích.
+ * Mỗi khoản Transfer/Withdraw được ghi ở mục nguồn (from) là một khoản "ra" có gop.peer = mục đích (to).
+ * Đọc trực tiếp từ mục nguồn nên khi xóa giao dịch transfer/withdraw, mục Đầu tư cũng mất theo.
+ * flowCats rỗng = lấy mọi danh mục transfer/withdraw.
  */
 export async function loadInvestMirror(book) {
   const src = book.source;
@@ -694,7 +734,7 @@ export async function loadInvestMirror(book) {
 export const cardBooks = (userId) => getProfiles().filter((p) => p.kind === 'card' && (!userId || p.owner === userId));
 export const CARD_SOURCES = ['MoMo', 'ZaloPay', 'ShopeePay', 'VNPay', 'Viettel Money', 'Apple Pay', 'Thẻ tín dụng', 'Khác'];
 
-/** Trích thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
+/** Withdraw thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
 export async function payCardItem(item, { profileId, accountId, date }) {
   const card = currentProfile();
   const payer = getProfiles().find((p) => p.id === profileId);
@@ -746,12 +786,66 @@ async function reopenCardItem(tx) {
   }
 }
 
+/** Mục theo dõi của Category: 'invest' = Transfer/Withdraw, 'track' = Thu/Chi. */
+export const isTracker = (p = currentProfile()) => !!p && (p.kind === 'invest' || p.kind === 'track');
+export const loadTrackerMirror = (book) => (book.kind === 'track' ? loadTrackMirror(book) : loadInvestMirror(book));
+
+/**
+ * Theo dõi Thu/Chi: source = { books: [bookId], income: [tên danh mục], expense: [tên danh mục] }.
+ * Lọc theo TÊN danh mục để dùng chung được cho nhiều mục Ngân hàng / Tiết kiệm. Đọc trực tiếp nên xóa giao dịch là mất theo.
+ */
+export async function loadTrackMirror(book) {
+  const src = book.source || {};
+  const ids = (src.books || []).filter((id) => getProfiles().some((p) => p.id === id));
+  if (!ids.length || (!(src.income || []).length && !(src.expense || []).length)) return { configured: false, txs: [] };
+  const inc = new Set(src.income || []), exp = new Set(src.expense || []);
+  const txs = [];
+  for (const id of ids) {
+    const peer = dbOf(id);
+    const cats = await peer.getAll('categories');
+    const accs = await peer.getAll('accounts');
+    const nameOf = (cid) => cats.find((c) => c.id === cid)?.name;
+    const b = getProfiles().find((p) => p.id === id);
+    for (const t of await peer.getAll('transactions')) {
+      if (t.gop || (t.type !== 'income' && t.type !== 'expense')) continue;
+      const want = t.type === 'income' ? inc : exp;
+      const parts = t.splits && t.splits.length ? t.splits : [{ categoryId: t.categoryId, amountVnd: t.amountVnd }];
+      const hit = parts.filter((p) => want.has(nameOf(p.categoryId)));
+      if (!hit.length) continue;
+      const cat = cats.find((c) => c.id === hit[0].categoryId);
+      txs.push({
+        ...t, amountVnd: hit.reduce((s, p) => s + p.amountVnd, 0), splits: null, mirror: true,
+        catName: cat?.name || '', catIcon: cat?.icon || '🏷️', catColor: cat?.color || '#888',
+        flowLabel: bookLabel(b), accName: accs.find((a) => a.id === t.accountId)?.name || '',
+      });
+    }
+  }
+  return { configured: true, txs, books: ids };
+}
+
+/** Tên danh mục thu / chi (gộp từ các mục đã chọn) để thiết lập theo dõi Thu/Chi. */
+export async function categoryNamesOf(bookIds) {
+  const out = { income: new Map(), expense: new Map() };
+  for (const id of bookIds) {
+    const { cats } = await openPeerBook(id);
+    for (const c of cats) {
+      if (c.archived || /^(gop|trich)/.test(c.sys || '') || !out[c.type]) continue;
+      if (!out[c.type].has(c.name)) out[c.type].set(c.name, c.icon);
+    }
+  }
+  return { income: [...out.income], expense: [...out.expense] };
+}
+
 /** Tóm tắt để hiện trong danh sách chọn: người dùng → tổng số dư; thẻ → số tiền đã chi chưa thanh toán. */
 export async function profileSummary(p) {
-  if (p.kind === 'invest') {
-    const m = await loadInvestMirror(p);
-    const sum = (type) => m.txs.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-    return { kind: 'invest', configured: m.configured, income: sum('income'), expense: sum('expense') };
+  if (p.kind === 'invest' || p.kind === 'track') {
+    // Chênh lệch trong kỳ thiết lập của Category (ngày / tuần / tháng) để hiện trên thẻ.
+    const period = userOf(p)?.statPeriod || 'day';
+    const r = getRange(period, todayISO(), state.settings.weekStart || 1);
+    const m = await loadTrackerMirror(p);
+    const inR = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
+    const sum = (type) => inR.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
+    return { kind: 'tracker', configured: m.configured, income: sum('income'), expense: sum('expense'), period, label: r.label };
   }
   const isCur = p.id === currentProfile().id;
   const txs = isCur ? state.transactions : await dbOf(p.id).getAll('transactions');
@@ -1036,7 +1130,7 @@ export async function seedDemo() {
   await tx('expense', 35000, 'Ăn uống', 0, 'Cà phê sáng', [], cash);
   await put('debts', {
     bank: 'Vietcombank', title: 'Vay mua xe', amount: 5200000, dueDate: addDays(today, 2), dueDay: Number(addDays(today, 2).slice(8)),
-    repeat: 'monthly', periodsLeft: 24, method: 'Trích nợ tự động', note: 'Để đủ tiền trong TK lương trước ngày đến hạn',
+    repeat: 'monthly', periodsLeft: 24, method: 'Withdraw nợ tự động', note: 'Để đủ tiền trong TK lương trước ngày đến hạn',
     accountId: bank.id, remindDays: 3, history: [],
   }, { silent: true });
   await put('debts', {
