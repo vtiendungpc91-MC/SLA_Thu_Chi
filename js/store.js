@@ -409,7 +409,7 @@ export async function peerAccounts(profileId) {
  * Góp tiền: sổ người góp ghi khoản CHI "Góp cho …", sổ người nhận ghi khoản THU "Nhận góp từ …".
  * Hai giao dịch liên kết qua gop.id để xóa đồng bộ.
  */
-export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note }) {
+export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null }) {
   const me = currentProfile();
   const to = getProfiles().find((p) => p.id === toProfileId);
   if (!to || to.id === me.id) throw new Error('Chọn người nhận khác');
@@ -420,11 +420,11 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   const { peer, cats } = await openPeerBook(to.id);
   await peer.put('transactions', {
     ...base, id: uid(), type: 'income', categoryId: cats.find((c) => c.sys === 'gop-in').id, accountId: toAccountId,
-    note: note || `Nhận góp từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me) }, updatedAt: Date.now(),
+    note: note || `Nhận góp từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(),
   });
   return put('transactions', {
     ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
-    note: note || `Góp cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to) },
+    note: note || `Góp cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat },
   });
 }
 
@@ -442,7 +442,7 @@ export async function peerBalance(profileId, accountId) {
  * Trích tiền (ngược với Góp): lấy tiền từ tài khoản của người khác về tài khoản của mình.
  * Sổ mình ghi khoản THU "Trích từ …", sổ người kia ghi khoản CHI "Bị … trích". Người kia phải đủ số dư.
  */
-export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note }) {
+export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null }) {
   const me = currentProfile();
   const from = getProfiles().find((p) => p.id === fromProfileId);
   if (!from || from.id === me.id) throw new Error('Chọn người bị trích khác');
@@ -458,11 +458,11 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
   await peer.put('transactions', {
     ...base, id: uid(), type: 'expense', categoryId: cats.find((c) => c.sys === 'trich-out').id, accountId: fromAccountId,
-    note: note || `Bị ${bookLabel(me)} trích`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me) }, updatedAt: Date.now(),
+    note: note || `Bị ${bookLabel(me)} trích`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(),
   });
   return put('transactions', {
     ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
-    note: note || `Trích từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from) },
+    note: note || `Trích từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat },
   });
 }
 
@@ -633,42 +633,62 @@ export async function peerCategories(bookId) {
 }
 
 // ---------- Đầu tư: đọc giao dịch từ 1 mục Ngân hàng theo danh mục đã chọn ----------
-/** Phân loại dòng tiền Góp/Trích để mục Đầu tư chọn lấy vào. */
-export const GOP_FLOWS = {
-  'gop-out': { label: 'Góp đi (chi)', icon: '🤝', type: 'expense' },
-  'gop-in': { label: 'Nhận góp (thu)', icon: '🤝', type: 'income' },
-  'trich-in': { label: 'Trích về (thu)', icon: '🔄', type: 'income' },
-  'trich-out': { label: 'Bị trích (chi)', icon: '🔄', type: 'expense' },
-};
-const gopFlowKey = (t) => (t.gop.mode === 'trich' ? 'trich' : 'gop') + (t.gop.dir === 'out' ? '-out' : '-in');
+// ---------- Danh mục Góp / Trích (dùng chung mọi mục, cho phép thêm) ----------
+const FLOW_CATS_KEY = 'stc-flow-cats';
+const DEFAULT_FLOW_CATS = [
+  { id: 'fc-invest', name: 'Đầu tư', icon: '📈' },
+  { id: 'fc-saving', name: 'Tiết kiệm', icon: '🐷' },
+  { id: 'fc-family', name: 'Gia đình', icon: '👨‍👩‍👧' },
+  { id: 'fc-gift', name: 'Biếu tặng', icon: '🎁' },
+  { id: 'fc-other', name: 'Khác', icon: '📦' },
+];
+export function flowCats() {
+  const list = readJSON(FLOW_CATS_KEY);
+  if (Array.isArray(list) && list.length) return list;
+  localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(DEFAULT_FLOW_CATS));
+  return DEFAULT_FLOW_CATS;
+}
+export function addFlowCat(name, icon = '🏷️') {
+  const list = flowCats();
+  if (list.some((c) => c.name.toLowerCase() === name.toLowerCase())) throw new Error('Danh mục này đã có');
+  const c = { id: 'fc-' + uid().slice(0, 8), name, icon };
+  localStorage.setItem(FLOW_CATS_KEY, JSON.stringify([...list, c]));
+  return c;
+}
+export const flowCatById = (id) => flowCats().find((c) => c.id === id);
 
-/** source = { bookId, income: [catId], expense: [catId], flows: ['gop-out', …] } lưu trong mục Đầu tư. */
+// ---------- Đầu tư: chỉ lấy dòng tiền Góp/Trích theo luồng "từ mục → đến mục" ----------
+/**
+ * source = { rules: [{ from, to, as: 'income'|'expense' }], flowCats: [id] }.
+ * Mỗi khoản Góp/Trích được ghi ở mục nguồn (from) là một khoản "ra" có gop.peer = mục đích (to).
+ * Đọc trực tiếp từ mục nguồn nên khi xóa giao dịch góp/trích, mục Đầu tư cũng mất theo.
+ * flowCats rỗng = lấy mọi danh mục góp/trích.
+ */
 export async function loadInvestMirror(book) {
   const src = book.source;
-  const bank = src && getProfiles().find((p) => p.id === src.bookId);
-  if (!bank) return { configured: false, txs: [], cats: [] };
-  const peer = dbOf(bank.id);
-  const cats = await peer.getAll('categories');
-  const accs = await peer.getAll('accounts');
-  const inc = new Set(src.income || []), exp = new Set(src.expense || []);
-  const flows = new Set(src.flows || []);
+  const rules = ((src && src.rules) || []).filter((r) => getProfiles().some((p) => p.id === r.from) && getProfiles().some((p) => p.id === r.to));
+  if (!rules.length) return { configured: false, txs: [], cats: [] };
+  const want = new Set((src.flowCats || []));
   const txs = [];
-  for (const t of await peer.getAll('transactions')) {
-    // Dòng tiền Góp/Trích: lấy theo phân loại đã chọn (không theo danh mục).
-    if (t.gop) {
-      const key = gopFlowKey(t);
-      if (flows.has(key)) txs.push({ ...t, splits: null, mirror: true, flow: key, accName: accs.find((a) => a.id === t.accountId)?.name || '' });
-      continue;
+  const cache = new Map();
+  for (const r of rules) {
+    if (!cache.has(r.from)) {
+      const peer = dbOf(r.from);
+      cache.set(r.from, { txs: await peer.getAll('transactions'), accs: await peer.getAll('accounts') });
     }
-    const want = t.type === 'income' ? inc : t.type === 'expense' ? exp : null;
-    if (!want) continue;
-    const parts = t.splits && t.splits.length ? t.splits : [{ categoryId: t.categoryId, amountVnd: t.amountVnd }];
-    const hit = parts.filter((p) => want.has(p.categoryId));
-    if (!hit.length) continue;
-    const amt = hit.reduce((s, p) => s + p.amountVnd, 0);
-    txs.push({ ...t, amountVnd: amt, categoryId: hit[0].categoryId, splits: null, mirror: true, accName: accs.find((a) => a.id === t.accountId)?.name || '' });
+    const { txs: list, accs } = cache.get(r.from);
+    const fromB = getProfiles().find((p) => p.id === r.from), toB = getProfiles().find((p) => p.id === r.to);
+    for (const t of list) {
+      if (!t.gop || t.gop.dir !== 'out' || t.gop.peer !== r.to) continue;
+      if (want.size && !want.has(t.gop.flowCat)) continue;
+      txs.push({
+        ...t, type: r.as === 'income' ? 'income' : 'expense', splits: null, mirror: true,
+        flowLabel: `${bookLabel(fromB)} → ${bookLabel(toB)}`, flowCatName: flowCatById(t.gop.flowCat)?.name || '',
+        accName: accs.find((a) => a.id === t.accountId)?.name || '',
+      });
+    }
   }
-  return { configured: true, bank, txs, cats };
+  return { configured: true, rules, txs, cats: [] };
 }
 export const cardBooks = (userId) => getProfiles().filter((p) => p.kind === 'card' && (!userId || p.owner === userId));
 export const CARD_SOURCES = ['MoMo', 'ZaloPay', 'ShopeePay', 'VNPay', 'Viettel Money', 'Apple Pay', 'Thẻ tín dụng', 'Khác'];
@@ -949,7 +969,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), profiles, books };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), profiles, books, flowCats: flowCats() };
 }
 
 /**
@@ -972,6 +992,7 @@ export async function importAny(data) {
   saveProfiles(data.profiles);
   // Bản sao lưu cũ chưa có danh sách người dùng → để ensureModel() chuyển đổi lại từ danh sách mục.
   if (Array.isArray(data.users) && data.users.length) saveUsers(data.users);
+  if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
   else localStorage.removeItem(USERS_KEY);
   const target = data.profiles.some((p) => p.id === data.current) ? data.current : getProfiles()[0].id;
   await switchProfile(target);

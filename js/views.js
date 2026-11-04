@@ -476,51 +476,67 @@ function bookForm(b, kind = 'bank') {
 }
 
 // ================= Đầu tư: tự lấy Thu/Chi từ 1 mục Ngân hàng =================
-/** Thiết lập nguồn: chọn 1 mục Ngân hàng + các danh mục thu / chi sẽ được lấy vào. */
-async function investSourceForm(book) {
-  const banks = S.moneyBooks();
-  if (!banks.length) return toast('Chưa có mục Ngân hàng nào');
+/** Thiết lập nguồn mục Đầu tư: các luồng Góp/Trích "từ mục → đến mục" + danh mục góp/trích cần lấy. */
+function investSourceForm(book) {
+  const books = S.getProfiles().filter((p) => ['bank', 'saving', 'neo', 'outflow'].includes(p.kind || 'bank'));
+  if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Góp/Trích');
   const src = book.source || {};
-  let bankId = banks.some((x) => x.id === src.bookId) ? src.bookId : banks[0].id;
+  let rules = (src.rules || []).map((r) => ({ ...r }));
+  if (!rules.length) rules = [{ from: books[0].id, to: books[1].id, as: 'expense' }];
+  let picked = new Set(src.flowCats || []);
+  const opts = (sel) => books.map((p) => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.icon + ' ' + S.bookLabel(p))}</option>`).join('');
   const formId = 'is-' + Date.now();
   openSheet({
     title: `⚙️ Nguồn của ${book.name}`,
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
-      <p class="muted small">Mục Đầu tư tự lấy các giao dịch trong <b>1 mục Ngân hàng</b>, thuộc các danh mục bạn tích chọn bên dưới. Không nhập tay trong mục Đầu tư.</p>
-      ${field('Lấy từ mục Ngân hàng', `<select id="is-bank">${banks.map((x) => `<option value="${esc(x.id)}" ${x.id === bankId ? 'selected' : ''}>${esc(x.icon + ' ' + S.bookLabel(x))}</option>`).join('')}</select>`)}
-      <div id="is-cats"><p class="muted small">Đang tải danh mục…</p></div>
+      <p class="muted small">Mục Đầu tư chỉ lấy các khoản <b>Góp / Trích</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (góp từ A cho B, hoặc B trích từ A đều tính là A → B). Xóa khoản góp/trích thì mục Đầu tư cũng mất theo.</p>
+      <div class="field"><span>🔁 Luồng tiền lấy vào</span><div id="is-rules"></div>
+        <button type="button" class="btn ghost small" data-add-rule>＋ Thêm luồng</button></div>
+      <div class="field"><span>🏷️ Danh mục Góp/Trích lấy vào <small class="muted">(không chọn = lấy tất cả)</small></span>
+        <div class="check-list" id="is-cats"></div>
+        <button type="button" class="btn ghost small" data-add-cat>＋ Thêm danh mục</button></div>
     </form>`,
     onMount(sh, close) {
-      const load = async () => {
-        bankId = $(sh, '#is-bank').value;
-        const { cats } = await S.peerCategories(bankId);
-        const same = bankId === src.bookId;
-        const box = (type, title, picked) => `<div class="field"><span>${title}</span><div class="check-list">${cats
-          .filter((c) => c.type === type && !c.archived && !/^(gop|trich)/.test(c.sys || ''))
-          .map((c) => `<label class="check"><input type="checkbox" data-cat="${type}" value="${esc(c.id)}" ${same && (picked || []).includes(c.id) ? 'checked' : ''}> ${esc(c.icon + ' ' + c.name)}</label>`).join('')}</div></div>`;
-        $(sh, '#is-cats').innerHTML = box('income', '💹 Danh mục THU lấy vào (lãi, cổ tức, bán, được tặng…)', src.income)
-          + box('expense', '📈 Danh mục CHI lấy vào (mua cổ phiếu, gửi tiết kiệm, cho/biếu…)', src.expense)
-          + `<div class="field"><span>🔁 Phân loại GÓP / TRÍCH lấy vào</span><div class="check-list">${Object.entries(S.GOP_FLOWS).map(([key, fl]) =>
-            `<label class="check"><input type="checkbox" data-flow value="${key}" ${same && (src.flows || []).includes(key) ? 'checked' : ''}> ${fl.icon} ${esc(fl.label)}</label>`).join('')}</div></div>`;
+      const renderRules = () => {
+        $(sh, '#is-rules').innerHTML = rules.map((r, i) => `<div class="rule-row" data-i="${i}">
+          <select data-k="from">${opts(r.from)}</select><span class="rule-arrow">→</span><select data-k="to">${opts(r.to)}</select>
+          <select data-k="as" class="rule-as"><option value="expense" ${r.as !== 'income' ? 'selected' : ''}>Tính là Chi</option><option value="income" ${r.as === 'income' ? 'selected' : ''}>Tính là Thu</option></select>
+          ${rules.length > 1 ? '<button type="button" class="icon-btn" data-rm aria-label="Bỏ">✕</button>' : ''}</div>`).join('');
       };
-      $(sh, '#is-bank').addEventListener('change', load);
-      load();
+      const renderCats = () => {
+        $(sh, '#is-cats').innerHTML = S.flowCats().map((c) => `<label class="check"><input type="checkbox" value="${esc(c.id)}" ${picked.has(c.id) ? 'checked' : ''}> ${esc(c.icon + ' ' + c.name)}</label>`).join('');
+      };
+      renderRules(); renderCats();
+      $(sh, '#is-rules').addEventListener('change', (e) => {
+        const row = e.target.closest('.rule-row');
+        if (row && e.target.dataset.k) rules[row.dataset.i][e.target.dataset.k] = e.target.value;
+      });
+      $(sh, '#is-rules').addEventListener('click', (e) => {
+        if (!e.target.closest('[data-rm]')) return;
+        rules.splice(Number(e.target.closest('.rule-row').dataset.i), 1);
+        renderRules();
+      });
+      $(sh, '#is-cats').addEventListener('change', (e) => {
+        if (e.target.checked) picked.add(e.target.value); else picked.delete(e.target.value);
+      });
+      $(sh, '[data-add-rule]').addEventListener('click', () => { rules.push({ from: books[0].id, to: books[1].id, as: 'expense' }); renderRules(); });
+      $(sh, '[data-add-cat]').addEventListener('click', () => {
+        const name = (prompt('Tên danh mục Góp/Trích mới') || '').trim();
+        if (!name) return;
+        try { const c = S.addFlowCat(name); picked.add(c.id); renderCats(); } catch (err) { toast(err.message); }
+      });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const pick = (type) => [...sh.querySelectorAll(`[data-cat="${type}"]:checked`)].map((x) => x.value);
-        const flows = [...sh.querySelectorAll('[data-flow]:checked')].map((x) => x.value);
-        const source = { bookId: bankId, income: pick('income'), expense: pick('expense'), flows };
-        if (!source.income.length && !source.expense.length && !flows.length) return toast('Chọn ít nhất 1 danh mục hoặc phân loại');
-        S.saveProfile({ id: book.id, source });
+        if (rules.some((r) => r.from === r.to)) return toast('Mục nguồn và mục đích phải khác nhau');
+        S.saveProfile({ id: book.id, source: { rules, flowCats: [...picked] } });
         close();
         if (S.currentProfile().id === book.id) { await S.loadAll(); S.emit(); }
-        toast('Đã lưu nguồn Thu/Chi');
+        toast('Đã lưu nguồn của mục Đầu tư');
       });
     },
   });
 }
-
 function sectionTitle(text, actionHtml = '') {
   return `<div class="sec-h"><h2>${text}</h2>${actionHtml}</div>`;
 }
@@ -571,31 +587,30 @@ function cardView() {
 /** Thu/Chi lấy tự động từ 1 mục Ngân hàng theo danh mục đã thiết lập; không nhập tay. */
 function investView() {
   const p = S.currentProfile();
-  const m = state.mirror || { configured: false, txs: [], cats: [] };
+  const m = state.mirror || { configured: false, txs: [] };
   const setup = `<button type="button" class="btn ghost small" data-act="invest-source">⚙️ Nguồn</button>`;
   if (!m.configured) {
     return `${topBar('📈 Đầu tư', setup)}
-    ${empty('📈', 'Mục Đầu tư tự lấy Thu/Chi từ <b>1 mục Ngân hàng</b> theo các danh mục bạn chọn.<br>Bấm <b>⚙️ Nguồn</b> để thiết lập.')}
-    <button type="button" class="btn primary block" data-act="invest-source">⚙️ Thiết lập nguồn Thu/Chi</button>`;
+    ${empty('📈', 'Mục Đầu tư tự lấy các khoản <b>Góp / Trích</b> theo luồng <b>từ mục → đến mục</b> bạn chỉ định.<br>Bấm <b>⚙️ Nguồn</b> để thiết lập.')}
+    <button type="button" class="btn primary block" data-act="invest-source">⚙️ Thiết lập nguồn</button>`;
   }
   const r = currentRange();
   const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
-  const sum = (type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-  const inc = sum('income'), exp = sum('expense');
-  const allInc = m.txs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amountVnd, 0);
-  const allExp = m.txs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amountVnd, 0);
-  const catOf = (id) => m.cats.find((c) => c.id === id) || UNKNOWN_CAT;
+  const sum = (arr, type) => arr.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
+  const inc = sum(list, 'income'), exp = sum(list, 'expense');
+  const total = sum(m.txs, 'income') - sum(m.txs, 'expense');
   const groups = new Map();
   for (const t of sortTx([...list])) { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); }
   const row = (t) => {
-    const c = catOf(t.categoryId);
     const sign = t.type === 'income' ? 1 : -1;
-    return `<div class="row tx mirror-row">${catIcon(c)}
-      <span class="grow"><b>${esc(t.note || c.name)}</b><small>${esc((t.note ? c.name + ' · ' : '') + t.accName)}</small><small class="when">${esc(txWhen(t))}</small></span>
+    const isTrich = t.gop.mode === 'trich';
+    return `<div class="row tx mirror-row"><span class="ci" style="--c:${isTrich ? '#8e4ec6' : '#12a594'}">${isTrich ? '🔄' : '🤝'}</span>
+      <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isTrich ? 'Trích' : 'Góp', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
       <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
   };
+  const cats = (p.source.flowCats || []).map((id) => S.flowCatById(id)?.name).filter(Boolean);
   return `
-  ${topBar(`📈 Lấy từ ${esc(S.bookLabel(m.bank))}`, setup)}
+  ${topBar(`📈 ${m.rules.length} luồng Góp/Trích`, setup)}
   ${periodBar()}
   <section class="card hero">
     <div class="hero-row">
@@ -603,14 +618,16 @@ function investView() {
       <div><small>Chi</small><b class="expense">${fmt(exp)}</b></div>
     </div>
     <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong></div>
-    <div class="hero-bal"><span>Lũy kế (thu − chi)</span><b>${fmtSigned(allInc - allExp)}</b></div>
+    <div class="hero-bal"><span>Lũy kế (thu − chi)</span><b>${fmtSigned(total)}</b></div>
   </section>
-  <p class="muted small center">Lấy vào: ${esc([...[...(p.source.income || []), ...(p.source.expense || [])].map((id) => catOf(id).name), ...(p.source.flows || []).map((k) => S.GOP_FLOWS[k]?.label)].filter(Boolean).join(', ') || '—')}</p>
+  <div class="card flow-rules">${m.rules.map((x) => {
+    const a = S.getProfiles().find((b) => b.id === x.from), b = S.getProfiles().find((q) => q.id === x.to);
+    return `<div>${esc(a.icon)} ${esc(S.bookLabel(a))} → ${esc(b.icon)} ${esc(S.bookLabel(b))} <small class="${x.as === 'income' ? 'income' : 'expense'}">(${x.as === 'income' ? 'Thu' : 'Chi'})</small></div>`;
+  }).join('')}<small class="muted">Danh mục: ${esc(cats.join(', ') || 'tất cả')}</small></div>
   ${list.length ? [...groups.entries()].map(([d, arr]) => `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span></div>
     <div class="card list">${arr.map(row).join('')}</div></div>`).join('')
-    : empty('📭', 'Không có giao dịch phù hợp trong kỳ này.')}`;
-}
-actions['invest-source'] = () => investSourceForm(S.currentProfile());
+    : empty('📭', 'Không có khoản Góp/Trích phù hợp trong kỳ này.')}`;
+}actions['invest-source'] = () => investSourceForm(S.currentProfile());
 
 function cardRow(t) {
   const cat = S.catById(t.categoryId);
@@ -950,6 +967,26 @@ const otherProfiles = (mode = 'gop') => S.transferTargets(mode);
 
 actions.gop = () => openGopForm();
 
+/** Ô chọn danh mục Góp/Trích (dùng chung mọi mục); chọn "＋ Thêm danh mục…" để tạo mới. */
+function flowCatField(id, selected = state.settings.lastFlowCat || '') {
+  return field('🏷️ Danh mục góp/trích', `<select id="${id}" data-flowcat>${flowCatOptions(selected)}</select>`);
+}
+const flowCatOptions = (selected) => `<option value="">— Không phân loại —</option>`
+  + S.flowCats().map((c) => `<option value="${esc(c.id)}" ${c.id === selected ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')
+  + '<option value="__new">＋ Thêm danh mục…</option>';
+
+document.addEventListener('change', (e) => {
+  const sel = e.target;
+  if (!sel.matches || !sel.matches('select[data-flowcat]')) return;
+  if (sel.value === '__new') {
+    const name = (prompt('Tên danh mục Góp/Trích mới') || '').trim();
+    let pick = '';
+    if (name) { try { pick = S.addFlowCat(name).id; toast('Đã thêm danh mục'); } catch (err) { toast(err.message); } }
+    sel.innerHTML = flowCatOptions(pick);
+  }
+  if (sel.value) S.setSetting('lastFlowCat', sel.value, { silent: true });
+});
+
 function openGopForm() {
   const others = otherProfiles('gop');
   if (!others.length) {
@@ -967,6 +1004,7 @@ function openGopForm() {
       ${field('Từ tài khoản', `<select id="gf-from">${accOptions(state.settings.lastAccount, true)}</select>`)}
       <em class="hint" id="gf-bal"></em>
       ${amountLine({ dateId: 'gf-date', date: todayISO(), amtId: 'gf-amt' })}
+      ${flowCatField('gf-fcat')}
       ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc"><option>Đang tải…</option></select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Góp tiền chợ tháng 11">`)}
     </form>`,
@@ -1005,7 +1043,7 @@ function openGopForm() {
         const to = others.find((x) => x.id === toId);
         await S.gop({
           toProfileId: toId, amount: v, fromAccountId: $(sh, '#gf-from').value, toAccountId,
-          date: $(sh, '#gf-date').value || todayISO(), note: $(sh, '#gf-note').value.trim(),
+          date: $(sh, '#gf-date').value || todayISO(), note: $(sh, '#gf-note').value.trim(), flowCat: $(sh, '#gf-fcat').value || null,
         });
         close();
         toast(`🤝 Đã góp ${fmt(v)} cho ${S.bookLabel(to)}`);
@@ -1025,6 +1063,7 @@ function gopDetail(tx) {
       <div class="big-ic">${isTrich ? '🔄' : '🤝'}</div>
       <div class="kv"><span>Nội dung</span><b>${esc(gopLabel(tx.gop))}${peerExists ? '' : ' (người dùng đã xóa)'}</b></div>
       <div class="kv"><span>Số tiền</span><b class="${out ? 'expense' : 'income'}">${fmtSigned(out ? -tx.amountVnd : tx.amountVnd)}</b></div>
+      ${tx.gop.flowCat ? `<div class="kv"><span>Danh mục</span><b>${esc((S.flowCatById(tx.gop.flowCat)?.icon || '') + ' ' + (S.flowCatById(tx.gop.flowCat)?.name || '—'))}</b></div>` : ''}
       <div class="kv"><span>${out ? 'Từ tài khoản' : 'Vào tài khoản'}</span><b>${esc(accName(tx.accountId))}</b></div>
       <div class="kv"><span>Ngày</span><b>${fmtDate(tx.date)}</b></div>
       ${tx.createdAt ? `<div class="kv"><span>Ghi nhận lúc</span><b>${fmtDateTimeVN(tx.createdAt)}</b></div>` : ''}
@@ -1062,6 +1101,7 @@ function openTrichForm() {
       ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
       <em class="hint" id="tr-bal"></em>
       ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt' })}
+      ${flowCatField('tr-fcat')}
       ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to">${accOptions(state.settings.lastAccount)}</select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Trích tiền học cho con">`)}
     </form>`,
@@ -1114,7 +1154,7 @@ function openTrichForm() {
         try {
           await S.trich({
             fromProfileId: fromId, amount: v, fromAccountId, toAccountId: $(sh, '#tr-to').value,
-            date: $(sh, '#tr-date').value || todayISO(), note: $(sh, '#tr-note').value.trim(),
+            date: $(sh, '#tr-date').value || todayISO(), note: $(sh, '#tr-note').value.trim(), flowCat: $(sh, '#tr-fcat').value || null,
           });
         } catch (err) { return toast('⛔ ' + err.message, 4500); }
         close();
@@ -2154,10 +2194,10 @@ actions['quick-run'] = (el) => {
             await S.put('transactions', { ...base, type: k, categoryId: cat?.id, accountId: acc.id, toAccountId: null, note: q.note || '' });
           } else if (k === 'gop') {
             const toAcc = q.peerAccountId || (await S.peerAccounts(peer.id))[0]?.id;
-            await S.gop({ toProfileId: peer.id, amount: v, fromAccountId: acc.id, toAccountId: toAcc, date, note: q.note || '' });
+            await S.gop({ toProfileId: peer.id, amount: v, fromAccountId: acc.id, toAccountId: toAcc, date, note: q.note || '', flowCat: q.flowCat || null });
           } else if (k === 'trich') {
             const fromAcc = q.peerAccountId || (await S.peerAccounts(peer.id))[0]?.id;
-            await S.trich({ fromProfileId: peer.id, amount: v, fromAccountId: fromAcc, toAccountId: acc.id, date, note: q.note || '' });
+            await S.trich({ fromProfileId: peer.id, amount: v, fromAccountId: fromAcc, toAccountId: acc.id, date, note: q.note || '', flowCat: q.flowCat || null });
           } else {
             const locked = S.lockError(S.currentProfile().id);
             if (locked) return toast(locked, 4500);
@@ -2200,7 +2240,8 @@ actions['quick-edit'] = (el) => {
     body: `<form class="form" id="${formId}">
       ${field('Tên nút', `<input id="qe-name" maxlength="24" value="${esc(q.name || '')}" placeholder="vd: Ăn trưa, Lương, Góp tiền chợ">`)}
       ${isPeer ? `${field(k === 'gop' ? 'Góp cho' : 'Trích từ', `<select id="qe-peer">${others.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + S.bookLabel(p))}</option>`).join('')}</select>`)}
-        ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản của người bị trích', '<select id="qe-pacc"><option>Đang tải…</option></select>')}`
+        ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản của người bị trích', '<select id="qe-pacc"><option>Đang tải…</option></select>')}
+        ${flowCatField('qe-fcat', q.flowCat || '')}`
         : field('Danh mục', `<select id="qe-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === q.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
       ${k === 'card' ? field('Nguồn chi', `<select id="qe-src">${S.CARD_SOURCES.map((s) => `<option ${s === (q.source || 'MoMo') ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>`) : ''}
       ${field('Ghi chú (không bắt buộc)', `<input id="qe-note" value="${esc(q.note || '')}" placeholder="Ghi chú tự điền vào giao dịch">`)}
@@ -2224,7 +2265,7 @@ actions['quick-edit'] = (el) => {
           note: $(sh, '#qe-note').value.trim(),
           show: $(sh, '#qe-show').checked,
         };
-        if (isPeer) { out.peerId = $(sh, '#qe-peer').value; out.peerAccountId = $(sh, '#qe-pacc').value || null; }
+        if (isPeer) { out.peerId = $(sh, '#qe-peer').value; out.peerAccountId = $(sh, '#qe-pacc').value || null; out.flowCat = $(sh, '#qe-fcat').value || null; }
         else out.categoryId = $(sh, '#qe-cat').value;
         if (k === 'card') out.source = $(sh, '#qe-src').value;
         await saveQuick(k, out);
@@ -2346,7 +2387,7 @@ function settingsView() {
 
   ${S.currentProfile().kind === 'invest' ? `${sectionTitle('Nguồn của mục Đầu tư')}
   <section class="card list">
-    <button type="button" class="row" data-act="invest-source"><span class="ci">⚙️</span><span class="grow"><b>Thiết lập nguồn Thu/Chi</b><small>${state.mirror?.configured ? 'Lấy từ ' + esc(S.bookLabel(state.mirror.bank)) : 'Chưa thiết lập'}</small></span>›</button>
+    <button type="button" class="row" data-act="invest-source"><span class="ci">⚙️</span><span class="grow"><b>Thiết lập nguồn Thu/Chi</b><small>${state.mirror?.configured ? state.mirror.rules.length + ' luồng Góp/Trích' : 'Chưa thiết lập'}</small></span>›</button>
   </section>` : S.isCard() ? `${sectionTitle('Danh mục của thẻ')}
   <section class="card list">
     <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục chi</b><small>${state.categories.filter((c) => !c.archived && c.type === 'expense').length} danh mục</small></span>›</button>
