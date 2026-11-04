@@ -40,18 +40,22 @@ export const ui = {
 };
 
 /** Các loại kỳ cho từng nơi: "main" = Tổng quan/Giao dịch, "report" = Báo cáo. */
-export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['week', 'month', 'custom'] };
+export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['day', 'week', 'month', 'custom'] };
+/** Mục Đầu tư và Tiết kiệm xem theo Ngày / Tuần / Tháng / Khoảng. */
+const FUND_TYPES = ['day', 'week', 'month', 'custom'];
+const typesFor = (key) => (key === 'main' && ['invest', 'saving'].includes(state.profileKind) ? FUND_TYPES : PERIOD_TYPES[key]);
 
 export function periodState(key = 'main') {
   if (key === 'report' || key === 'card') {
     const prop = key === 'report' ? 'reportPeriod' : 'cardPeriod';
     if (!ui[prop]) {
       const t = todayISO();
-      ui[prop] = { type: 'month', anchor: t, from: addDays(t, -29), to: t };
+      // Mặc định xem theo ngày mỗi khi mở một mục.
+      ui[prop] = { type: 'day', anchor: t, from: addDays(t, -6), to: t };
     }
     return ui[prop];
   }
-  if (!ui.period) ui.period = { type: state.settings.period === 'day' ? 'day' : 'month', anchor: todayISO() };
+  if (!ui.period) { const t = todayISO(); ui.period = { type: 'day', anchor: t, from: addDays(t, -6), to: t }; }
   return ui.period;
 }
 
@@ -186,7 +190,7 @@ export function periodBar(key = 'main') {
       ${todayISO() < r.start || todayISO() > r.end ? `<button type="button" class="link center" data-act="period-today" ${k}>↺ Về ${p.type === 'day' ? 'hôm nay' : 'kỳ hiện tại'}</button>` : ''}`;
   return `
   <div class="period">
-    <div class="seg${PERIOD_TYPES[key].length > 3 ? ' small' : ''}">${PERIOD_TYPES[key].map((t) =>
+    <div class="seg${typesFor(key).length > 3 ? ' small' : ''}">${typesFor(key).map((t) =>
       `<button type="button" data-act="period-type" ${k} data-v="${t}" class="${p.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
     </div>
     ${nav}

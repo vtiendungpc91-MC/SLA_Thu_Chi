@@ -2300,7 +2300,7 @@ function secrecyHtml() {
       ${list.length < k.max ? `<button type="button" class="row add-row" data-act="secrecy-add" data-kind="${kind}"><span class="ci">＋</span><span class="grow"><b>Thêm ${k.label}</b></span></button>` : ''}
     </section>`;
   }).join('')}
-  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng dùng <b>Trích từ</b> để lấy tiền về. 📤 Cash Outflow: các mục Ngân hàng dùng <b>Góp cho</b> để chuyển tiền ra.</p>`;
+  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng <b>Góp cho</b> để gửi tiền vào, <b>Trích từ</b> để lấy tiền về. 📤 Cash Outflow: các mục Ngân hàng dùng <b>Góp cho</b> để chuyển tiền ra.</p>`;
 }
 
 actions['secrecy-add'] = (el) => secrecyForm(null, el.dataset.kind);
@@ -2322,7 +2322,7 @@ async function secrecyForm(b, kind) {
     body: `<form class="form" id="${formId}">
       ${field('Tên', `<input id="sc-name" required maxlength="24" value="${esc(b ? b.name : '')}" placeholder="${neo ? 'vd: Cake, Timo, Ví ảo' : 'vd: Biếu bố mẹ, Chi ngoài'}">`)}
       ${neo ? amountField('sc-bal', cur, 'Số dư hiện tại') : b ? `<p class="muted">Đã nhận góp: <b>${fmt(cur)}</b></p>` : ''}
-      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Các mục Ngân hàng trích tiền về sẽ trừ vào số dư này.' : 'Nhận tiền Góp từ các mục Ngân hàng, không có chức năng khác.'}</p>
+      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Các mục Ngân hàng góp vào sẽ cộng, trích về sẽ trừ vào số dư này.' : 'Nhận tiền Góp từ các mục Ngân hàng, không có chức năng khác.'}</p>
     </form>`,
     onMount(sh, close) {
       const bal = neo ? bindMoney(sh, 'sc-bal') : null;
@@ -2395,7 +2395,7 @@ function settingsView() {
   ${quickSettingsHtml()}` : `
   ${sectionTitle(`Hiển thị (riêng của ${esc(S.bookLabel(S.currentProfile()))})`)}
   <section class="card form">
-    ${field('Kỳ xem mặc định ở Tổng quan / Giao dịch', `<select data-set="period">${['day', 'month'].map((p) => `<option value="${p}" ${(s.period === 'day' ? 'day' : 'month') === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`)}
+    <p class="muted small">Khi mở một mục, app luôn xem mặc định theo <b>Ngày</b>.</p>
     ${[['showReports', '📊 Hiện mục Báo cáo'], ['showPlan', '🎯 Hiện mục Kế hoạch']].map(([k, label]) => `
     <div class="row-between"><span>${label}</span>
       <label class="switch"><input type="checkbox" data-tab-toggle="${k}" ${s[k] !== false ? 'checked' : ''}><i></i></label></div>`).join('')}

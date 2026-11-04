@@ -326,6 +326,7 @@ export async function loadAll() {
     state.categories.push(...extra);
   }
   await migrateCash();
+  state.profileKind = currentProfile().kind || 'bank';
   state.mirror = currentProfile().kind === 'invest' ? await loadInvestMirror(currentProfile()) : null;
 }
 
@@ -591,13 +592,13 @@ export const kindOfBook = (p) => p.kind || 'bank';
 
 /**
  * Đích Góp / Trích theo loại mục đang mở:
- * - Ngân hàng: góp cho Ngân hàng khác, Tiết kiệm, Cash Outflow; trích từ Ngân hàng khác, Tiết kiệm, NEOBANK.
+ * - Ngân hàng: góp cho Ngân hàng khác, Tiết kiệm, NEOBANK, Cash Outflow; trích từ Ngân hàng khác, Tiết kiệm, NEOBANK.
  * - Tiết kiệm: chỉ góp/trích với các mục Ngân hàng.
  * - Đầu tư, Thẻ chi tiêu: không góp/trích.
  */
 export function transferTargets(mode, from = currentProfile()) {
   const k = kindOfBook(from);
-  const allowed = k === 'bank' ? (mode === 'gop' ? ['bank', 'saving', 'outflow'] : ['bank', 'saving', 'neo'])
+  const allowed = k === 'bank' ? (mode === 'gop' ? ['bank', 'saving', 'neo', 'outflow'] : ['bank', 'saving', 'neo'])
     : k === 'saving' ? ['bank'] : [];
   return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)));
 }
