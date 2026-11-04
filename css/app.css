@@ -615,3 +615,8 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .tabbar a { border-radius: 14px; margin: 0 3px; padding: 4px 0; transition: background .15s; }
 .tabbar a.on { background: #e3f5ea; color: #18794e; }
 @media (prefers-color-scheme: dark) { .tabbar a.on { background: #113222; color: #4ee39b; } }
+/* Thiết lập nguồn mục Đầu tư: danh sách tích chọn danh mục */
+.check-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 8px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.check-list .check { font-size: 13.5px; }
+.mirror-row { cursor: default; }
+.sec-h .switch { flex: 0 0 auto; }

@@ -118,14 +118,25 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
+// Chủ sở hữu (nút trái trên cùng) có 2 loại: User (Ngân hàng, Thẻ chi tiêu) và Category (Đầu tư, Tiết kiệm).
+// Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt): NEOBANK và Cash Outflow.
 export const MAX_USERS = 3;
-export const MAX_PER_KIND = 2; // mỗi người dùng: tối đa 2 mục cho mỗi loại (Ngân hàng / Đầu tư / Thẻ chi tiêu)
+export const MAX_CATEGORIES = 3;
+export const SECRECY = 'secrecy';
+export const OWNER_TYPES = {
+  user: { label: 'User', icon: '👤', max: MAX_USERS, kinds: ['bank', 'card'], first: 'bank' },
+  category: { label: 'Category', icon: '🗂️', max: MAX_CATEGORIES, kinds: ['invest', 'saving'], first: 'saving' },
+};
 export const PROFILE_COLORS = ['#1f6feb', '#d6409f', '#30a46c', '#f76b15', '#8e4ec6', '#0d74ce'];
 export const BOOK_KINDS = {
-  bank: { label: 'Ngân hàng', icon: '🏦' },
-  invest: { label: 'Đầu tư', icon: '📈' },
-  card: { label: 'Thẻ chi tiêu', icon: '💳' },
+  bank: { label: 'Ngân hàng', icon: '🏦', max: 4 },
+  card: { label: 'Thẻ chi tiêu', icon: '💳', max: 2 },
+  invest: { label: 'Đầu tư', icon: '📈', max: 3 },
+  saving: { label: 'Tiết kiệm', icon: '🐷', max: 3 },
+  neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
+  outflow: { label: 'Cash Outflow', icon: '📤', max: 2 },
 };
+export const ownerType = (u) => (u && u.type === 'category' ? 'category' : 'user');
 
 const readJSON = (key) => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } };
 const saveProfiles = (list) => localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
@@ -156,18 +167,44 @@ function ensureModel() {
   saveProfiles(books);
 }
 
+/**
+ * Bản 4: mục "Đầu tư" cũ (sổ thu/chi tự nhập, thuộc người dùng) đổi thành mục "Tiết kiệm" để giữ nguyên dữ liệu
+ * và chuyển sang một Category tự tạo "Đầu tư & Tiết kiệm" (mục Đầu tư mới chỉ đọc giao dịch từ Ngân hàng).
+ */
+function migrateV4() {
+  if (localStorage.getItem('stc-model') === '4') return;
+  const books = readJSON(PROFILES_KEY) || [];
+  const users = readJSON(USERS_KEY) || [];
+  const old = books.filter((b) => b.kind === 'invest' && users.find((u) => u.id === b.owner && ownerType(u) === 'user'));
+  if (old.length) {
+    let cat = users.find((u) => ownerType(u) === 'category');
+    if (!cat) {
+      cat = { id: uid().replace(/-/g, '').slice(0, 12), type: 'category', name: 'Đầu tư & Tiết kiệm', icon: '🗂️', color: PROFILE_COLORS[2] };
+      users.push(cat);
+    }
+    for (const b of old) Object.assign(b, { kind: 'saving', owner: cat.id, icon: b.icon === '📈' ? '🐷' : b.icon });
+    saveUsers(users);
+    saveProfiles(books);
+  }
+  localStorage.setItem('stc-model', '4');
+}
+
 /** Danh sách mục (sổ) của mọi người dùng. */
 export function getProfiles() {
   ensureModel();
+  migrateV4();
   return readJSON(PROFILES_KEY);
 }
-export function getUsers() {
+/** Chủ sở hữu (User + Category); type = 'user' | 'category' để lọc. */
+export function getUsers(type) {
   ensureModel();
-  return readJSON(USERS_KEY);
+  migrateV4();
+  const all = readJSON(USERS_KEY);
+  return type ? all.filter((u) => ownerType(u) === type) : all;
 }
 
 export function currentProfile() {
-  const list = getProfiles();
+  const list = getProfiles().filter((p) => p.owner !== SECRECY);
   return list.find((p) => p.id === localStorage.getItem(CURRENT_KEY)) || list[0];
 }
 export function currentUser() {
@@ -190,7 +227,7 @@ export function lockError(bookId) {
 }
 
 /** Nhãn đầy đủ của một mục: "Tôi · Ngân hàng". */
-export const bookLabel = (b) => `${userOf(b)?.name || '?'} · ${b.name}`;
+export const bookLabel = (b) => (b.owner === SECRECY ? `Secrecy · ${b.name}` : `${userOf(b)?.name || '?'} · ${b.name}`);
 
 export async function switchProfile(id) {
   localStorage.setItem(CURRENT_KEY, id);
@@ -210,16 +247,19 @@ export async function switchUser(userId) {
   await switchProfile((books.find((b) => b.id === u.lastBook) || books[0]).id);
 }
 
-/** Thêm/sửa người dùng. Thêm mới (tối đa 3) sẽ kèm một mục Ngân hàng mặc định. */
+/** Thêm/sửa User hoặc Category. Thêm mới kèm 1 mục mặc định (User: Ngân hàng, Category: Tiết kiệm). */
 export function saveUser(u) {
   const users = getUsers();
   if (!u.id) {
-    if (users.length >= MAX_USERS) throw new Error(`Tối đa ${MAX_USERS} người dùng`);
+    const t = OWNER_TYPES[ownerType(u)];
+    u.type = ownerType(u);
+    if (users.filter((x) => ownerType(x) === u.type).length >= t.max) throw new Error(`Tối đa ${t.max} ${t.label}`);
     u.id = uid().replace(/-/g, '').slice(0, 12);
     u.color = u.color || PROFILE_COLORS[users.length % PROFILE_COLORS.length];
     users.push(u);
     saveUsers(users);
-    saveProfile({ name: BOOK_KINDS.bank.label, icon: BOOK_KINDS.bank.icon, kind: 'bank', owner: u.id, color: u.color });
+    const k = BOOK_KINDS[t.first];
+    saveProfile({ name: k.label, icon: k.icon, kind: t.first, owner: u.id, color: u.color });
   } else {
     saveUsers(users.map((x) => (x.id === u.id ? { ...x, ...u } : x)));
   }
@@ -229,21 +269,20 @@ export function saveUser(u) {
 /** Xóa người dùng cùng toàn bộ các mục (sổ) của người đó. */
 export async function deleteUser(userId) {
   const users = getUsers().filter((u) => u.id !== userId);
-  if (!users.length) throw new Error('Cần giữ ít nhất 1 người dùng');
+  if (!users.some((u) => ownerType(u) === 'user')) throw new Error('Cần giữ ít nhất 1 User');
   const drop = userBooks(userId);
   saveUsers(users);
   saveProfiles(getProfiles().filter((b) => b.owner !== userId));
-  if (drop.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchUser(users[0].id);
+  if (drop.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchUser(users.find((u) => ownerType(u) === 'user').id);
   for (const b of drop) await dropProfile(b.id);
 }
 
 export function saveProfile(p) {
   const list = getProfiles();
   if (!p.id) {
+    const kind = BOOK_KINDS[p.kind || 'bank'];
     const same = list.filter((b) => b.owner === p.owner && (b.kind || 'bank') === (p.kind || 'bank'));
-    if (p.owner && same.length >= MAX_PER_KIND) {
-      throw new Error(`Mỗi người dùng tối đa ${MAX_PER_KIND} mục ${BOOK_KINDS[p.kind || 'bank'].label}`);
-    }
+    if (p.owner && same.length >= kind.max) throw new Error(`Tối đa ${kind.max} mục ${kind.label}`);
     p.id = uid().replace(/-/g, '').slice(0, 12);
     p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
     list.push(p);
@@ -260,7 +299,7 @@ export async function deleteProfile(id) {
   const book = getProfiles().find((p) => p.id === id);
   if (!book) return;
   const siblings = userBooks(book.owner).filter((b) => b.id !== id);
-  if (!siblings.length) throw new Error('Mỗi người dùng cần ít nhất 1 mục');
+  if (book.owner !== SECRECY && !siblings.length) throw new Error('Mỗi User / Category cần ít nhất 1 mục');
   saveProfiles(getProfiles().filter((p) => p.id !== id));
   if (localStorage.getItem(CURRENT_KEY) === id) await switchProfile(siblings[0].id);
   await dropProfile(id);
@@ -287,6 +326,7 @@ export async function loadAll() {
     state.categories.push(...extra);
   }
   await migrateCash();
+  state.mirror = currentProfile().kind === 'invest' ? await loadInvestMirror(currentProfile()) : null;
 }
 
 /**
@@ -545,8 +585,75 @@ export async function deleteTx(tx) {
 // Thẻ chi tiêu là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
 // Mỗi khoản chi có trạng thái open/done; "Trích thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
 export const isCard = (p = currentProfile()) => p && p.kind === 'card';
-/** Các mục có tài khoản/số dư (Ngân hàng, Đầu tư) của mọi người dùng — dùng cho Góp, Trích, trả tiền thẻ. */
-export const moneyBooks = () => getProfiles().filter((p) => p.kind !== 'card');
+/** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
+export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
+export const kindOfBook = (p) => p.kind || 'bank';
+
+/**
+ * Đích Góp / Trích theo loại mục đang mở:
+ * - Ngân hàng: góp cho Ngân hàng khác, Tiết kiệm, Cash Outflow; trích từ Ngân hàng khác, Tiết kiệm, NEOBANK.
+ * - Tiết kiệm: chỉ góp/trích với các mục Ngân hàng.
+ * - Đầu tư, Thẻ chi tiêu: không góp/trích.
+ */
+export function transferTargets(mode, from = currentProfile()) {
+  const k = kindOfBook(from);
+  const allowed = k === 'bank' ? (mode === 'gop' ? ['bank', 'saving', 'outflow'] : ['bank', 'saving', 'neo'])
+    : k === 'saving' ? ['bank'] : [];
+  return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)));
+}
+
+// ---------- Secrecy: NEOBANK & Cash Outflow ----------
+const SECRECY_HIDE_KEY = 'stc-secrecy-hidden';
+export const secrecyHidden = () => localStorage.getItem(SECRECY_HIDE_KEY) === '1';
+export function setSecrecyHidden(v) { localStorage.setItem(SECRECY_HIDE_KEY, v ? '1' : '0'); emit(); }
+export const secrecyBooks = (kind) => getProfiles().filter((p) => p.owner === SECRECY && (!kind || p.kind === kind));
+
+/** Tạo NEOBANK / Cash Outflow kèm 1 tài khoản (NEOBANK có số dư ban đầu). */
+export async function createSecrecy(kind, name, balance = 0) {
+  const k = BOOK_KINDS[kind];
+  const p = saveProfile({ name: name || k.label, icon: k.icon, kind, owner: SECRECY });
+  const { peer, accs } = await openPeerBook(p.id);
+  await peer.put('accounts', { ...accs[0], name: name || k.label, bank: k.label, initial: Math.round(balance) || 0 });
+  emit();
+  return p;
+}
+/** Điều chỉnh số dư hiện tại của mục Secrecy (sửa "số dư ban đầu" cho khớp). */
+export async function setPeerBalance(bookId, value) {
+  const { peer, accs } = await openPeerBook(bookId);
+  const acc = accs[0];
+  const cur = await peerBalance(bookId, acc.id);
+  await peer.put('accounts', { ...acc, initial: Math.round((Number(acc.initial) || 0) + (value - cur)) });
+  emit();
+}
+
+/** Danh mục của một mục khác (để chọn nguồn cho mục Đầu tư). */
+export async function peerCategories(bookId) {
+  const { cats } = await openPeerBook(bookId);
+  return { cats };
+}
+
+// ---------- Đầu tư: đọc giao dịch từ 1 mục Ngân hàng theo danh mục đã chọn ----------
+/** source = { bookId, income: [catId], expense: [catId] } lưu trong mục Đầu tư. */
+export async function loadInvestMirror(book) {
+  const src = book.source;
+  const bank = src && getProfiles().find((p) => p.id === src.bookId);
+  if (!bank) return { configured: false, txs: [], cats: [] };
+  const peer = dbOf(bank.id);
+  const cats = await peer.getAll('categories');
+  const accs = await peer.getAll('accounts');
+  const inc = new Set(src.income || []), exp = new Set(src.expense || []);
+  const txs = [];
+  for (const t of await peer.getAll('transactions')) {
+    const want = t.type === 'income' ? inc : t.type === 'expense' ? exp : null;
+    if (!want) continue;
+    const parts = t.splits && t.splits.length ? t.splits : [{ categoryId: t.categoryId, amountVnd: t.amountVnd }];
+    const hit = parts.filter((p) => want.has(p.categoryId));
+    if (!hit.length) continue;
+    const amt = hit.reduce((s, p) => s + p.amountVnd, 0);
+    txs.push({ ...t, amountVnd: amt, categoryId: hit[0].categoryId, splits: null, mirror: true, accName: accs.find((a) => a.id === t.accountId)?.name || '' });
+  }
+  return { configured: true, bank, txs, cats };
+}
 export const cardBooks = (userId) => getProfiles().filter((p) => p.kind === 'card' && (!userId || p.owner === userId));
 export const CARD_SOURCES = ['MoMo', 'ZaloPay', 'ShopeePay', 'VNPay', 'Viettel Money', 'Apple Pay', 'Thẻ tín dụng', 'Khác'];
 
@@ -604,6 +711,11 @@ async function reopenCardItem(tx) {
 
 /** Tóm tắt để hiện trong danh sách chọn: người dùng → tổng số dư; thẻ → số tiền đã chi chưa thanh toán. */
 export async function profileSummary(p) {
+  if (p.kind === 'invest') {
+    const m = await loadInvestMirror(p);
+    const sum = (type) => m.txs.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
+    return { kind: 'invest', configured: m.configured, income: sum('income'), expense: sum('expense') };
+  }
   const isCur = p.id === currentProfile().id;
   const txs = isCur ? state.transactions : await dbOf(p.id).getAll('transactions');
   if (p.kind === 'card') {
