@@ -197,7 +197,7 @@ async function fillTopBar(root) {
   total.innerHTML = (kind === 'card' ? '<small>Chưa TT</small> ' : '') + fmt(sum);
   // Số tiền rất lớn hoặc màn hình hẹp: thu nhỏ vừa đủ để không đè lên nút + giữa màn hình.
   const room = innerWidth / 2 - 44;
-  total.style.fontSize = `${Math.min(22, room / (total.textContent.length * 0.515))}px`;
+  total.style.fontSize = `${Math.min(15.4, room / (total.textContent.length * 0.515))}px`;
 }
 
 function resetViewState() {
@@ -505,7 +505,15 @@ function bookForm(b, kind = 'bank') {
     body: `<form class="form" id="${formId}">
       ${kind === 'bank' && !b ? '<div class="seg" id="bf-type"><button type="button" data-t="bank" class="on">🏦 Bank</button><button type="button" data-t="od">💳 Thấu chi</button></div>' : ''}
       <p class="muted small">${k.icon} Mục của <b>${esc(owner.name)}</b>. <span id="bf-hint">${f.overdraft ? ODRAFT_HINT : hint}</span></p>
-      ${kind === 'bank' ? `<div id="bf-od" ${f.overdraft ? '' : 'hidden'}>${amountField('bf-limit', f.limit || 0, 'Hạn mức thấu chi')}</div>` : ''}
+      ${kind === 'bank' && !b ? `<div id="bf-od" hidden>
+        ${amountField('bf-limit', 0, 'Hạn mức thấu chi')}
+        ${amountField('bf-init', 0, 'Số dư lúc đầu')}
+        <label class="check"><input type="checkbox" id="bf-neg"> Số dư lúc đầu đang âm</label>
+        <p class="muted small">⚠️ Sau khi tạo không sửa được số dư và hạn mức, chỉ có thể xóa mục rồi tạo lại.</p>
+      </div>` : ''}
+      ${b?.overdraft ? `<div class="kv"><span>Hạn mức</span><b>${fmt(b.limit)}</b></div>
+        <div class="kv"><span>Số dư hiện tại</span><b data-od-bal>…</b></div>
+        <p class="muted small">Không sửa được số dư và hạn mức. Muốn đổi: xóa mục này rồi tạo lại.</p>` : ''}
       ${field('Tên mục', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="${{ card: 'vd: Thẻ MoMo, Đi chợ', saving: 'vd: Quỹ học phí, Tiết kiệm mua nhà' }[kind] || 'vd: Ngân hàng, Tiền nhà'}">`)}
       ${looksFields(f, false)}
       ${b && S.userBooks(owner.id).length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa mục</button></div>' : ''}
@@ -513,7 +521,9 @@ function bookForm(b, kind = 'bank') {
     onMount(sh, close) {
       bindLooks(sh, f);
       setTimeout(() => { if (!b) $(sh, '#pf-name').focus(); }, 250);
-      const limitIn = kind === 'bank' ? bindMoney(sh, 'bf-limit') : null;
+      const limitIn = kind === 'bank' && !b ? bindMoney(sh, 'bf-limit') : null;
+      const initIn = kind === 'bank' && !b ? bindMoney(sh, 'bf-init') : null;
+      if (b?.overdraft) S.peerAccounts(b.id).then(async (accs) => { $(sh, '[data-od-bal]').textContent = fmt(await S.peerBalance(b.id, accs[0].id)); });
       $(sh, '#bf-type')?.addEventListener('click', (e) => {
         const t = e.target.closest('[data-t]');
         if (!t) return;
@@ -528,13 +538,20 @@ function bookForm(b, kind = 'bank') {
         if (!name) return toast('Nhập tên mục');
         if (S.userBooks(owner.id).some((x) => x.id !== f.id && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên mục này đã có');
         const data = { ...f, name };
-        if (isOd) {
+        let initial = 0;
+        if (isOd && !b) {
           data.overdraft = true;
           data.limit = Math.round(readMoney(limitIn.value));
           if (!(data.limit > 0)) return toast('Nhập hạn mức thấu chi');
+          const raw = initIn.value.trim() ? readMoney(initIn.value) : 0;
+          if (!Number.isFinite(raw)) return toast('Số dư lúc đầu chưa đúng');
+          initial = Math.round($(sh, '#bf-neg').checked ? -Math.abs(raw) : raw);
+          const over = Math.abs(initial) > data.limit ? '\n⚠️ Số dư lúc đầu vượt hạn mức.' : '';
+          if (!confirm(`Tạo Thấu chi "${name}"?\nHạn mức: ${fmt(data.limit)}\nSố dư lúc đầu: ${fmt(initial)}${over}\n\nSau khi tạo không sửa được 2 số này.`)) return;
         }
         let saved;
         try { saved = S.saveProfile(data); } catch (err) { return toast(err.message); }
+        if (initial) await S.setPeerBalance(saved.id, initial);
         close();
         if (b) { refresh(); toast('Đã lưu'); return; }
         await switchTo(saved.id);
@@ -565,6 +582,7 @@ function statFlowForm() {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Đầu tư chứng khoán">`)}
+      ${statIconField(statIcon(STATS.flow))}
       <p class="muted small">Chỉ lấy các khoản <b>Transfer / Withdraw</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Transfer từ A cho B, hoặc B Withdraw từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>🔁 Luồng tiền lấy vào</span><div id="is-rules"></div>
         <button type="button" class="btn ghost small" data-add-rule>＋ Thêm luồng</button></div>
@@ -573,6 +591,7 @@ function statFlowForm() {
         <button type="button" class="btn ghost small" data-add-cat>＋ Thêm danh mục</button></div>
     </form>`,
     onMount(sh, close) {
+      const getIcon = bindStatIcon(sh, statIcon(STATS.flow));
       const renderRules = () => {
         $(sh, '#is-rules').innerHTML = rules.map((r, i) => `<div class="rule-row" data-i="${i}">
           <select data-k="from">${opts(r.from)}</select><span class="rule-arrow">→</span><select data-k="to">${opts(r.to)}</select>
@@ -604,7 +623,7 @@ function statFlowForm() {
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (rules.some((r) => r.from === r.to)) return toast('Mục nguồn và mục đích phải khác nhau');
-        await S.setSetting('statFlow', { name: $(sh, '#st-name').value.trim(), rules, flowCats: [...picked], show: src.show !== false });
+        await S.setSetting('statFlow', { name: $(sh, '#st-name').value.trim(), icon: getIcon(), rules, flowCats: [...picked], show: src.show !== false });
         close();
         toast('Đã lưu thiết lập thống kê');
       });
@@ -624,12 +643,14 @@ function statTrackForm() {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Chi tiêu gia đình">`)}
+      ${statIconField(statIcon(STATS.track))}
       <p class="muted small">Lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, thuộc các danh mục bạn tích. Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>📒 Lấy từ các mục</span><div class="check-list one" id="ts-books">${books.map((b) =>
         `<label class="check"><input type="checkbox" value="${esc(b.id)}" ${pickedBooks.has(b.id) ? 'checked' : ''}> ${esc(b.icon + ' ' + S.bookLabel(b))}</label>`).join('')}</div></div>
       <div id="ts-cats"><p class="muted small">Đang tải danh mục…</p></div>
     </form>`,
     onMount(sh, close) {
+      const getIcon = bindStatIcon(sh, statIcon(STATS.track));
       const load = async () => {
         const names = await S.categoryNamesOf([...pickedBooks]);
         const box = (type, title, set) => `<div class="field"><span>${title}</span><div class="check-list">${names[type].map(([n, ic]) =>
@@ -649,7 +670,7 @@ function statTrackForm() {
         e.preventDefault();
         if (!pickedBooks.size) return toast('Chọn ít nhất 1 mục');
         if (!inc.size && !exp.size) return toast('Chọn ít nhất 1 danh mục thu hoặc chi');
-        await S.setSetting('statTrack', { name: $(sh, '#st-name').value.trim(), books: [...pickedBooks], income: [...inc], expense: [...exp], show: src.show !== false });
+        await S.setSetting('statTrack', { name: $(sh, '#st-name').value.trim(), icon: getIcon(), books: [...pickedBooks], income: [...inc], expense: [...exp], show: src.show !== false });
         close();
         toast('Đã lưu thiết lập thống kê');
       });
@@ -709,6 +730,14 @@ const STATS = {
   track: { key: 'statTrack', icon: '📊', label: 'Thu/Chi', load: S.loadTrackStats, form: () => statTrackForm() },
 };
 const statName = (st) => state.settings[st.key]?.name || st.label;
+const statIcon = (st) => state.settings[st.key]?.icon || st.icon;
+/** Ô chọn biểu tượng trong form thiết lập thống kê. */
+const statIconField = (icon) => `<div class="field"><span>Biểu tượng <b id="st-icon-now">${esc(icon)}</b></span>${iconPickerHtml('st-icons', icon)}</div>`;
+function bindStatIcon(sh, start) {
+  let icon = start;
+  bindIconPicker($(sh, '#st-icons'), (v) => { icon = v; $(sh, '#st-icon-now').textContent = v; }, () => icon);
+  return () => icon;
+}
 const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
 
 /** Các dòng thống kê đang bật, tính theo kỳ đang chọn ở Tổng quan. */
@@ -724,7 +753,7 @@ async function fillHomeStats(root) {
     const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
     const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
     html += `<button type="button" class="stat-line" data-act="stat-open" data-k="${k}">
-      <span class="grow"><b>${st.icon} ${esc(statName(st))}</b><small>${m.configured ? `Thu ${fmtShort(inc)} · Chi ${fmtShort(exp)}` : 'Chưa thiết lập nguồn'}</small></span>
+      <span class="grow"><b>${esc(statIcon(st))} ${esc(statName(st))}</b><small>${m.configured ? `Thu ${fmtShort(inc)} · Chi ${fmtShort(exp)}` : 'Chưa thiết lập nguồn'}</small></span>
       ${m.configured ? `<strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong>` : ''}<i>›</i></button>`;
   }
   if (box.isConnected) box.innerHTML = html;
@@ -752,7 +781,7 @@ actions['stat-open'] = async (el) => {
   const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
   const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
   openSheet({
-    title: `${st.icon} ${statName(st)} · ${r.label}`,
+    title: `${statIcon(st)} ${statName(st)} · ${r.label}`,
     body: `<section class="card stats two-col"><div><small>Thu</small><b class="income">${fmt(inc)}</b></div><div><small>Chi</small><b class="expense">${fmt(exp)}</b></div></section>
       <p class="center"><small class="muted">Chênh lệch</small> <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b></p>
       ${list.length ? `<div class="card list">${list.map(statRow).join('')}</div>` : empty('📭', 'Không có giao dịch phù hợp trong kỳ này.')}`,
@@ -766,7 +795,7 @@ function statSettingsHtml() {
   <section class="card list">${Object.entries(STATS).map(([k, st]) => {
     const src = state.settings[st.key];
     return `<div class="row quick-row">
-      <button type="button" class="grow-btn" data-act="stat-setup" data-k="${k}"><span class="ci">${st.icon}</span>
+      <button type="button" class="grow-btn" data-act="stat-setup" data-k="${k}"><span class="ci">${esc(statIcon(st))}</span>
         <span class="grow"><b>${esc(src?.name || `Thống kê ${st.label}`)}</b><small>${src ? `${st.label} · bấm để sửa` : 'Chưa thiết lập'}</small></span><span>✎</span></button>
       <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-stat-show="${st.key}" ${src?.show ? 'checked' : ''} ${src ? '' : 'disabled'}><i></i></label>
     </div>`;
@@ -2873,6 +2902,7 @@ function accountForm(a) {
   const f = a ? { ...a } : { name: '', bank: '', number: '', holder: '', icon: '🏦', kind: 'bank', initial: 0, order: state.accounts.length };
   const used = a && state.transactions.some((t) => t.accountId === a.id || t.toAccountId === a.id);
   const curBal = a ? S.accountBalance(a) : 0;
+  const od = !!S.currentProfile().overdraft;
   openSheet({
     title: a ? 'Tài khoản ngân hàng' : 'Thêm tài khoản ngân hàng',
     body: `<form class="form">
@@ -2884,12 +2914,13 @@ function accountForm(a) {
       ${field('Chủ tài khoản', `<input id="af-holder" autocomplete="off" style="text-transform:uppercase" value="${esc(f.holder || '')}" placeholder="vd: NGUYEN VAN A">`)}
       <div class="two">${field('Biểu tượng', `<input id="af-icon" maxlength="4" class="emoji" value="${esc(f.icon)}">`)}
       ${field('Tên gợi nhớ (không bắt buộc)', `<input id="af-name" value="${esc(a ? f.name : '')}" placeholder="vd: TK lương, TK chi tiêu">`, 'style="flex:3"')}</div>
-      ${amountField('af-bal', curBal, a ? 'Số dư hiện tại (sửa nếu lệch với app ngân hàng)' : 'Số dư hiện tại')}
-      <div class="actions">${a ? `<button type="button" class="btn danger" data-del>${used ? (a.archived ? 'Hiện lại' : 'Ẩn tài khoản') : 'Xóa'}</button>` : ''}<button class="btn primary">Lưu</button></div>
+      ${od ? `<div class="kv"><span>Số dư hiện tại</span><b>${fmt(curBal)}</b></div><p class="muted small">Số dư Thấu chi không sửa được. Muốn đổi: xóa mục này rồi tạo lại.</p>`
+        : amountField('af-bal', curBal, a ? 'Số dư hiện tại (sửa nếu lệch với app ngân hàng)' : 'Số dư hiện tại')}
+      <div class="actions">${a && !od ? `<button type="button" class="btn danger" data-del>${used ? (a.archived ? 'Hiện lại' : 'Ẩn tài khoản') : 'Xóa'}</button>` : ''}<button class="btn primary">Lưu</button></div>
     </form>`,
     onMount(sh, close) {
-      const bal = bindMoney(sh, 'af-bal');
-      if (!a) bal.value = '';
+      const bal = od ? null : bindMoney(sh, 'af-bal');
+      if (!a && bal) bal.value = '';
       $(sh, '[data-copy]')?.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText(f.number.replace(/\s/g, '')); toast('Đã chép số tài khoản'); } catch { toast('Không sao chép được'); }
       });
@@ -2898,8 +2929,8 @@ function accountForm(a) {
         const bank = $(sh, '#af-bank').value.trim();
         if (!bank) return toast('Nhập tên ngân hàng');
         const number = $(sh, '#af-num').value.replace(/[^\d\s]/g, '').trim();
-        const v = bal.value.trim() ? readMoney(bal.value) : 0;
-        if (!Number.isFinite(v) || (v < 0 && !S.currentProfile().overdraft)) return toast('Số dư phải là số không âm');
+        const v = od ? curBal : bal.value.trim() ? readMoney(bal.value) : 0;
+        if (!Number.isFinite(v) || (v < 0 && !od)) return toast('Số dư phải là số không âm');
         const digits = number.replace(/\s/g, '');
         const name = $(sh, '#af-name').value.trim() || (digits ? `${bank} ••${digits.slice(-4)}` : bank);
         // Số dư = ban đầu + các giao dịch → chỉnh "ban đầu" để số dư hiện tại khớp số nhập.
