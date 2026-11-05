@@ -6,7 +6,7 @@ import { esc, getRange, customRange, todayISO, addDays, fmtDate, PERIOD_LABEL } 
  * Ô date thật nằm ẩn phía trên chữ, chạm vào sẽ mở lịch chọn ngày.
  */
 export function datePick(id, value, label = 'Ngày', attrs = '') {
-  return `<label class="date-pick"><span class="dp-text" data-label="${esc(label)}">${esc(label)}: <b>${value ? fmtDate(value) : 'chưa chọn'}</b></span>
+  return `<label class="date-pick${/disabled/.test(attrs) ? ' fixed' : ''}"><span class="dp-text" data-label="${esc(label)}">${esc(label)}: <b>${value ? fmtDate(value) : 'chưa chọn'}</b></span>
     <span class="dp-ic">📅</span><input type="date" ${id ? `id="${id}"` : ''} value="${esc(value || '')}" aria-label="${esc(label)}" ${attrs}></label>`;
 }
 export function syncDatePick(inp) {
@@ -16,11 +16,14 @@ export function syncDatePick(inp) {
   t.innerHTML = t.dataset.mini ? `<small>${esc(t.dataset.label)}</small><b>${d}</b>` : `${esc(t.dataset.label)}: <b>${d}</b>`;
 }
 
-/** Hàng nhập tiền dùng chung cho Thu/Chi, Transfer, Withdraw, Thẻ chi tiêu: [Ngày 20%] [Ô số tiền 80%], đề xuất số tiền ở dưới. */
-export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false }) {
+/**
+ * Hàng nhập tiền dùng chung: [Ngày 30%] [Ô số tiền], đề xuất số tiền ở dưới.
+ * Ghi mới thì ngày cố định; chỉ sửa ngày được khi sửa giao dịch (editDate = true).
+ */
+export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false, editDate = false }) {
   return `<div class="amt-line">
-    <label class="date-pick mini"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
-      <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}"></label>
+    <label class="date-pick mini${editDate ? '' : ' fixed'}"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
+      <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}" ${editDate ? '' : 'disabled'}></label>
     <input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">
   </div><div class="zero-sug" data-zero-for="${amtId}" hidden></div><em class="hint center" data-hint-for="${amtId}"></em>`;
 }

@@ -714,3 +714,18 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 /* Tổng tiền trên dòng tên nhóm mục */
 .grp-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .grp-sum { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Chênh lệch +50%; tổng dưới nút phải gấp đôi */
+.hero-net.net-small strong { font-size: 19.5px; }
+[data-kind-total] { font-size: 22px; font-weight: 800; color: var(--text); padding: 0; letter-spacing: -.3px; }
+[data-kind-total] small { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+
+/* Hàng nhập tiền: ngày 30%; ngày cố định khi ghi mới */
+.amt-line { grid-template-columns: 30% 1fr; }
+.date-pick.mini .dp-text small { font-size: 11.5px; }
+.date-pick.mini .dp-text b { font-size: 13.5px; letter-spacing: 0; }
+.date-pick.fixed { background: var(--soft); cursor: default; }
+.date-pick.fixed input { pointer-events: none; }
+.date-pick.fixed .dp-ic { display: none; }
+
+.seg.tabs > * { font-size: 13px; padding: 7px 2px; }
+#bf-od[hidden] { display: none; }

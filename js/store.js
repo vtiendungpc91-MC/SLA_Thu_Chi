@@ -105,7 +105,7 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// User (tối đa 3): các mục Ngân hàng (3), Tiết kiệm (3), Thẻ chi tiêu (2).
+// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ chi tiêu (1).
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
 export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
@@ -116,8 +116,8 @@ export const PROFILE_COLORS = [
 ];
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
-  saving: { label: 'Tiết kiệm', icon: '🐷', max: 3 },
-  card: { label: 'Thẻ chi tiêu', icon: '💳', max: 2 },
+  saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
+  card: { label: 'Thẻ chi tiêu', icon: '💳', max: 1 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -422,6 +422,7 @@ export function fundsError(accountId, amountVnd, ignoreTx = null) {
   // Mục đang khóa thì không cho chuyển tiền đi (chi, transfer, trả nợ, chuyển khoản…).
   const locked = lockError(currentProfile().id);
   if (locked) return locked;
+  if (currentProfile().overdraft) return null; // Thấu chi được âm số dư; vượt hạn mức chỉ cảnh báo.
   const have = available(accountId, ignoreTx);
   if (amountVnd <= have) return null;
   return `Số dư "${accById(accountId)?.name || 'tài khoản'}" không đủ: còn ${fmt(have)}, cần ${fmt(amountVnd)}`;
@@ -496,7 +497,7 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const locked = lockError(from.id);
   if (locked) throw new Error(locked);
   const have = await peerBalance(from.id, fromAccountId);
-  if (amount > have) {
+  if (!from.overdraft && amount > have) {
     const acc = accs.find((a) => a.id === fromAccountId);
     throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${bookLabel(from)} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
   }
@@ -510,6 +511,34 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
     ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
     note: note || `Withdraw từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat },
   });
+}
+
+/**
+ * Cảnh báo Thấu chi: chuyển đi / nhận về vượt hạn mức (số tiền của lần này, hoặc số dư sau giao dịch).
+ * Chỉ cảnh báo, người dùng vẫn có thể tiếp tục.
+ */
+export async function overdraftWarnings({ fromId, fromAccountId, toId, toAccountId, amount }) {
+  const out = [];
+  const from = getProfiles().find((p) => p.id === fromId), to = getProfiles().find((p) => p.id === toId);
+  if (from?.overdraft) {
+    const after = (await peerBalance(fromId, fromAccountId)) - amount;
+    if (amount > from.limit || after < -from.limit) out.push(`Thấu chi "${from.name}" chuyển đi ${fmt(amount)}, số dư sau ${fmt(after)}: vượt hạn mức ${fmt(from.limit)}.`);
+  }
+  if (to?.overdraft) {
+    const after = (await peerBalance(toId, toAccountId)) + amount;
+    if (amount > to.limit || after > to.limit) out.push(`Thấu chi "${to.name}" nhận về ${fmt(amount)}, số dư sau ${fmt(after)}: vượt hạn mức ${fmt(to.limit)}.`);
+  }
+  return out;
+}
+
+/** Sửa ngày của khoản Transfer/Withdraw ở cả 2 sổ. */
+export async function setGopDate(tx, date) {
+  if (tx.gop && getProfiles().some((p) => p.id === tx.gop.peer)) {
+    const peer = dbOf(tx.gop.peer);
+    const twin = (await peer.getAll('transactions')).find((t) => t.gop && t.gop.id === tx.gop.id);
+    if (twin) await peer.put('transactions', { ...twin, date, updatedAt: Date.now() });
+  }
+  await put('transactions', { ...tx, date });
 }
 
 /** Xóa giao dịch tương ứng trong sổ của người kia (nếu người đó còn tồn tại). */
@@ -626,7 +655,7 @@ export async function deleteTx(tx) {
 // Mỗi khoản chi có trạng thái open/done; "Withdraw thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
 export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
-export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
+export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);
 export const kindOfBook = (p) => p.kind || 'bank';
 /**
  * Đích Transfer / Withdraw theo loại mục đang mở:
@@ -1012,7 +1041,25 @@ export function getAlerts() {
       out.push({ key: `budget:${b.id}:${st.range.start}:${level}`, kind: 'budget', id: b.id, days: 999, level, title: budgetName(b), amount: st.spent, limit: b.amount, ratio: st.ratio });
     }
   }
+  for (const r of state.settings.reminders || []) {
+    const days = diffDays(today, r.date);
+    if (days <= (r.remindDays || 0)) out.push({ key: `rem:${r.id}:${r.date}`, kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date });
+  }
   return out.sort((a, b) => a.days - b.days);
+}
+
+/** Nhắc nhở tự tạo ở Kế hoạch: lưu trong cài đặt của mục. */
+export const saveReminder = (r) => {
+  const list = state.settings.reminders || [];
+  const item = r.id ? r : { ...r, id: uid() };
+  return setSetting('reminders', list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]);
+};
+export const deleteReminder = (id) => setSetting('reminders', (state.settings.reminders || []).filter((x) => x.id !== id));
+/** Xong: nhắc hằng tháng thì chuyển sang tháng sau, nhắc một lần thì bỏ. */
+export function doneReminder(id) {
+  const r = (state.settings.reminders || []).find((x) => x.id === id);
+  if (!r) return null;
+  return r.repeat === 'month' ? saveReminder({ ...r, date: addMonths(r.date, 1, Number(r.day) || undefined) }) : deleteReminder(id);
 }
 
 /**
