@@ -16,7 +16,7 @@ export function syncDatePick(inp) {
   t.innerHTML = t.dataset.mini ? `<small>${esc(t.dataset.label)}</small><b>${d}</b>` : `${esc(t.dataset.label)}: <b>${d}</b>`;
 }
 
-/** Ô tiền kèm nút +000 nằm trong ô, sát lề phải. */
+/** Ô tiền kèm nút +000 nằm bên phải, ngoài ô nhập. */
 export const moneyBox = (input) => `<div class="money-box">${input}<button type="button" class="plus000" data-plus000 tabindex="-1" aria-label="Thêm 000">+000</button></div>`;
 
 /**
@@ -28,7 +28,7 @@ export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', 
     <label class="date-pick mini${editDate ? '' : ' fixed'}"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
       <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}" ${editDate ? '' : 'disabled'}></label>
     ${moneyBox(`<input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">`)}
-  </div>${after}<div class="zero-sug" data-zero-for="${amtId}" hidden></div><em class="hint center" data-hint-for="${amtId}"></em>`;
+  </div><div class="zero-sug" data-zero-for="${amtId}" hidden></div>${after}<em class="hint center" data-hint-for="${amtId}"></em>`;
 }
 import { state } from './store.js';
 

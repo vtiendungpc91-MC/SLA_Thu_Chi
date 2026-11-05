@@ -297,7 +297,7 @@ const NOTIF = {
   pending: { icon: '⏳', btn: 'Xác nhận' },
   recurring: { icon: '🔁', btn: 'Xem' },
   budget: { icon: '⚠️', btn: 'Xem' },
-  reminder: { icon: '🔔', btn: 'Xong' },
+  reminder: { icon: '🔔', btn: 'Done' },
 };
 function notifRow(a) {
   const sub = a.kind === 'budget'
@@ -327,7 +327,7 @@ async function runNotif({ notif, book, id }) {
     if (d) debtPay(d);
   } else if (notif === 'pending') actions['pending-open']({ dataset: { id } });
   else if (notif === 'recurring') actions['rec-open']({ dataset: { id } });
-  else if (notif === 'reminder') { await S.doneReminder(id); toast('Đã xong'); }
+  else if (notif === 'reminder') { await S.doneReminder(id); toast('Đã Done'); }
   else actions['budget-goto']();
 }
 
@@ -1891,7 +1891,7 @@ function debtsTab() {
     const tone = days < 0 ? 'over' : days <= (d.remindDays ?? state.settings.remindDays) ? 'warn' : '';
     return `<button type="button" class="row alert ${tone}" data-act="debt-open" data-id="${d.id}">
       <span class="ci" style="--c:#0d74ce">🏦</span>
-      <span class="grow"><b>${esc(S.debtName(d))}</b><small>${fmtDate(d.dueDate)}${d.time ? ' ' + d.time : ''} · ${fmtDue(days)}${d.repeat === 'monthly' ? ` · hằng tháng${d.periodsLeft != null ? `, còn ${d.periodsLeft} kỳ` : ''}` : ''}</small>
+      <span class="grow"><b>${esc(S.debtName(d))}</b><small>${fmtDate(d.dueDate)} · 🔔 ${d.time || S.ALERT_TIME} · ${fmtDue(days)}${d.repeat === 'monthly' ? ` · hằng tháng${d.periodsLeft != null ? `, còn ${d.periodsLeft} kỳ` : ''}` : ''}</small>
       ${d.method ? `<small>💳 ${esc(d.method)}</small>` : ''}</span>
       <span class="amt">${fmt(d.amount)}</span></button>`;
   }).join('')}</div>` : empty('🏦', 'Chưa có khoản trả nợ nào.')}
@@ -1901,12 +1901,23 @@ function debtsTab() {
     `<button type="button" class="row" data-act="debt-open" data-id="${d.id}"><span class="ci">✅</span><span class="grow"><b>${esc(S.debtName(d))}</b><small>${(d.history || []).length} lần trả</small></span><span class="amt">${fmt((d.history || []).reduce((s, h) => s + h.amount, 0))}</span></button>`).join('')}</div></details>` : ''}`;
 }
 
-const DEFAULT_ALERT_TIME = '08:00';
-const alertTimeField = (id, time) => field('Giờ thông báo', `<input type="time" id="${id}" value="${esc(time || '')}">`);
+const alertTimeField = (id, time) => field('Giờ thông báo', `<input type="time" id="${id}" value="${esc(time || S.ALERT_TIME)}">`);
+/** Dòng cho biết khi nào thông báo sẽ hiện, cập nhật theo ngày, số ngày nhắc trước và giờ đang chọn. */
+function bindAlertPreview(sh, { dateId, remId, timeId, outId, until }) {
+  const upd = () => {
+    const date = $(sh, '#' + dateId).value;
+    if (!date) { $(sh, '#' + outId).textContent = ''; return; }
+    const time = $(sh, '#' + timeId).value || S.ALERT_TIME;
+    const at = addDays(date, -(Number($(sh, '#' + remId).value) || 0));
+    $(sh, '#' + outId).textContent = `🔔 Hiện trong Notifications từ ${time} ngày ${fmtDate(at)}, đến khi ${until}.`;
+  };
+  for (const id of [dateId, remId, timeId]) for (const ev of ['input', 'change']) $(sh, '#' + id).addEventListener(ev, upd);
+  upd();
+}
 
 actions['debt-edit'] = (el) => {
   const d = state.debts.find((x) => x.id === el.dataset.id);
-  const f = d ? { ...d } : { bank: '', title: '', amount: 0, dueDate: todayISO(), repeat: 'monthly', periodsLeft: null, method: PAY_METHODS[0], note: '', accountId: state.settings.lastAccount, remindDays: Number(state.settings.remindDays), time: DEFAULT_ALERT_TIME };
+  const f = d ? { ...d } : { bank: '', title: '', amount: 0, dueDate: todayISO(), repeat: 'monthly', periodsLeft: null, method: PAY_METHODS[0], note: '', accountId: state.settings.lastAccount, remindDays: Number(state.settings.remindDays), time: S.ALERT_TIME };
   const methodIsPreset = PAY_METHODS.includes(f.method);
   openSheet({
     title: d ? 'Sửa khoản trả nợ' : 'Thêm khoản trả nợ',
@@ -1914,9 +1925,10 @@ actions['debt-edit'] = (el) => {
       ${field('Ngân hàng / Công ty tài chính', `<input id="df-bank" list="bank-list" required value="${esc(f.bank)}" placeholder="vd: Vietcombank"><datalist id="bank-list">${BANKS.map((b) => `<option value="${esc(b)}">`).join('')}</datalist>`)}
       ${field('Nội dung khoản nợ', `<input id="df-title" value="${esc(f.title)}" placeholder="vd: Vay mua xe, Thẻ tín dụng, Trả transfer iPhone">`)}
       ${amountField('df-amt', f.amount, 'Số tiền mỗi kỳ')}
-      <div class="two">${datePick('df-date', f.dueDate, 'Ngày đến hạn')}
+      ${datePick('df-date', f.dueDate, 'Ngày đến hạn')}
+      <div class="two">${field('Nhắc trước (ngày)', `<input type="number" id="df-rem" min="0" max="30" value="${esc(f.remindDays ?? 3)}">`)}
       ${alertTimeField('df-time', f.time)}</div>
-      ${field('Nhắc trước (ngày)', `<input type="number" id="df-rem" min="0" max="30" value="${esc(f.remindDays ?? 3)}">`)}
+      <p class="muted small" id="df-when"></p>
       <div class="two">${field('Lặp lại', `<select id="df-rep"><option value="monthly" ${f.repeat === 'monthly' ? 'selected' : ''}>Hằng tháng</option><option value="none" ${f.repeat === 'none' ? 'selected' : ''}>Một lần</option></select>`)}
       ${field('Số kỳ còn lại', `<input type="number" id="df-left" min="1" placeholder="Không giới hạn" value="${f.periodsLeft ?? ''}">`, 'data-left')}</div>
       ${field('Cách thức thanh toán', `<select id="df-method">${PAY_METHODS.map((m) => `<option ${m === f.method || (!methodIsPreset && m === 'Khác') ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>`)}
@@ -1929,6 +1941,7 @@ actions['debt-edit'] = (el) => {
       const rep = $(sh, '#df-rep'), leftF = $(sh, '[data-left]');
       const updRep = () => { leftF.hidden = rep.value !== 'monthly'; };
       rep.addEventListener('change', updRep); updRep();
+      bindAlertPreview(sh, { dateId: 'df-date', remId: 'df-rem', timeId: 'df-time', outId: 'df-when', until: 'bạn thanh toán' });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = readMoney(amt.value);
@@ -1940,7 +1953,7 @@ actions['debt-edit'] = (el) => {
           ...f, bank: $(sh, '#df-bank').value.trim(), title: $(sh, '#df-title').value.trim(), amount: Math.round(v),
           dueDate, dueDay: Number(dueDate.slice(8)), repeat: rep.value, periodsLeft: rep.value === 'monthly' && left ? Math.max(1, Number(left)) : null,
           method: $(sh, '#df-method').value, note: $(sh, '#df-note').value.trim(), accountId: $(sh, '#df-acc').value,
-          time: $(sh, '#df-time').value || null, remindDays: Number($(sh, '#df-rem').value) || 0, done: d ? d.done && dueDate === d.dueDate : false, history: f.history || [],
+          time: $(sh, '#df-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#df-rem').value) || 0, done: d ? d.done && dueDate === d.dueDate : false, history: f.history || [],
         });
         close(); toast('Đã lưu khoản trả nợ');
       });
@@ -2022,7 +2035,7 @@ function debtPay(d) {
 function debtEvent(d) {
   const rrule = d.repeat === 'monthly' ? `FREQ=MONTHLY${d.periodsLeft != null ? ';COUNT=' + d.periodsLeft : ''}` : null;
   return {
-    uid: 'debt-' + d.id, date: d.dueDate, rrule, remindDays: d.remindDays ?? state.settings.remindDays, time: d.time,
+    uid: 'debt-' + d.id, date: d.dueDate, rrule, remindDays: d.remindDays ?? state.settings.remindDays, time: d.time || S.ALERT_TIME,
     title: `🏦 Trả nợ ${S.debtName(d)}: ${fmt(d.amount)}`,
     description: `Cách thanh toán: ${d.method || ''}\n${d.note || ''}`,
   };
@@ -2056,41 +2069,43 @@ function remindersTab() {
   <p class="muted small">Đến ngày giờ đã chọn, nhắc nhở hiện trong <b>Notifications</b> của User. Muốn điện thoại báo chuông cả khi đóng app: mở nhắc nhở đã lưu, bấm <b>Thêm vào Lịch</b>.</p>
   ${list.length ? `<div class="card list">${list.map((r) => `<div class="row quick-row">
     <button type="button" class="grow-btn" data-act="rem-edit" data-id="${esc(r.id)}"><span class="ci">🔔</span>
-      <span class="grow"><b>${esc(r.title)}</b><small>${fmtDate(r.date)}${r.time ? ' ' + r.time : ''} · ${fmtDue(diffDays(today, r.date))}${r.repeat === 'month' ? ' · hằng tháng' : ''}${r.note ? ' · ' + esc(r.note) : ''}</small></span></button>
-    <button type="button" class="btn small ghost" data-act="rem-done" data-id="${esc(r.id)}">Xong</button></div>`).join('')}</div>` : empty('🔔', 'Chưa có nhắc nhở nào.')}
+      <span class="grow"><b>${esc(r.title)}</b><small>${fmtDate(r.date)} · 🔔 ${r.time || S.ALERT_TIME} · ${fmtDue(diffDays(today, r.date))}${r.repeat === 'month' ? ' · hằng tháng' : ''}${r.note ? ' · ' + esc(r.note) : ''}</small></span></button>
+    <button type="button" class="btn small ghost" data-act="rem-done" data-id="${esc(r.id)}">Done</button></div>`).join('')}</div>` : empty('🔔', 'Chưa có nhắc nhở nào.')}
   <button type="button" class="btn primary block" data-act="rem-edit">+ Tạo nhắc nhở</button>`;
 }
 
-actions['rem-done'] = async (el) => { await S.doneReminder(el.dataset.id); toast('Đã xong'); };
+actions['rem-done'] = async (el) => { await S.doneReminder(el.dataset.id); toast('Đã Done'); };
 actions['rem-edit'] = (el) => {
   const r = (state.settings.reminders || []).find((x) => x.id === el.dataset.id);
-  const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', note: '', time: DEFAULT_ALERT_TIME };
+  const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', note: '', time: S.ALERT_TIME };
   const formId = 'rm-' + Date.now();
   openSheet({
     title: r ? 'Sửa nhắc nhở' : 'Tạo nhắc nhở',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Nội dung', `<input id="rm-title" required maxlength="60" value="${esc(f.title)}" placeholder="vd: Đóng học phí, gia hạn bảo hiểm">`)}
-      <div class="two">${datePick('rm-date', f.date, 'Ngày nhắc')}
-      ${alertTimeField('rm-time', f.time)}</div>
+      ${datePick('rm-date', f.date, 'Ngày nhắc')}
       <div class="two">${field('Nhắc trước (ngày)', `<input type="number" id="rm-before" min="0" max="30" value="${esc(f.remindDays || 0)}">`)}
-      ${field('Lặp lại', `<select id="rm-rep"><option value="none" ${f.repeat !== 'month' ? 'selected' : ''}>Một lần</option><option value="month" ${f.repeat === 'month' ? 'selected' : ''}>Hằng tháng</option></select>`)}</div>
+      ${alertTimeField('rm-time', f.time)}</div>
+      <p class="muted small" id="rm-when"></p>
+      ${field('Lặp lại', `<select id="rm-rep"><option value="none" ${f.repeat !== 'month' ? 'selected' : ''}>Một lần</option><option value="month" ${f.repeat === 'month' ? 'selected' : ''}>Hằng tháng</option></select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="rm-note" value="${esc(f.note || '')}">`)}
       ${r ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa nhắc nhở</button><button type="button" class="btn ghost" data-ics>📅 Thêm vào Lịch</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
+      bindAlertPreview(sh, { dateId: 'rm-date', remId: 'rm-before', timeId: 'rm-time', outId: 'rm-when', until: 'bạn bấm Done' });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const title = $(sh, '#rm-title').value.trim();
         const date = $(sh, '#rm-date').value;
         if (!title) return toast('Nhập nội dung');
         if (!date) return toast('Chọn ngày nhắc');
-        await S.saveReminder({ ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || null, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: $(sh, '#rm-rep').value, note: $(sh, '#rm-note').value.trim() });
+        await S.saveReminder({ ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: $(sh, '#rm-rep').value, note: $(sh, '#rm-note').value.trim() });
         close(); toast('Đã lưu nhắc nhở');
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => { await S.deleteReminder(r.id); close(); toast('Đã xóa'); });
       $(sh, '[data-ics]')?.addEventListener('click', () => calendarSheet('nhac-nho.ics', buildAllDayICS([{
-        uid: 'rem-' + r.id, date: r.date, rrule: r.repeat === 'month' ? 'FREQ=MONTHLY' : null, remindDays: r.remindDays || 0, time: r.time,
+        uid: 'rem-' + r.id, date: r.date, rrule: r.repeat === 'month' ? 'FREQ=MONTHLY' : null, remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME,
         title: `🔔 ${r.title}`, description: r.note || '',
       }])));
     },

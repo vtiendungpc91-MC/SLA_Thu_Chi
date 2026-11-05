@@ -751,11 +751,17 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 /* Mục đang chọn (Ngày/Tuần/Tháng, Ngân sách/Trả nợ…) nền cam */
 .period .seg > .on, .seg.tabs > .on, .seg.small > .on { background: #e8590c; color: #fff; box-shadow: none; }
 .chip-star { font-size: 13px; line-height: 1; flex: 0 0 auto; }
-/* Ô tiền: chừa lề phải cho nút +000 */
-.money-box { position: relative; flex: 1 1 auto; width: 100%; min-width: 0; }
-.money-box > input, .amt-line .money-box > input, .split-row .money-box > input { display: block; width: 100%; padding-right: 66px; }
-.plus000 { position: absolute; top: 5px; bottom: 5px; right: 5px; width: 56px; padding: 0; border: 0; border-radius: 9px; background: var(--primary-soft); color: var(--primary); font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; cursor: pointer; }
+/* Ô tiền: nút +000 bên phải, ngoài ô nhập */
+.money-box { display: flex; align-items: stretch; gap: 6px; flex: 1 1 auto; width: 100%; min-width: 0; }
+.money-box > input, .amt-line .money-box > input, .split-row .money-box > input { flex: 1 1 0; width: auto; min-width: 0; }
+.plus000 { flex: 0 0 52px; padding: 0; border: 0; border-radius: 10px; background: var(--primary-soft); color: var(--primary); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; cursor: pointer; }
 .plus000:active { filter: brightness(.9); }
 .split-row .money-box { flex: 1; }
-.split-row .money-box > input { padding-right: 50px; }
-.split-row .plus000 { width: 44px; font-size: 12px; }
+.split-row .plus000 { flex-basis: 42px; font-size: 11.5px; }
+/* Đề xuất số tiền ngay dòng dưới ô nhập */
+.amt-line + .zero-sug { margin-top: -6px; }
+.money-row + .zero-sug { margin-top: 1px; }
+.amt-line .money-box > input.amount-input { font-size: 24px; padding-left: 6px; padding-right: 6px; }
+.split-row select { flex: 1; min-width: 0; }
+.split-row .money-box { flex: 1.5; }
+.split-row .money-box > input { padding-left: 6px; padding-right: 6px; font-size: 15px; }

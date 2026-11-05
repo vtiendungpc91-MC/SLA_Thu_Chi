@@ -1028,14 +1028,14 @@ export function emergencyInfo() {
  * Giai đoạn báo của khoản có giờ hẹn: null = chưa đến lúc; 'pre' = nhắc trước; 'due' = đến hạn.
  * Báo từ đúng giờ đã chọn của ngày nhắc đầu tiên, và báo lại đúng giờ đó trong ngày đến hạn.
  */
+export const ALERT_TIME = '08:00'; // Khoản chưa đặt giờ thì thông báo lúc này.
 function alertStage(days, remind, time) {
   if (days > remind) return null;
-  const reached = !time || fmtTimeVN(Date.now()) >= time;
+  const reached = fmtTimeVN(Date.now()) >= (time || ALERT_TIME);
   if (days === remind && !reached) return null;
   return days < 0 || (days === 0 && reached) ? 'due' : 'pre';
 }
-/** Khóa thông báo: khoản có giờ hẹn được báo riêng cho từng giai đoạn. */
-const alertKey = (base, time, stage) => (time ? `${base}:${stage}` : base);
+
 
 export function getAlerts() {
   const today = todayISO();
@@ -1046,7 +1046,7 @@ export function getAlerts() {
     const days = diffDays(today, d.dueDate);
     const stage = alertStage(days, d.remindDays ?? def, d.time);
     if (stage) {
-      out.push({ key: alertKey(`debt:${d.id}:${d.dueDate}`, d.time, stage), kind: 'debt', id: d.id, days, title: debtName(d), amount: d.amount, date: d.dueDate, time: d.time });
+      out.push({ key: `debt:${d.id}:${d.dueDate}:${stage}`, kind: 'debt', id: d.id, days, title: debtName(d), amount: d.amount, date: d.dueDate, time: d.time || ALERT_TIME });
     }
   }
   for (const r of state.recurring) {
@@ -1070,7 +1070,7 @@ export function getAlerts() {
   for (const r of state.settings.reminders || []) {
     const days = diffDays(today, r.date);
     const stage = alertStage(days, r.remindDays || 0, r.time);
-    if (stage) out.push({ key: alertKey(`rem:${r.id}:${r.date}`, r.time, stage), kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date, time: r.time });
+    if (stage) out.push({ key: `rem:${r.id}:${r.date}:${stage}`, kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date, time: r.time || ALERT_TIME });
   }
   return out.sort((a, b) => a.days - b.days);
 }
