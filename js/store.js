@@ -87,19 +87,6 @@ function seedRows() {
 }
 
 /** Bổ sung danh mục hệ thống còn thiếu vào danh sách `cats` của một sổ; trả về các danh mục mới tạo. */
-// Mục Đầu tư dùng danh sách danh mục ngắn riêng (3 chi, 3 thu).
-const INVEST_CATS = [
-  { invest: 'stock', type: 'expense', name: 'Chứng khoán', icon: '📈', color: '#3e63dd', rule: 'savings', jar: 'FFA' },
-  { invest: 'saving', type: 'expense', name: 'Gửi tiết kiệm', icon: '🏦', color: '#12a594', rule: 'savings', jar: 'LTSS' },
-  { invest: 'gold', type: 'expense', name: 'Vàng & khác', icon: '🥇', color: '#ffb224', rule: 'savings', jar: 'FFA' },
-  { invest: 'profit', type: 'income', name: 'Lãi / Cổ tức', icon: '💹', color: '#30a46c' },
-  { invest: 'sell', type: 'income', name: 'Bán / Tất toán', icon: '💰', color: '#0091ff' },
-  { invest: 'capital', type: 'income', name: 'Nạp vốn', icon: '➕', color: '#8e4ec6' },
-];
-const missingInvestCats = (cats) => INVEST_CATS
-  .filter((ic) => !cats.some((c) => c.invest === ic.invest))
-  .map((ic, i) => ({ id: uid(), ...ic, order: i }));
-
 function missingSysCats(cats) {
   return Object.entries(SYS_CATS)
     .filter(([sys]) => !cats.some((c) => c.sys === sys))
@@ -118,17 +105,11 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// Chủ sở hữu (nút trái trên cùng) có 2 loại:
-// - User (tối đa 2): các mục Ngân hàng (3), Tiết kiệm (3), Thẻ chi tiêu (2).
-// - Category (tối đa 5): mỗi Category là đúng 1 mục theo dõi (Transfer/Withdraw hoặc Thu/Chi), chọn là vào xem luôn.
-// Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt): NEOBANK và Cash Outflow.
-export const MAX_USERS = 2;
-export const MAX_CATEGORIES = 5;
+// User (tối đa 3): các mục Ngân hàng (3), Tiết kiệm (3), Thẻ chi tiêu (2).
+// Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
+export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
-export const OWNER_TYPES = {
-  user: { label: 'User', icon: '👤', max: MAX_USERS, kinds: ['bank', 'saving', 'card'], first: 'bank' },
-  category: { label: 'Category', icon: '🗂️', max: MAX_CATEGORIES, kinds: ['invest', 'track'], first: 'invest' },
-};
+export const USER_KINDS = ['bank', 'saving', 'card'];
 export const PROFILE_COLORS = [
   '#1f6feb', '#0d74ce', '#0091ff', '#12a594', '#30a46c', '#46a758', '#94ba2c', '#ffb224', '#f5a524', '#f76b15',
   '#e5484d', '#d6409f', '#ab4aba', '#8e4ec6', '#6e56cf', '#3e63dd', '#978365', '#ad7f58', '#6f6e77', '#1c2024',
@@ -137,10 +118,8 @@ export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 3 },
   card: { label: 'Thẻ chi tiêu', icon: '💳', max: 2 },
-  invest: { label: 'Theo dõi Transfer/Withdraw', icon: '🔁', max: 1 },
-  track: { label: 'Theo dõi Thu/Chi', icon: '📊', max: 1 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
-  outflow: { label: 'Cash Outflow', icon: '📤', max: 2 },
+
 };
 export const ownerType = (u) => (u && u.type === 'category' ? 'category' : 'user');
 
@@ -224,20 +203,53 @@ function migrateV5() {
   localStorage.setItem('stc-model5', '1');
 }
 
+/**
+ * Bản 6: bỏ Category. Thống kê chuyển vào cài đặt của mục Ngân hàng, nên thiết lập nguồn của Category đầu tiên mỗi kiểu
+ * được đưa sang mục Ngân hàng đầu tiên (loadAll ghi nốt vì cần database). Mục theo dõi không có giao dịch riêng nên xóa được.
+ */
+const V6_STASH_KEY = 'stc-v6-stash';
+function migrateV6() {
+  if (localStorage.getItem('stc-model6') === '1') return;
+  const books = readJSON(PROFILES_KEY) || [];
+  const users = readJSON(USERS_KEY) || [];
+  const catIds = new Set(users.filter((u) => ownerType(u) === 'category').map((u) => u.id));
+  if (catIds.size) {
+    const old = books.filter((b) => catIds.has(b.owner));
+    const flow = old.find((b) => b.kind === 'invest' && b.source?.rules?.length);
+    const track = old.find((b) => b.kind === 'track' && b.source?.books?.length);
+    localStorage.setItem(V6_STASH_KEY, JSON.stringify({ flow: flow?.source || null, track: track?.source || null, drop: old.map((b) => b.id) }));
+    saveUsers(users.filter((u) => !catIds.has(u.id)));
+    saveProfiles(books.filter((b) => !catIds.has(b.owner)));
+  }
+  localStorage.setItem('stc-model6', '1');
+}
+async function applyV6Stash() {
+  const stash = readJSON(V6_STASH_KEY);
+  if (!stash) return;
+  const bank = moneyBooks()[0];
+  if (bank) {
+    const peer = dbOf(bank.id);
+    if (stash.flow) await peer.put('settings', { key: 'statFlow', value: { ...stash.flow, show: true } });
+    if (stash.track) await peer.put('settings', { key: 'statTrack', value: { ...stash.track, show: true } });
+  }
+  for (const id of stash.drop || []) await dropProfile(id);
+  localStorage.removeItem(V6_STASH_KEY);
+}
+
 /** Danh sách mục (sổ) của mọi người dùng. */
 export function getProfiles() {
   ensureModel();
   migrateV4();
   migrateV5();
+  migrateV6();
   return readJSON(PROFILES_KEY);
 }
-/** Chủ sở hữu (User + Category); type = 'user' | 'category' để lọc. */
-export function getUsers(type) {
+export function getUsers() {
   ensureModel();
   migrateV4();
   migrateV5();
-  const all = readJSON(USERS_KEY);
-  return type ? all.filter((u) => ownerType(u) === type) : all;
+  migrateV6();
+  return readJSON(USERS_KEY);
 }
 
 export function currentProfile() {
@@ -284,22 +296,16 @@ export async function switchUser(userId) {
   await switchProfile((books.find((b) => b.id === u.lastBook) || books[0]).id);
 }
 
-/** Thêm/sửa User hoặc Category. Thêm mới kèm 1 mục mặc định (User: Ngân hàng, Category: Tiết kiệm). */
+/** Thêm/sửa User. Thêm mới kèm 1 mục Ngân hàng mặc định. */
 export function saveUser(u) {
   const users = getUsers();
   if (!u.id) {
-    const t = OWNER_TYPES[ownerType(u)];
-    u.type = ownerType(u);
-    if (users.filter((x) => ownerType(x) === u.type).length >= t.max) throw new Error(`Tối đa ${t.max} ${t.label}`);
-    // Category: chọn kiểu theo dõi khi tạo (trackKind = 'invest' | 'track'); mục theo dõi mang tên của Category.
-    const kind = u.type === 'category' ? (u.trackKind === 'track' ? 'track' : 'invest') : t.first;
-    delete u.trackKind;
+    if (users.length >= MAX_USERS) throw new Error(`Tối đa ${MAX_USERS} User`);
     u.id = uid().replace(/-/g, '').slice(0, 12);
     u.color = u.color || PROFILE_COLORS[users.length % PROFILE_COLORS.length];
     users.push(u);
     saveUsers(users);
-    const k = BOOK_KINDS[kind];
-    saveProfile({ name: u.type === 'category' ? u.name : k.label, icon: u.type === 'category' ? u.icon : k.icon, kind, owner: u.id, color: u.color });
+    saveProfile({ name: BOOK_KINDS.bank.label, icon: BOOK_KINDS.bank.icon, kind: 'bank', owner: u.id, color: u.color });
   } else {
     saveUsers(users.map((x) => (x.id === u.id ? { ...x, ...u } : x)));
   }
@@ -309,11 +315,11 @@ export function saveUser(u) {
 /** Xóa người dùng cùng toàn bộ các mục (sổ) của người đó. */
 export async function deleteUser(userId) {
   const users = getUsers().filter((u) => u.id !== userId);
-  if (!users.some((u) => ownerType(u) === 'user')) throw new Error('Cần giữ ít nhất 1 User');
+  if (!users.length) throw new Error('Cần giữ ít nhất 1 User');
   const drop = userBooks(userId);
   saveUsers(users);
   saveProfiles(getProfiles().filter((b) => b.owner !== userId));
-  if (drop.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchUser(users.find((u) => ownerType(u) === 'user').id);
+  if (drop.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchUser(users[0].id);
   for (const b of drop) await dropProfile(b.id);
 }
 
@@ -339,7 +345,7 @@ export async function deleteProfile(id) {
   const book = getProfiles().find((p) => p.id === id);
   if (!book) return;
   const siblings = userBooks(book.owner).filter((b) => b.id !== id);
-  if (book.owner !== SECRECY && !siblings.length) throw new Error('Mỗi User / Category cần ít nhất 1 mục');
+  if (book.owner !== SECRECY && !siblings.length) throw new Error('Mỗi User cần ít nhất 1 mục');
   saveProfiles(getProfiles().filter((p) => p.id !== id));
   if (localStorage.getItem(CURRENT_KEY) === id) await switchProfile(siblings[0].id);
   await dropProfile(id);
@@ -348,6 +354,7 @@ export async function deleteProfile(id) {
 // ---------- Tải / ghi ----------
 export async function loadAll() {
   await useProfile(currentProfile().id);
+  await applyV6Stash();
   for (const s of LIST) state[s] = await db.getAll(s);
   const rows = await db.getAll('settings');
   state.settings = { ...DEFAULT_SETTINGS };
@@ -360,14 +367,12 @@ export async function loadAll() {
     state.accounts = accs;
   }
   const extra = missingSysCats(state.categories);
-  if (currentProfile().kind === 'invest') extra.push(...missingInvestCats(state.categories));
   if (extra.length) {
     await db.bulkPut('categories', extra);
     state.categories.push(...extra);
   }
   await migrateCash();
-  state.profileKind = currentProfile().kind || 'bank';
-  state.mirror = isTracker() ? await loadTrackerMirror(currentProfile()) : null;
+
 }
 
 /**
@@ -542,13 +547,7 @@ export async function setSetting(key, value, { silent = false } = {}) {
 export const catById = (id) => state.categories.find((c) => c.id === id);
 export const accById = (id) => state.accounts.find((a) => a.id === id);
 export const sysCat = (sys) => state.categories.find((c) => c.sys === sys);
-/** Danh mục đang dùng; mục Đầu tư chỉ hiện danh sách ngắn riêng (kèm danh mục hệ thống transfer/withdraw). */
-export const catsOf = (type) => {
-  const invest = currentProfile().kind === 'invest';
-  return state.categories
-    .filter((c) => c.type === type && !c.archived && (!invest || c.invest || /^(gop|trich)/.test(c.sys || '')))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-};
+export const catsOf = (type) => state.categories.filter((c) => c.type === type && !c.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 export const activeAccounts = () => state.accounts.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 export const rateOf = (code) => (state.settings.currencies.find((c) => c.code === code) || { rate: 1 }).rate;
 
@@ -629,24 +628,15 @@ export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
 export const kindOfBook = (p) => p.kind || 'bank';
-// Ngân hàng mặc định: mở khi đóng một Category.
-const DEFAULT_BANK_KEY = 'stc-default-bank';
-export const defaultBank = () => {
-  const banks = moneyBooks();
-  return banks.find((b) => b.id === localStorage.getItem(DEFAULT_BANK_KEY)) || banks[0];
-};
-export const setDefaultBank = (id) => localStorage.setItem(DEFAULT_BANK_KEY, id);
-
 /**
  * Đích Transfer / Withdraw theo loại mục đang mở:
- * - Ngân hàng: transfer cho Ngân hàng khác, Tiết kiệm, NEOBANK, Cash Outflow; withdraw từ Ngân hàng khác, Tiết kiệm, NEOBANK.
- * - Tiết kiệm: chỉ transfer/withdraw với các mục Ngân hàng.
- * - Đầu tư, Thẻ chi tiêu: không transfer/withdraw.
+ * - Ngân hàng: với Ngân hàng khác, Tiết kiệm, NEOBANK.
+ * - Tiết kiệm: chỉ với các mục Ngân hàng.
+ * - Thẻ chi tiêu: không transfer/withdraw.
  */
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
-  const allowed = k === 'bank' ? (mode === 'gop' ? ['bank', 'saving', 'neo', 'outflow'] : ['bank', 'saving', 'neo'])
-    : k === 'saving' ? ['bank'] : [];
+  const allowed = k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
   // Secrecy đang ẩn thì không hiện trong form; mẫu nhanh đã thiết lập gọi thẳng gop/trich nên vẫn chạy.
   const hide = !includeHidden && secrecyHidden();
   return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && !(hide && p.owner === SECRECY));
@@ -714,9 +704,9 @@ export const flowCatById = (id) => flowCats().find((c) => c.id === id);
  * Đọc trực tiếp từ mục nguồn nên khi xóa giao dịch transfer/withdraw, mục Đầu tư cũng mất theo.
  * flowCats rỗng = lấy mọi danh mục transfer/withdraw.
  */
-export async function loadInvestMirror(book) {
-  const src = book.source;
-  const rules = ((src && src.rules) || []).filter((r) => getProfiles().some((p) => p.id === r.from) && getProfiles().some((p) => p.id === r.to));
+export async function loadFlowStats(src) {
+  const live = (id) => getProfiles().some((p) => p.id === id && p.kind !== 'outflow');
+  const rules = ((src && src.rules) || []).filter((r) => live(r.from) && live(r.to));
   if (!rules.length) return { configured: false, txs: [], cats: [] };
   const want = new Set((src.flowCats || []));
   const txs = [];
@@ -795,16 +785,12 @@ async function reopenCardItem(tx) {
   }
 }
 
-/** Mục theo dõi của Category: 'invest' = Transfer/Withdraw, 'track' = Thu/Chi. */
-export const isTracker = (p = currentProfile()) => !!p && (p.kind === 'invest' || p.kind === 'track');
-export const loadTrackerMirror = (book) => (book.kind === 'track' ? loadTrackMirror(book) : loadInvestMirror(book));
 
 /**
  * Theo dõi Thu/Chi: source = { books: [bookId], income: [tên danh mục], expense: [tên danh mục] }.
  * Lọc theo TÊN danh mục để dùng chung được cho nhiều mục Ngân hàng / Tiết kiệm. Đọc trực tiếp nên xóa giao dịch là mất theo.
  */
-export async function loadTrackMirror(book) {
-  const src = book.source || {};
+export async function loadTrackStats(src = {}) {
   const ids = (src.books || []).filter((id) => getProfiles().some((p) => p.id === id));
   if (!ids.length || (!(src.income || []).length && !(src.expense || []).length)) return { configured: false, txs: [] };
   const inc = new Set(src.income || []), exp = new Set(src.expense || []);
@@ -847,15 +833,6 @@ export async function categoryNamesOf(bookIds) {
 
 /** Tóm tắt để hiện trong danh sách chọn: người dùng → tổng số dư; thẻ → số tiền đã chi chưa thanh toán. */
 export async function profileSummary(p) {
-  if (p.kind === 'invest' || p.kind === 'track') {
-    // Chênh lệch trong kỳ thiết lập của Category (ngày / tuần / tháng) để hiện trên thẻ.
-    const period = userOf(p)?.statPeriod || 'day';
-    const r = getRange(period, todayISO(), state.settings.weekStart || 1);
-    const m = await loadTrackerMirror(p);
-    const inR = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
-    const sum = (type) => inR.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-    return { kind: 'tracker', configured: m.configured, income: sum('income'), expense: sum('expense'), period, label: r.label };
-  }
   const isCur = p.id === currentProfile().id;
   const txs = isCur ? state.transactions : await dbOf(p.id).getAll('transactions');
   if (p.kind === 'card') {
@@ -1038,6 +1015,41 @@ export function getAlerts() {
   return out.sort((a, b) => a.days - b.days);
 }
 
+/**
+ * Thông báo của mọi mục thuộc một User. Mục khác đang mở được đọc từ database rồi tạm gán vào state
+ * để dùng chung getAlerts(); đoạn gán - tính - trả lại chạy đồng bộ nên không xen với thao tác khác.
+ */
+export async function userAlerts(userId) {
+  const out = [];
+  const cur = currentProfile().id;
+  for (const b of userBooks(userId)) {
+    let list;
+    if (b.id === cur) list = getAlerts();
+    else {
+      const peer = dbOf(b.id);
+      const data = { settings: { ...DEFAULT_SETTINGS } };
+      for (const s of LIST) data[s] = await peer.getAll(s);
+      for (const r of await peer.getAll('settings')) data.settings[r.key] = r.value;
+      const saved = {};
+      for (const k of Object.keys(data)) saved[k] = state[k];
+      Object.assign(state, data);
+      try { list = getAlerts(); } finally { Object.assign(state, saved); }
+    }
+    out.push(...list.map((a) => ({ ...a, bookId: b.id, bookName: b.name, bookIcon: b.icon })));
+  }
+  return out.sort((a, b) => a.days - b.days);
+}
+
+/** Tổng tiền của một nhóm mục trong User: Ngân hàng/Tiết kiệm = số dư; Thẻ = tiền chưa thanh toán. */
+export async function kindTotal(userId, kind) {
+  let total = 0;
+  for (const b of userBooks(userId).filter((x) => kindOfBook(x) === kind)) {
+    const s = await profileSummary(b);
+    total += s.kind === 'card' ? s.unpaid : s.balance;
+  }
+  return total;
+}
+
 // ---------- Sao lưu ----------
 const blobToDataURL = (blob) => new Promise((res, rej) => {
   const r = new FileReader();
@@ -1096,8 +1108,10 @@ export async function importAny(data) {
   saveProfiles(data.profiles);
   // Bản sao lưu cũ chưa có danh sách người dùng → để ensureModel() chuyển đổi lại từ danh sách mục.
   if (Array.isArray(data.users) && data.users.length) saveUsers(data.users);
-  if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
   else localStorage.removeItem(USERS_KEY);
+  if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
+  // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.
+  for (const k of ['stc-model', 'stc-model5', 'stc-model6']) localStorage.removeItem(k);
   const target = data.profiles.some((p) => p.id === data.current) ? data.current : getProfiles()[0].id;
   await switchProfile(target);
   // Xóa các sổ trên máy không có trong bản sao lưu.

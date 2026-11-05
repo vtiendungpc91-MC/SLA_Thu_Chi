@@ -126,7 +126,7 @@ function checkFunds(accountId, amountVnd, ignoreTx = null) {
 
 const field = (label, inner, extra = '') => `<label class="field" ${extra}><span>${label}</span>${inner}</label>`;
 const amountField = (id, value, label = 'Số tiền') =>
-  field(label, `<div class="money-row"><input id="${id}" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 50k, 1tr2" value="${value ? fmtNum(value) : ''}"><div class="zero-sug" data-zero-for="${id}" hidden></div></div><em class="hint" data-hint-for="${id}"></em>`);
+  field(label, `<div class="money-row"><input id="${id}" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 50k, 1tr2" value="${value ? fmtNum(value) : ''}"></div><div class="zero-sug" data-zero-for="${id}" hidden></div><em class="hint" data-hint-for="${id}"></em>`);
 
 /** Gắn gợi ý đọc số tiền dưới ô nhập. */
 function bindMoney(root, id) {
@@ -156,23 +156,35 @@ const avatarFull = (p, cls) => (p.photo
   ? `<span class="${cls} av" style="--c:${esc(p.color)}"><img src="${esc(p.photo)}" alt=""></span>`
   : `<span class="${cls}" style="--c:${esc(p.color)}">${esc(p.icon)}</span>`);
 
-// --- Đầu trang: trái = User / Category, phải = mục đang mở (chỉ với User) ---
+// --- Đầu trang: trái = User (dưới là số thông báo), phải = mục đang mở (dưới là tổng tiền của nhóm mục) ---
 const kindOf = (b) => S.BOOK_KINDS[b.kind] || S.BOOK_KINDS.bank;
-const isCategoryOwner = () => S.ownerType(S.currentUser()) === 'category';
 
 function topBar(sub = '', right = '') {
   const u = S.currentUser(), b = S.currentProfile();
-  // Category chỉ có 1 mục theo dõi → không có nút chọn mục bên phải.
-  const bookChip = isCategoryOwner()
-    ? '<button type="button" class="icon-btn cat-close" data-act="cat-close" aria-label="Đóng Category" title="Đóng, về Ngân hàng mặc định">✕</button>'
-    : `<button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(b.color)}" title="Chọn / tạo mục">
-      <span class="chip-av">${esc(b.icon || kindOf(b).icon)}</span><span class="chip-name">${esc(kindOf(b).label)}</span> <i>▾</i></button>`;
   return `<header class="top topbar">
-    <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User / Category">
-      ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span> <i>▾</i></button>
-    ${bookChip}
+    <div class="chip-col">
+      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
+        ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span> <i>▾</i></button>
+      <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
+    </div>
+    <div class="chip-col right">
+      <button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(b.color)}" title="Chọn / tạo mục">
+        <span class="chip-av">${esc(b.icon || kindOf(b).icon)}</span><span class="chip-name">${esc(kindOf(b).label)}</span> <i>▾</i></button>
+      <small class="chip-sub" data-kind-total></small>
+    </div>
   </header>
   <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
+}
+
+/** Điền số thông báo và tổng tiền dưới 2 nút đầu trang (đọc nhiều mục nên làm sau khi vẽ). */
+async function fillTopBar(root) {
+  const count = root.querySelector('[data-notif-count]'), total = root.querySelector('[data-kind-total]');
+  if (!count || !total) return;
+  const u = S.currentUser(), kind = S.kindOfBook(S.currentProfile());
+  const [alerts, sum] = await Promise.all([S.userAlerts(u.id), S.kindTotal(u.id, kind)]);
+  count.hidden = !alerts.length;
+  count.textContent = `🔔 ${alerts.length} thông báo`;
+  total.textContent = (kind === 'card' ? 'Chưa TT ' : 'Tổng ') + fmt(sum);
 }
 
 function resetViewState() {
@@ -182,7 +194,7 @@ function resetViewState() {
   ui.txFilter = { type: 'all', q: '', categoryId: null, tag: null, accountId: null };
 }
 
-/** Mỗi lần chuyển mục / User / Category: luôn mở màn hình Tổng quan. */
+/** Mỗi lần chuyển mục / User: luôn mở màn hình Tổng quan. */
 const goHome = () => { if (location.hash !== '#/home') location.hash = '#/home'; };
 
 async function switchTo(id) {
@@ -211,15 +223,8 @@ actions['book-lock'] = (el) => {
   toast(b.locked ? `🔓 Đã mở khóa ${S.bookLabel(b)}` : `🔒 Đã khóa ${S.bookLabel(b)} — không thể chuyển tiền đi`, 3000);
 };
 actions['user-switch'] = (el) => switchToUser(el.dataset.id);
-/** Đóng Category: về mục Ngân hàng mặc định (thiết lập trong Cài đặt chung), không có thì Ngân hàng đầu tiên. */
-actions['cat-close'] = () => {
-  const bank = S.defaultBank();
-  if (!bank) return toast('Chưa có mục Ngân hàng nào');
-  switchTo(bank.id);
-};
-actions['default-bank'] = (el) => { S.setDefaultBank(el.value); toast('Đã đặt Ngân hàng mặc định'); };
 
-/** Ô chọn (User / Category / mục): trái = avatar + tên; phải = số liệu (điền sau) + trạng thái. */
+/** Ô chọn (User / mục): trái = avatar + tên; phải = số liệu (điền sau) + trạng thái. */
 function tileHtml({ attr, id, color, av, name, on, sum, del }) {
   return `<div class="ptile ${on ? 'on is-current' : ''}" style="--c:${esc(color)}">
     <button type="button" class="ptile-main" data-${attr}="${esc(id)}">
@@ -231,12 +236,7 @@ function tileHtml({ attr, id, color, av, name, on, sum, del }) {
   </div>`;
 }
 
-const STAT_LABEL = { day: 'hôm nay', week: 'tuần này', month: 'tháng này' };
-const trackerSumHtml = (s) => (s.configured
-  ? `<b class="${s.income - s.expense < 0 ? 'expense' : 'income'}">${fmtSigned(s.income - s.expense)}</b><small>Chênh lệch ${STAT_LABEL[s.period] || ''}</small><small>Thu ${fmtShort(s.income)} · Chi ${fmtShort(s.expense)}</small>`
-  : '<small>Chưa thiết lập nguồn</small>');
-
-/** Điền số liệu vào ô: [data-psum] = một mục; [data-usum] = User (tổng số dư) hoặc Category (chênh lệch theo kỳ). */
+/** Điền số liệu vào ô: [data-psum] = một mục; [data-usum] = tổng các mục của một User. */
 async function fillProfileSums(root) {
   for (const el of root.querySelectorAll('[data-psum]')) {
     const p = S.getProfiles().find((x) => x.id === el.dataset.psum);
@@ -245,22 +245,16 @@ async function fillProfileSums(root) {
       const s = await S.profileSummary(p);
       el.innerHTML = s.kind === 'card'
         ? `<b class="${s.unpaid ? 'expense' : 'income'}">${fmt(s.unpaid)}</b><small>${s.count ? `${s.count} khoản chưa TT` : 'Đã thanh toán hết'}</small>`
-        : s.kind === 'tracker' ? trackerSumHtml(s)
-          : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>Số dư</small>`;
+        : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>Số dư</small>`;
     } catch { el.textContent = ''; }
   }
   for (const el of root.querySelectorAll('[data-usum]')) {
     const books = S.userBooks(el.dataset.usum);
-    const owner = S.getUsers().find((u) => u.id === el.dataset.usum);
     try {
-      if (S.ownerType(owner) === 'category') {
-        el.innerHTML = books[0] ? trackerSumHtml(await S.profileSummary(books[0])) : '';
-        continue;
-      }
       let balance = 0, unpaid = 0;
       for (const b of books) {
         const s = await S.profileSummary(b);
-        if (s.kind === 'card') unpaid += s.unpaid; else if (s.kind !== 'tracker') balance += s.balance;
+        if (s.kind === 'card') unpaid += s.unpaid; else balance += s.balance;
       }
       el.innerHTML = `<b class="${balance < 0 ? 'expense' : ''}">${fmt(balance)}</b><small>Tổng số dư · ${books.length} mục</small>`
         + (unpaid ? `<small class="expense">Thẻ chưa TT: ${fmt(unpaid)}</small>` : '');
@@ -268,39 +262,74 @@ async function fillProfileSums(root) {
   }
 }
 
-// --- Danh sách User / Category (nút trái). Có nút ⚙️ Cài đặt chung ở góc phải tiêu đề. ---
+// --- Thông báo của User đang chọn: nợ đến hạn, khoản định kỳ, ngân sách (của mọi mục trong User) ---
+const NOTIF = {
+  debt: { icon: '🏦', btn: 'Thanh toán' },
+  pending: { icon: '⏳', btn: 'Xác nhận' },
+  recurring: { icon: '🔁', btn: 'Xem' },
+  budget: { icon: '⚠️', btn: 'Xem' },
+};
+function notifRow(a) {
+  const sub = a.kind === 'budget'
+    ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách (${fmtShort(a.amount)} / ${fmtShort(a.limit)})`
+    : a.kind === 'pending'
+      ? `${fmtShort(a.amount)} · kỳ ${fmtDate(a.date)}${a.noFunds ? ' · chưa ghi được vì thiếu số dư' : ' · chờ xác nhận'}`
+      : `${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}`;
+  const tone = (a.kind === 'budget' ? a.level >= 100 : a.days < 0) ? 'over' : a.kind === 'recurring' ? '' : 'warn';
+  return `<div class="notif-row ${tone}"><span class="n-ic">${NOTIF[a.kind].icon}</span>
+    <span class="grow"><b>${esc(a.title)}</b><small>${esc(a.bookName)} · ${esc(sub)}</small></span>
+    <button type="button" class="btn small n-btn" data-notif="${a.kind}" data-book="${esc(a.bookId)}" data-id="${esc(a.id)}">${NOTIF[a.kind].btn}</button></div>`;
+}
+
+async function fillNotifications(sh) {
+  const alerts = await S.userAlerts(S.currentUser().id);
+  sh.querySelector('[data-notif-n]').textContent = `(${alerts.length})`;
+  sh.querySelector('[data-notif-list]').innerHTML = alerts.length
+    ? alerts.map(notifRow).join('') : '<p class="muted small center">Không có thông báo nào.</p>';
+}
+
+/** Mở đúng mục rồi thực hiện thao tác của thông báo. */
+async function runNotif({ notif, book, id }) {
+  await switchTo(book);
+  if (notif === 'debt') {
+    const d = state.debts.find((x) => x.id === id);
+    if (d) debtPay(d);
+  } else if (notif === 'pending') actions['pending-open']({ dataset: { id } });
+  else if (notif === 'recurring') actions['rec-open']({ dataset: { id } });
+  else actions['budget-goto']();
+}
+
+// --- Danh sách User (nút trái) + Notifications. Có nút ⚙️ Cài đặt chung ở góc phải tiêu đề. ---
 actions.users = () => {
-  const cur = S.currentUser().id;
-  const group = (type) => {
-    const t = S.OWNER_TYPES[type];
-    const list = S.getUsers(type);
-    const canDel = type === 'category' || list.length > 1;
-    return `<h4 class="grp-h">${t.icon} ${t.label} <small>(${list.length}/${t.max})</small></h4>
-      <div class="tile-grid one-col">${list.map((u) => tileHtml({
-        attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name, on: u.id === cur,
-        sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: canDel,
-      })).join('')}
-      ${list.length < t.max ? `<button type="button" class="ptile-add block" data-add="${type}">＋ ${t.label}</button>` : ''}</div>`;
-  };
+  const cur = S.currentUser();
+  const users = S.getUsers();
   openSheet({
-    title: 'User / Category',
+    title: 'User',
     headAction: '<button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt chung">⚙️</button>',
-    body: `${group('user')}${group('category')}
-      <p class="muted small">👤 User: mục 🏦 Ngân hàng (3), 🐷 Tiết kiệm (3), 💳 Thẻ chi tiêu (2) — chọn/tạo ở nút góc phải trên cùng.<br>🗂️ Category: theo dõi 🔁 Transfer/Withdraw hoặc 📊 Thu/Chi, chọn là vào xem luôn.</p>
+    body: `<h4 class="grp-h">👤 User <small>(${users.length}/${S.MAX_USERS})</small></h4>
+      <div class="tile-grid one-col">${users.map((u) => tileHtml({
+        attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name, on: u.id === cur.id,
+        sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: users.length > 1,
+      })).join('')}
+      ${users.length < S.MAX_USERS ? '<button type="button" class="ptile-add block" data-add>＋ User</button>' : ''}</div>
+      <h4 class="grp-h">🔔 Notifications của ${esc(cur.name)} <small data-notif-n></small></h4>
+      <div class="notif-list" data-notif-list><p class="muted small center">Đang tải…</p></div>
       <div class="quick-save"><button type="button" class="btn primary" data-quick-save>💾 Save</button><small class="muted" data-save-status>${esc(saveStatusText())}</small></div>`,
     onMount(sh, close) {
       sh.querySelector('[data-settings]').addEventListener('click', () => { close(); location.hash = '#/settings'; });
       sh.querySelector('[data-quick-save]').addEventListener('click', () => quickSave(sh));
       fillProfileSums(sh);
+      fillNotifications(sh);
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
-        const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]');
-        if (del) {
+        const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), nt = e.target.closest('[data-notif]');
+        if (nt) { close(); await runNotif(nt.dataset); }
+        else if (del) {
           const u = S.getUsers().find((x) => x.id === del.dataset.del);
           if (u && await confirmDeleteUser(u)) { close(); refresh(); setTimeout(() => actions.users(), 260); }
         } else if (sw) { close(); await switchToUser(sw.dataset.switch); }
         else if (ed) { close(); userForm(S.getUsers().find((u) => u.id === ed.dataset.edit)); }
-        else if (add) { close(); userForm(null, add.dataset.add); }
+        else if (add) { close(); userForm(null); }
       });
     },
   });
@@ -309,15 +338,14 @@ actions.users = () => {
 // --- Danh sách mục của User hiện tại (nút phải): mỗi mục 1 dòng trải hết chiều ngang ---
 actions.books = () => {
   const u = S.currentUser();
-  if (S.ownerType(u) === 'category') return;
   const cur = S.currentProfile().id;
   const mine = S.userBooks(u.id);
   openSheet({
     title: `Mục của ${u.name}`,
-    body: S.OWNER_TYPES.user.kinds.map((kind) => {
+    body: S.USER_KINDS.map((kind) => {
       const k = S.BOOK_KINDS[kind];
       const list = mine.filter((b) => (b.kind || 'bank') === kind);
-      return `<h4 class="grp-h">${k.icon} ${k.label} <small>(${list.length}/${k.max})</small></h4>
+      return `<h4 class="grp-h grp-total"><span>${k.icon} ${k.label} <small>(${list.length}/${k.max})</small></span><small class="grp-sum" data-kind-sum="${kind}"></small></h4>
         <div class="tile-grid one-col">${list.map((b) => tileHtml({
           attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : ''), on: b.id === cur,
           sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1,
@@ -326,6 +354,10 @@ actions.books = () => {
     }).join(''),
     onMount(sh, close) {
       fillProfileSums(sh);
+      sh.querySelectorAll('[data-kind-sum]').forEach(async (el) => {
+        const kind = el.dataset.kindSum;
+        el.textContent = (kind === 'card' ? 'Chưa TT ' : 'Tổng ') + fmt(await S.kindTotal(u.id, kind));
+      });
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
         const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]');
@@ -351,7 +383,7 @@ async function confirmDeleteProfile(b) {
   return true;
 }
 
-/** Xóa User / Category cùng mọi mục của nó. */
+/** Xóa User cùng mọi mục của User đó. */
 async function confirmDeleteUser(u) {
   const n = S.userBooks(u.id).length;
   if (!confirm(`Xóa "${u.name}" cùng ${n} mục và TOÀN BỘ dữ liệu? Không thể hoàn tác. Nên sao lưu trước!`)) return false;
@@ -363,7 +395,7 @@ async function confirmDeleteUser(u) {
   return true;
 }
 
-/** Phần chọn ảnh / icon (có tìm kiếm) / màu dùng chung cho form User, Category và mục. */
+/** Phần chọn ảnh / icon (có tìm kiếm) / màu dùng chung cho form User và mục. */
 function looksFields(f, withPhoto) {
   return `${withPhoto ? `<div class="field"><span>Ảnh đại diện</span>
       <div class="pf-photo"><span id="pf-preview">${avatar(f, 'ptile-av')}</span>
@@ -402,57 +434,32 @@ function bindLooks(sh, f) {
   });
 }
 
-/** Thêm/sửa User hoặc Category. Tạo Category: chọn kiểu theo dõi (Transfer/Withdraw hoặc Thu/Chi). */
-function userForm(u, type = 'user') {
-  if (u) type = S.ownerType(u);
-  const t = S.OWNER_TYPES[type];
-  const isCat = type === 'category';
+/** Thêm/sửa User. */
+function userForm(u) {
   const users = S.getUsers();
-  const book = u && isCat ? S.userBooks(u.id)[0] : null;
-  const f = u ? { ...u } : { type, name: '', icon: isCat ? '🔁' : (users.length === 1 ? '👩' : '🧑'), color: S.PROFILE_COLORS[users.length % S.PROFILE_COLORS.length], statPeriod: 'day' };
-  let trackKind = book ? book.kind : 'invest';
+  const f = u ? { ...u } : { name: '', icon: users.length === 1 ? '👩' : '🧑', color: S.PROFILE_COLORS[users.length % S.PROFILE_COLORS.length] };
   const formId = 'uf-' + Date.now();
-  const canDel = u && (isCat || S.getUsers('user').length > 1);
   openSheet({
-    title: `${u ? 'Sửa' : 'Thêm'} ${t.label}`,
+    title: `${u ? 'Sửa' : 'Thêm'} User`,
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">${u ? 'Lưu' : 'Tạo'}</button>`,
     body: `<form class="form" id="${formId}">
-      ${isCat && !u ? `<div class="field"><span>Kiểu theo dõi</span><div class="seg" id="uf-kind">
-        <button type="button" data-k="invest" class="on">🔁 Transfer / Withdraw</button><button type="button" data-k="track">📊 Thu / Chi</button></div>
-        <small class="muted" id="uf-kind-hint">Lấy các khoản Transfer/Withdraw theo luồng từ mục → đến mục bạn chỉ định.</small></div>` : ''}
-      ${isCat && u ? `<p class="muted small">Kiểu: <b>${esc(kindOf(book || {}).label)}</b></p>` : ''}
-      ${field('Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="${isCat ? 'vd: Đầu tư chứng khoán, Chi tiêu gia đình' : 'vd: Dũng, Vợ'}">`)}
-      ${isCat ? field('Chênh lệch hiện trên thẻ theo', `<select id="uf-stat">${['day', 'week', 'month'].map((p) => `<option value="${p}" ${(f.statPeriod || 'day') === p ? 'selected' : ''}>${PERIOD_LABEL[p]}</option>`).join('')}</select>`) : ''}
+      ${field('Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ">`)}
       ${looksFields(f, true)}
-      ${u ? '' : `<p class="muted small">${isCat ? 'Tạo xong sẽ mở phần thiết lập nguồn để chọn dữ liệu đưa vào.' : 'User mới có sẵn 1 mục 🏦 Ngân hàng.'}</p>`}
-      ${canDel ? `<div class="actions"><button type="button" class="btn danger" data-del>Xóa ${t.label}</button></div>` : ''}
+      ${u ? '' : '<p class="muted small">User mới có sẵn 1 mục 🏦 Ngân hàng.</p>'}
+      ${u && users.length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa User</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
       bindLooks(sh, f);
-      $(sh, '#uf-kind')?.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-k]');
-        if (!b) return;
-        trackKind = b.dataset.k;
-        sh.querySelectorAll('#uf-kind [data-k]').forEach((x) => x.classList.toggle('on', x === b));
-        $(sh, '#uf-kind-hint').textContent = trackKind === 'track'
-          ? 'Lấy các khoản Thu/Chi trong các mục bạn chọn, theo danh mục thu / chi chỉ định.'
-          : 'Lấy các khoản Transfer/Withdraw theo luồng từ mục → đến mục bạn chỉ định.';
-      });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = $(sh, '#pf-name').value.trim();
         if (!name) return toast('Nhập tên');
         if (S.getUsers().some((x) => x.id !== f.id && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên này đã có');
-        const data = { ...f, name, statPeriod: $(sh, '#uf-stat')?.value || f.statPeriod };
-        if (!u && isCat) data.trackKind = trackKind;
         let saved;
-        try { saved = S.saveUser(data); } catch (err) { return toast(err.message); }
-        // Category: mục theo dõi mang cùng tên / icon / màu.
-        if (isCat && book) S.saveProfile({ id: book.id, name, icon: data.icon, color: data.color });
+        try { saved = S.saveUser({ ...f, name }); } catch (err) { return toast(err.message); }
         close();
         if (u) { refresh(); toast('Đã lưu'); return; }
         await switchToUser(saved.id);
-        if (isCat) setTimeout(() => trackerSourceForm(S.currentProfile()), 300);
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
         if (await confirmDeleteUser(u)) { close(); refresh(); }
@@ -503,22 +510,22 @@ function bookForm(b, kind = 'bank') {
   });
 }
 
-// ================= Category: thiết lập nguồn =================
-const trackerSourceForm = (book) => (book.kind === 'track' ? trackSourceForm(book) : investSourceForm(book));
-const moneyBookList = () => S.getProfiles().filter((p) => ['bank', 'saving', 'neo', 'outflow'].includes(p.kind || 'bank'));
+// ================= Thống kê của mục Ngân hàng: thiết lập nguồn =================
+const moneyBookList = () => S.getProfiles().filter((p) => ['bank', 'saving', 'neo'].includes(p.kind || 'bank'));
 
-/** Kiểu Transfer/Withdraw: các luồng "từ mục → đến mục" + danh mục transfer/withdraw cần lấy. */
-function investSourceForm(book) {
+/** Thống kê Transfer/Withdraw: các luồng "từ mục → đến mục" + danh mục cần lấy. */
+function statFlowForm() {
   const books = moneyBookList();
   if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Transfer/Withdraw');
-  const src = book.source || {};
-  let rules = (src.rules || []).map((r) => ({ ...r }));
+  const src = state.settings.statFlow || {};
+  const has = (id) => books.some((b) => b.id === id);
+  let rules = (src.rules || []).filter((r) => has(r.from) && has(r.to)).map((r) => ({ ...r }));
   if (!rules.length) rules = [{ from: books[0].id, to: books[1].id, as: 'expense' }];
   const picked = new Set(src.flowCats || []);
   const opts = (sel) => books.map((p) => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.icon + ' ' + S.bookLabel(p))}</option>`).join('');
   const formId = 'is-' + Date.now();
   openSheet({
-    title: `⚙️ Nguồn của ${book.name}`,
+    title: '🔁 Thống kê Transfer/Withdraw',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       <p class="muted small">Chỉ lấy các khoản <b>Transfer / Withdraw</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Transfer từ A cho B, hoặc B Withdraw từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
@@ -560,24 +567,23 @@ function investSourceForm(book) {
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (rules.some((r) => r.from === r.to)) return toast('Mục nguồn và mục đích phải khác nhau');
-        S.saveProfile({ id: book.id, source: { rules, flowCats: [...picked] } });
+        await S.setSetting('statFlow', { rules, flowCats: [...picked], show: src.show !== false });
         close();
-        if (S.currentProfile().id === book.id) { await S.loadAll(); S.emit(); }
-        toast('Đã lưu nguồn');
+        toast('Đã lưu thiết lập thống kê');
       });
     },
   });
 }
 
-/** Kiểu Thu/Chi: chọn các mục (Ngân hàng / Tiết kiệm) + danh mục thu, chi cần lấy (theo tên danh mục). */
-function trackSourceForm(book) {
+/** Thống kê Thu/Chi: chọn các mục (Ngân hàng / Tiết kiệm) + danh mục thu, chi cần lấy (theo tên danh mục). */
+function statTrackForm() {
   const books = S.getProfiles().filter((p) => ['bank', 'saving'].includes(p.kind || 'bank'));
-  const src = book.source || {};
-  const pickedBooks = new Set(src.books && src.books.length ? src.books : books.map((b) => b.id));
+  const src = state.settings.statTrack || {};
+  const pickedBooks = new Set(src.books && src.books.length ? src.books : [S.currentProfile().id]);
   const inc = new Set(src.income || []), exp = new Set(src.expense || []);
   const formId = 'ts-' + Date.now();
   openSheet({
-    title: `⚙️ Nguồn của ${book.name}`,
+    title: '📊 Thống kê Thu/Chi',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       <p class="muted small">Lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, thuộc các danh mục bạn tích. Xóa giao dịch thì ở đây cũng mất theo.</p>
@@ -605,10 +611,9 @@ function trackSourceForm(book) {
         e.preventDefault();
         if (!pickedBooks.size) return toast('Chọn ít nhất 1 mục');
         if (!inc.size && !exp.size) return toast('Chọn ít nhất 1 danh mục thu hoặc chi');
-        S.saveProfile({ id: book.id, source: { books: [...pickedBooks], income: [...inc], expense: [...exp] } });
+        await S.setSetting('statTrack', { books: [...pickedBooks], income: [...inc], expense: [...exp], show: src.show !== false });
         close();
-        if (S.currentProfile().id === book.id) { await S.loadAll(); S.emit(); }
-        toast('Đã lưu nguồn');
+        toast('Đã lưu thiết lập thống kê');
       });
     },
   });
@@ -660,64 +665,76 @@ function cardView() {
   <button type="button" class="fab" data-act="card-add" aria-label="Thêm khoản chi">+</button>`;
 }
 
-// ================= Mục Đầu tư (chỉ đọc) =================
-/** Thu/Chi lấy tự động từ 1 mục Ngân hàng theo danh mục đã thiết lập; không nhập tay. */
-/** Màn hình Category: Transfer/Withdraw ('invest') hoặc Thu/Chi ('track'); chỉ đọc. */
-function investView() {
-  const p = S.currentProfile();
-  const isTrack = p.kind === 'track';
-  const m = state.mirror || { configured: false, txs: [] };
-  const setup = `<button type="button" class="btn ghost small" data-act="invest-source">⚙️ Nguồn</button>`;
-  if (!m.configured) {
-    return `${topBar(isTrack ? '📊 Theo dõi Thu/Chi' : '🔁 Theo dõi Transfer/Withdraw', setup)}
-    ${empty(isTrack ? '📊' : '🔁', isTrack
-      ? 'Category này lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, theo danh mục chỉ định.<br>Bấm <b>⚙️ Nguồn</b> để thiết lập.'
-      : 'Category này lấy các khoản <b>Transfer / Withdraw</b> theo luồng <b>từ mục → đến mục</b> bạn chỉ định.<br>Bấm <b>⚙️ Nguồn</b> để thiết lập.')}
-    <button type="button" class="btn primary block" data-act="invest-source">⚙️ Thiết lập nguồn</button>`;
-  }
+// ================= Thống kê Transfer/Withdraw và Thu/Chi ở Tổng quan =================
+const STATS = {
+  flow: { key: 'statFlow', icon: '🔁', label: 'Transfer/Withdraw', load: S.loadFlowStats, form: () => statFlowForm() },
+  track: { key: 'statTrack', icon: '📊', label: 'Thu/Chi', load: S.loadTrackStats, form: () => statTrackForm() },
+};
+const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
+
+/** Các dòng thống kê đang bật, tính theo kỳ đang chọn ở Tổng quan. */
+async function fillHomeStats(root) {
+  const box = root.querySelector('[data-home-stats]');
+  if (!box) return;
   const r = currentRange();
-  const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
-  const sum = (arr, type) => arr.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-  const inc = sum(list, 'income'), exp = sum(list, 'expense');
-  const total = sum(m.txs, 'income') - sum(m.txs, 'expense');
-  const groups = new Map();
-  for (const t of sortTx([...list])) { if (!groups.has(t.date)) groups.set(t.date, []); groups.get(t.date).push(t); }
-  const row = (t) => {
-    const sign = t.type === 'income' ? 1 : -1;
-    if (isTrack) {
-      return `<div class="row tx mirror-row"><span class="ci" style="--c:${esc(t.catColor)}">${esc(t.catIcon)}</span>
-        <span class="grow"><b>${esc(t.note || t.catName)}</b><small>${esc([t.note ? t.catName : '', t.flowLabel].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
-        <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
-    }
-    const isW = t.gop.mode === 'trich';
-    return `<div class="row tx mirror-row"><span class="ci" style="--c:${isW ? '#8e4ec6' : '#12a594'}">${isW ? '🔄' : '🔁'}</span>
-      <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isW ? 'Withdraw' : 'Transfer', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
-      <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
-  };
-  const info = isTrack
-    ? `<div class="card flow-rules"><div>📒 ${esc(m.books.map((id) => S.bookLabel(S.getProfiles().find((b) => b.id === id))).join(', '))}</div>
-      <small class="muted">Thu: ${esc((p.source.income || []).join(', ') || '—')} · Chi: ${esc((p.source.expense || []).join(', ') || '—')}</small></div>`
-    : `<div class="card flow-rules">${m.rules.map((x) => {
-      const a = S.getProfiles().find((b) => b.id === x.from), b = S.getProfiles().find((q) => q.id === x.to);
-      return `<div>${esc(a.icon)} ${esc(S.bookLabel(a))} → ${esc(b.icon)} ${esc(S.bookLabel(b))} <small class="${x.as === 'income' ? 'income' : 'expense'}">(${x.as === 'income' ? 'Thu' : 'Chi'})</small></div>`;
-    }).join('')}<small class="muted">Danh mục: ${esc((p.source.flowCats || []).map((id) => S.flowCatById(id)?.name).filter(Boolean).join(', ') || 'tất cả')}</small></div>`;
-  return `
-  ${topBar(isTrack ? '📊 Theo dõi Thu/Chi' : `🔁 ${m.rules.length} luồng Transfer/Withdraw`, setup)}
-  ${periodBar()}
-  <section class="card hero">
-    <div class="hero-row">
-      <div><small>Thu</small><b class="income">${fmt(inc)}</b></div>
-      <div><small>Chi</small><b class="expense">${fmt(exp)}</b></div>
-    </div>
-    <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong></div>
-    <div class="hero-bal"><span>Lũy kế (thu − chi)</span><b>${fmtSigned(total)}</b></div>
-  </section>
-  ${info}
-  ${list.length ? [...groups.entries()].map(([d, arr]) => `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span></div>
-    <div class="card list">${arr.map(row).join('')}</div></div>`).join('')
-    : empty('📭', 'Không có giao dịch phù hợp trong kỳ này.')}`;
+  let html = '';
+  for (const [k, st] of Object.entries(STATS)) {
+    const src = state.settings[st.key];
+    if (!src || !src.show) continue;
+    const m = await st.load(src);
+    const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
+    const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
+    html += `<button type="button" class="stat-line" data-act="stat-open" data-k="${k}">
+      <span class="grow"><b>${st.icon} ${st.label}</b><small>${m.configured ? `Thu ${fmtShort(inc)} · Chi ${fmtShort(exp)}` : 'Chưa thiết lập nguồn'}</small></span>
+      ${m.configured ? `<strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong>` : ''}<i>›</i></button>`;
+  }
+  if (box.isConnected) box.innerHTML = html;
 }
-actions['invest-source'] = () => trackerSourceForm(S.currentProfile());
+
+function statRow(t) {
+  const sign = t.type === 'income' ? 1 : -1;
+  if (!t.gop) {
+    return `<div class="row tx mirror-row"><span class="ci" style="--c:${esc(t.catColor)}">${esc(t.catIcon)}</span>
+      <span class="grow"><b>${esc(t.note || t.catName)}</b><small>${esc([t.note ? t.catName : '', t.flowLabel].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
+      <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
+  }
+  const isW = t.gop.mode === 'trich';
+  return `<div class="row tx mirror-row"><span class="ci" style="--c:${isW ? '#8e4ec6' : '#12a594'}">${isW ? '🔄' : '🔁'}</span>
+    <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isW ? 'Withdraw' : 'Transfer', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
+    <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
+}
+
+/** Bấm dòng thống kê: xem chi tiết theo kỳ đang chọn. */
+actions['stat-open'] = async (el) => {
+  const st = STATS[el.dataset.k];
+  const m = await st.load(state.settings[st.key]);
+  if (!m.configured) return st.form();
+  const r = currentRange();
+  const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
+  const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
+  openSheet({
+    title: `${st.icon} ${st.label} · ${r.label}`,
+    body: `<section class="card stats two-col"><div><small>Thu</small><b class="income">${fmt(inc)}</b></div><div><small>Chi</small><b class="expense">${fmt(exp)}</b></div></section>
+      <p class="center"><small class="muted">Chênh lệch</small> <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b></p>
+      ${list.length ? `<div class="card list">${list.map(statRow).join('')}</div>` : empty('📭', 'Không có giao dịch phù hợp trong kỳ này.')}`,
+  });
+};
+actions['stat-setup'] = (el) => STATS[el.dataset.k].form();
+
+/** Phần Thống kê trong Cài đặt riêng của mục Ngân hàng. */
+function statSettingsHtml() {
+  return `${sectionTitle('📊 Thống kê')}
+  <section class="card list">${Object.entries(STATS).map(([k, st]) => {
+    const src = state.settings[st.key];
+    return `<div class="row quick-row">
+      <button type="button" class="grow-btn" data-act="stat-setup" data-k="${k}"><span class="ci">${st.icon}</span>
+        <span class="grow"><b>Thống kê ${st.label}</b><small>${src ? 'Bấm để sửa nguồn' : 'Chưa thiết lập'}</small></span><span>✎</span></button>
+      <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-stat-show="${st.key}" ${src?.show ? 'checked' : ''} ${src ? '' : 'disabled'}><i></i></label>
+    </div>`;
+  }).join('')}</section>
+  <p class="muted small">Bật công tắc để hiện ở Tổng quan (dưới các nút nhanh), số liệu theo kỳ Ngày/Tuần/Tháng/Khoảng đang chọn.</p>`;
+}
+
 function cardRow(t) {
   const cat = S.catById(t.categoryId);
   return `<div class="row card-item ${isDone(t) ? 'done' : ''}">
@@ -893,7 +910,6 @@ function cardPaySheet(items) {
 function homeView() {
   const r = currentRange();
   const t = S.totals(r);
-  const alerts = S.getAlerts();
   const today = todayISO();
   const recent = sortTx([...state.transactions]).slice(0, 6);
   const hour = Number(fmtTimeVN(Date.now()).slice(0, 2));
@@ -908,36 +924,21 @@ function homeView() {
       <div><small>Thu</small><b class="income">${fmt(t.income)}</b></div>
       <div><small>Chi</small><b class="expense">${fmt(t.expense)}</b></div>
     </div>
-    <div class="hero-net"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
+    <div class="hero-net net-small"><small>Chênh lệch kỳ này</small><strong class="${t.net >= 0 ? 'income' : 'expense'}">${fmtSigned(t.net)}</strong></div>
     <div class="hero-bal"><span>Tổng số dư tài khoản</span><b>${fmt(S.totalBalance())}</b></div>
     <div class="acc-line">${esc(accLine())}</div>
     ${quickButtons()}
+    ${S.kindOfBook(S.currentProfile()) === 'bank' ? '<div class="home-stats" data-home-stats></div>' : ''}
   </section>
 
   ${!loggedToday && hour >= 18 ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
 
-  ${alerts.length ? `${sectionTitle('⚠️ Cảnh báo từ Kế hoạch')}<div class="card list">${alerts.map(alertRow).join('')}</div>` : ''}
 
 
 
   ${sectionTitle('Gần đây', `<a class="link" href="#/tx">Tất cả</a>`)}
   ${recent.length ? `<div class="card list">${recent.map(txRow).join('')}</div>` : empty('🪙', 'Chưa có giao dịch nào. Bấm nút <b>+</b> để ghi khoản đầu tiên.')}
   ${fab()}`;
-}
-
-function alertRow(a) {
-  const map = {
-    debt: ['🏦', 'debt-open', a.days < 0 ? 'over' : 'warn'],
-    pending: ['⏳', 'pending-open', 'warn'],
-    recurring: ['🔁', 'rec-open', ''],
-    budget: ['⚠️', 'budget-goto', a.level >= 100 ? 'over' : 'warn'],
-  }[a.kind];
-  const sub = a.kind === 'budget'
-    ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách (${fmt(a.amount)} / ${fmt(a.limit)})`
-    : a.kind === 'pending' ? (a.noFunds ? `Đến kỳ ${fmtDate(a.date)} — chưa ghi được vì không đủ số dư` : `Đến kỳ ${fmtDate(a.date)} — bấm để xác nhận số tiền`) : `${fmtDue(a.days)} · ${fmtDate(a.date)}`;
-  return `<button type="button" class="row alert ${map[2]}" data-act="${map[1]}" data-id="${a.id}">
-    <span class="ci">${map[0]}</span><span class="grow"><b>${esc(a.title)}</b><small>${esc(sub)}</small></span>
-    ${a.kind !== 'budget' ? `<span class="amt">${fmt(a.amount)}</span>` : ''}</button>`;
 }
 
 const fab = () => `<button type="button" class="fab" data-act="add" aria-label="Thêm giao dịch">+</button>`;
@@ -1945,7 +1946,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         if (!splitRows.length) splitRows = [{ categoryId: f.categoryId, amount: amtIn.value }, { categoryId: S.catsOf(f.type)[1]?.id, amount: '' }];
         splitBox.innerHTML = splitRows.map((r, i) => `<div class="split-row" data-i="${i}">
           <select data-k="categoryId">${catOptions(f.type, r.categoryId)}</select>
-          <input data-k="amount" inputmode="decimal" placeholder="Số tiền" value="${esc(r.amount)}">
+          <input data-k="amount" class="money" inputmode="decimal" placeholder="Số tiền" value="${esc(r.amount)}">
           <button type="button" class="icon-btn" data-rm aria-label="Bỏ">✕</button></div>`).join('')
           + `<div class="split-foot"><button type="button" class="btn ghost small" data-add>+ Thêm dòng</button><em id="tf-split-info"></em></div>`;
         renderSplitInfo();
@@ -2214,11 +2215,11 @@ const QUICK_KINDS = {
 const QUICK_SHORT = { expense: 'Chi', income: 'Thu', gop: 'Transfer', trich: 'Withdraw', card: 'Chi', card2: 'Chi', card3: 'Chi' };
 // Thẻ chi tiêu có 3 mẫu chi nhanh: card, card2, card3.
 const isCardK = (k) => /^card\d?$/.test(k);
-const quickKindsFor = () => ({ card: ['card', 'card2', 'card3'], invest: [], track: [], saving: ['gop', 'trich'] }[S.currentProfile().kind] || ['expense', 'income', 'gop', 'trich']);
+const quickKindsFor = () => ({ card: ['card', 'card2', 'card3'], saving: ['gop', 'trich'] }[S.currentProfile().kind] || ['expense', 'income', 'gop', 'trich']);
 const quickOf = (k) => (state.settings.quick || {})[k] || null;
 const saveQuick = (k, q) => S.setSetting('quick', { ...(state.settings.quick || {}), [k]: q });
 const myAccount = () => S.activeAccounts()[0];
-const peerOf = (q) => q && q.peerId && S.getProfiles().find((p) => p.id === q.peerId);
+const peerOf = (q) => q && q.peerId && S.getProfiles().find((p) => p.id === q.peerId && p.kind !== 'outflow');
 
 function quickDesc(k, q) {
   if (!q) return 'Chưa thiết lập';
@@ -2379,8 +2380,8 @@ actions['quick-edit'] = (el) => {
 function secrecyHtml() {
   const hidden = S.secrecyHidden();
   const head = sectionTitle('🔐 Secrecy', `<label class="switch" title="Hiện mục Secrecy"><input type="checkbox" data-secrecy-toggle ${hidden ? '' : 'checked'}><i></i></label>`);
-  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Transfer/Withdraw. Các mẫu nhanh đã thiết lập với NEOBANK/Cash Outflow vẫn hoạt động. Bật công tắc để xem.</p>`;
-  return `${head}${['neo', 'outflow'].map((kind) => {
+  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Transfer/Withdraw. Các mẫu nhanh đã thiết lập với NEOBANK vẫn hoạt động. Bật công tắc để xem.</p>`;
+  return `${head}${['neo'].map((kind) => {
     const k = S.BOOK_KINDS[kind];
     const list = S.secrecyBooks(kind);
     return `<h4 class="grp-h">${k.icon} ${k.label} <small>(${list.length}/${k.max})</small></h4>
@@ -2390,11 +2391,11 @@ function secrecyHtml() {
           <span class="grow"><b>${esc(b.name)}</b><small>${kind === 'neo' ? 'Bấm để chỉnh số dư' : 'Tổng tiền đã nhận transfer'}</small></span>
           <span class="psum" data-psum="${esc(b.id)}">…</span></button>
         <button type="button" class="icon-btn" data-act="secrecy-del" data-id="${esc(b.id)}" aria-label="Xóa">🗑</button>
-      </div>`).join('') || `<p class="muted small" style="padding:8px 14px">${kind === 'neo' ? 'Chưa có NEOBANK.' : 'Chưa có Cash Outflow.'}</p>`}
+      </div>`).join('') || `<p class="muted small" style="padding:8px 14px">Chưa có NEOBANK.</p>`}
       ${list.length < k.max ? `<button type="button" class="row add-row" data-act="secrecy-add" data-kind="${kind}"><span class="ci">＋</span><span class="grow"><b>Thêm ${k.label}</b></span></button>` : ''}
     </section>`;
   }).join('')}
-  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng <b>Transfer cho</b> để gửi tiền vào, <b>Withdraw từ</b> để lấy tiền về. 📤 Cash Outflow: các mục Ngân hàng dùng <b>Transfer cho</b> để chuyển tiền ra.</p>`;
+  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng <b>Transfer cho</b> để gửi tiền vào, <b>Withdraw từ</b> để lấy tiền về.</p>`;
 }
 
 actions['secrecy-add'] = (el) => secrecyForm(null, el.dataset.kind);
@@ -2442,9 +2443,9 @@ async function secrecyForm(b, kind) {
 
 // ================= Cài đặt =================
 /** Người dùng đang được chọn để xem danh sách mục trong Cài đặt (mặc định: người đang dùng). */
-/** User đang chọn xem trong Cài đặt chung (Cài đặt chung chỉ liệt kê User, không có Category). */
+/** User đang chọn xem trong Cài đặt chung. */
 function settingsUser() {
-  const users = S.getUsers('user');
+  const users = S.getUsers();
   return users.find((u) => u.id === ui.settingsUserId) || users.find((u) => u.id === S.currentUser().id) || users[0];
 }
 actions['settings-user'] = (el) => { ui.settingsUserId = el.dataset.id; refresh(); };
@@ -2457,16 +2458,13 @@ function settingsView() {
   <p class="muted small">Cài đặt riêng của từng mục (hiển thị, mẫu nhập nhanh, tài khoản, danh mục, phân bổ…) nằm ở tab <b>⚙️ Cài đặt</b> ở thanh dưới cùng của mục đó.</p>
 
   ${sectionTitle(`User`, `<button type="button" class="link" data-act="users">Quản lý</button>`)}
-  <section class="card list">${S.getUsers('user').map((u) => `
+  <section class="card list">${S.getUsers().map((u) => `
     <button type="button" class="row user-pick ${u.id === settingsUser().id ? 'picked' : ''} ${u.id === S.currentUser().id ? 'is-current' : ''}" data-act="settings-user" data-id="${esc(u.id)}" style="--c:${esc(u.color)}">
       ${avatar(u)}<span class="grow"><b>${esc(u.name)}</b>
       <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
   <p class="muted small">Chọn User để xem và khóa các mục của người đó ở phần bên dưới.</p>
-  <section class="card form">
-    ${field('🏦 Ngân hàng mặc định (mở khi đóng Category)', `<select data-default-bank>${S.moneyBooks().map((b) => `<option value="${esc(b.id)}" ${b.id === S.defaultBank()?.id ? 'selected' : ''}>${esc(b.icon + ' ' + S.bookLabel(b))}</option>`).join('')}</select>`)}
-  </section>
 
   ${sectionTitle(`Các mục & khóa của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
   ${[settingsUser()].map((u) => `
@@ -2493,7 +2491,7 @@ function settingsView() {
     <p class="muted small">Mật khẩu dùng chung cho mọi người dùng trên máy này. Quên mật khẩu sẽ không mở được app, hãy ghi nhớ kỹ và sao lưu dữ liệu định kỳ.</p>
   </section>
 
-  ${S.isCard() || S.isTracker() ? '' : `${sectionTitle('Nhắc nhở')}
+  ${S.isCard() ? '' : `${sectionTitle('Nhắc nhở')}
   <section class="card form">
     ${field('Nhắc trước hạn trả nợ / hóa đơn (ngày)', `<input type="number" min="0" max="30" data-set="remindDays" data-num value="${esc(s.remindDays)}">`)}
     <div class="row-between"><span>Thông báo khi mở app<br><small class="muted">${notifState === 'unsupported' ? 'Thiết bị/trình duyệt chưa hỗ trợ. Trên iPhone cần iOS 16.4+ và mở app từ màn hình chính.' : notifState === 'granted' ? 'Đã cho phép' : notifState === 'denied' ? 'Đã bị chặn – bật lại trong Cài đặt của điện thoại' : 'Chưa cấp quyền'}</small></span>
@@ -2520,22 +2518,8 @@ function settingsView() {
 function bookSettingsView() {
   const s = state.settings;
   const p = S.currentProfile();
-  const u = S.currentUser();
   let body;
-  if (S.isTracker()) {
-    const m = state.mirror;
-    body = `${sectionTitle('Category')}
-    <section class="card list">
-      <button type="button" class="row" data-act="invest-source"><span class="ci">⚙️</span><span class="grow"><b>Thiết lập nguồn</b>
-        <small>${m?.configured ? (p.kind === 'track' ? `${m.books.length} mục · Thu/Chi` : `${m.rules.length} luồng Transfer/Withdraw`) : 'Chưa thiết lập'}</small></span>›</button>
-      <button type="button" class="row" data-act="cat-owner-edit"><span class="ci">✎</span><span class="grow"><b>Tên, biểu tượng, màu</b><small>${esc(u.name)}</small></span>›</button>
-    </section>
-    <section class="card form">
-      ${field('Chênh lệch hiện trên thẻ Category theo', `<select data-stat-period>${['day', 'week', 'month'].map((x) => `<option value="${x}" ${(u.statPeriod || 'day') === x ? 'selected' : ''}>${PERIOD_LABEL[x]}</option>`).join('')}</select>`)}
-      <p class="muted small">Số chênh lệch (thu − chi) theo kỳ này hiện trên thẻ Category trong danh sách User / Category.</p>
-    </section>`;
-  } else if (S.isCard()) {
-    body = `${sectionTitle('Danh mục của thẻ')}
+  if (S.isCard()) {    body = `${sectionTitle('Danh mục của thẻ')}
     <section class="card list">
       <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục chi</b><small>${state.categories.filter((c) => !c.archived && c.type === 'expense').length} danh mục</small></span>›</button>
     </section>
@@ -2550,6 +2534,8 @@ function bookSettingsView() {
     </section>
 
     ${quickSettingsHtml()}
+
+    ${S.kindOfBook(p) === 'bank' ? statSettingsHtml() : ''}
 
     ${sectionTitle('Tài khoản ngân hàng')}
     <section class="card list">${S.activeAccounts().map((a) => {
@@ -2575,7 +2561,6 @@ function bookSettingsView() {
 }
 
 actions['close-settings'] = () => { location.hash = '#/home'; };
-actions['cat-owner-edit'] = () => userForm(S.currentUser());
 
 const pinInput = (id, label) => field(label, `<input id="${id}" type="password" inputmode="numeric" autocomplete="off" maxlength="12" pattern="[0-9]*" class="pin-input">`);
 
@@ -2640,11 +2625,11 @@ async function mountSettings(root) {
     await S.setSetting(el.dataset.tabToggle, el.checked);
     toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');
   }));
-  root.querySelector('[data-default-bank]')?.addEventListener('change', (e) => actions['default-bank'](e.target));
-  root.querySelector('[data-stat-period]')?.addEventListener('change', (e) => {
-    S.saveUser({ id: S.currentUser().id, statPeriod: e.target.value });
-    toast('Đã lưu');
-  });
+  root.querySelectorAll('[data-stat-show]').forEach((el) => el.addEventListener('change', async () => {
+    const key = el.dataset.statShow;
+    await S.setSetting(key, { ...state.settings[key], show: el.checked });
+    toast(el.checked ? 'Đã hiện ở Tổng quan' : 'Đã ẩn khỏi Tổng quan');
+  }));
   root.querySelector('[data-lock-toggle]')?.addEventListener('change', async (e) => {
     if (e.target.checked) {
       setLockEnabled(true);
@@ -2840,7 +2825,7 @@ function accountForm(a) {
 actions.categories = () => {
   let tab = 'expense';
   const render = () => `<div class="seg small">${['expense', 'income'].map((t) => `<button type="button" data-tab="${t}" class="${tab === t ? 'on' : ''}">${TYPE_LABEL[t]}</button>`).join('')}</div>
-    <div class="list">${state.categories.filter((c) => c.type === tab && (S.currentProfile().kind !== 'invest' || c.invest)).sort((a, b) => (!!a.archived - !!b.archived) || (a.order ?? 0) - (b.order ?? 0)).map((c) => {
+    <div class="list">${state.categories.filter((c) => c.type === tab).sort((a, b) => (!!a.archived - !!b.archived) || (a.order ?? 0) - (b.order ?? 0)).map((c) => {
       const m = S.METHODS[state.settings.method];
       const grp = m && tab === 'expense' ? m.groups.find((g) => g.key === c[m.field])?.name || 'Chưa gán nhóm' : '';
       return `<button type="button" class="row ${c.archived ? 'off' : ''}" data-cat="${c.id}">${catIcon(c)}<span class="grow"><b>${esc(c.name)}</b><small>${esc(grp)}${c.archived ? ' · đã ẩn' : ''}</small></span>›</button>`;
@@ -2883,7 +2868,7 @@ function categoryForm(c, type) {
       });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        await S.put('categories', { ...f, ...(S.currentProfile().kind === 'invest' && !f.invest ? { invest: 'custom-' + Date.now() } : {}), name: $(sh, '#cf-name').value.trim(), icon: f.icon || '🏷️', rule: $(sh, '#cf-rule')?.value || f.rule, jar: $(sh, '#cf-jar')?.value || f.jar });
+        await S.put('categories', { ...f, name: $(sh, '#cf-name').value.trim(), icon: f.icon || '🏷️', rule: $(sh, '#cf-rule')?.value || f.rule, jar: $(sh, '#cf-jar')?.value || f.jar });
         close(); toast('Đã lưu danh mục');
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
@@ -2958,7 +2943,7 @@ actions['period-date'] = (el) => {
 actions['period-today'] = (el) => { pOf(el).anchor = todayISO(); refresh(); };
 
 const VIEWS = {
-  home: { html: () => (S.isCard() ? cardView() : S.isTracker() ? investView() : homeView()) },
+  home: { html: () => (S.isCard() ? cardView() : homeView()), mount: fillHomeStats },
   tx: { html: txView, mount: mountTx },
   reports: { html: reportsView },
   plan: { html: planView },
@@ -2971,8 +2956,8 @@ let current = { route: 'home', sub: null };
 /** Mục bị ẩn theo cài đặt của người dùng hiện tại. */
 const hiddenTabs = () => {
   const s = state.settings;
-  // Thẻ chi tiêu và Category: chỉ Tổng quan + ⚙️ Cài đặt riêng.
-  if (S.isCard() || S.isTracker()) return new Set(['tx', 'reports', 'plan']);
+  // Thẻ chi tiêu: chỉ Tổng quan + ⚙️ Cài đặt riêng.
+  if (S.isCard()) return new Set(['tx', 'reports', 'plan']);
   return new Set([s.showReports === false && 'reports', s.showPlan === false && 'plan'].filter(Boolean));
 };
 
@@ -2986,7 +2971,7 @@ export function render(route, sub) {
   const tabs = [...document.querySelectorAll('#tabbar a')];
   tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab); });
   // Chỉ còn 1 mục (vd: thẻ chi tiêu) thì ẩn luôn thanh dưới.
-  // Cài đặt chung (mở từ danh sách User/Category) có nút đóng riêng → ẩn thanh dưới.
+  // Cài đặt chung (mở từ danh sách User) có nút đóng riêng → ẩn thanh dưới.
   document.body.classList.toggle('no-tabbar', route === 'settings' || tabs.filter((a) => !a.hidden).length <= 1);
   const sameView = current.route === route && current.sub === sub;
   current = { route: VIEWS[route] ? route : 'home', sub };
@@ -2995,6 +2980,7 @@ export function render(route, sub) {
   const y = window.scrollY;
   main.innerHTML = v.html(sub);
   v.mount && v.mount(main);
+  fillTopBar(main);
   window.scrollTo(0, sameView ? y : 0);
   document.querySelectorAll('#tabbar a').forEach((a) => a.classList.toggle('on', a.dataset.tab === current.route));
 }

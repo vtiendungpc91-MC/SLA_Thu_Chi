@@ -667,3 +667,50 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .quick-save { position: sticky; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 2px; background: var(--bg); }
 .quick-save .btn { min-width: 140px; }
 .quick-save small { font-size: 11.5px; text-align: center; }
+/* ---------- Đề xuất số tiền dưới ô nhập ---------- */
+.amt-line { grid-template-columns: 20% 1fr; }
+.money-row input.money { flex: 1 1 100%; width: 100%; }
+.zero-sug { display: flex; gap: 6px; margin: 6px 0 0; width: 100%; }
+.zero-sug[hidden] { display: none; }
+.zero-sug .chip[data-val] { flex: 1 1 0; min-width: 0; padding: 7px 2px; font-weight: 700; font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.split-row + .zero-sug { margin: -2px 0 8px; }
+
+/* ---------- Đầu trang: nút màu đậm, dòng nhỏ bên dưới ---------- */
+.topbar { align-items: flex-start; }
+.chip-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; max-width: 42%; min-width: 0; }
+.chip-col.right { align-items: flex-end; }
+.topbar .chip-col .profile-chip { max-width: 100%; }
+.profile-chip { background: var(--c) !important; color: #fff !important; font-weight: 700; box-shadow: 0 1px 4px color-mix(in srgb, var(--c) 50%, transparent); }
+.profile-chip span.chip-name { color: #fff; }
+.chip-sub { font-size: 11px; line-height: 1.2; color: var(--muted); padding: 0 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.notif-count { border: 0; background: none; color: var(--expense); font-weight: 700; }
+.notif-count[hidden] { display: none; }
+
+/* ---------- Chênh lệch nhỏ đi 50% ---------- */
+.hero-net.net-small { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 8px; }
+.hero-net.net-small strong { font-size: 13px; letter-spacing: 0; }
+
+/* ---------- Thống kê ở Tổng quan ---------- */
+.home-stats { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.home-stats:empty { display: none; }
+.stat-line { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.stat-line .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.stat-line b { font-size: 13px; }
+.stat-line small { font-size: 11.5px; color: var(--muted); }
+.stat-line strong { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat-line i { font-style: normal; color: var(--muted); }
+
+/* ---------- Notifications ---------- */
+.notif-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.notif-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
+.notif-row.warn { background: var(--warn-soft); }
+.notif-row.over { background: var(--over-soft); }
+.notif-row .n-ic { font-size: 18px; flex: 0 0 auto; }
+.notif-row .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.notif-row b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notif-row small { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.notif-row .n-btn { flex: 0 0 auto; padding: 6px 9px; font-size: 12.5px; background: var(--primary); color: #fff; white-space: nowrap; }
+
+/* Tổng tiền trên dòng tên nhóm mục */
+.grp-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.grp-sum { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }

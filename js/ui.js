@@ -16,17 +16,13 @@ export function syncDatePick(inp) {
   t.innerHTML = t.dataset.mini ? `<small>${esc(t.dataset.label)}</small><b>${d}</b>` : `${esc(t.dataset.label)}: <b>${d}</b>`;
 }
 
-/**
- * Hàng nhập tiền dùng chung cho Thu/Chi, Góp, Trích, Thẻ chi tiêu:
- * [Ngày 20%] [Ô số tiền 60%] [+000 20%].
- */
+/** Hàng nhập tiền dùng chung cho Thu/Chi, Transfer, Withdraw, Thẻ chi tiêu: [Ngày 20%] [Ô số tiền 80%], đề xuất số tiền ở dưới. */
 export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false }) {
   return `<div class="amt-line">
     <label class="date-pick mini"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
       <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}"></label>
     <input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">
-    <div class="zero-cell"><div class="zero-sug" data-zero-for="${amtId}" hidden></div></div>
-  </div><em class="hint center" data-hint-for="${amtId}"></em>`;
+  </div><div class="zero-sug" data-zero-for="${amtId}" hidden></div><em class="hint center" data-hint-for="${amtId}"></em>`;
 }
 import { state } from './store.js';
 
@@ -40,10 +36,7 @@ export const ui = {
 };
 
 /** Các loại kỳ cho từng nơi: "main" = Tổng quan/Giao dịch, "report" = Báo cáo. */
-export const PERIOD_TYPES = { main: ['day', 'month'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['day', 'week', 'month', 'custom'] };
-/** Mục Đầu tư và Tiết kiệm xem theo Ngày / Tuần / Tháng / Khoảng. */
-const FUND_TYPES = ['day', 'week', 'month', 'custom'];
-const typesFor = (key) => (key === 'main' && ['invest', 'saving'].includes(state.profileKind) ? FUND_TYPES : PERIOD_TYPES[key]);
+export const PERIOD_TYPES = { main: ['day', 'week', 'month', 'custom'], report: ['day', 'month', 'quarter', 'year', 'custom'], card: ['day', 'week', 'month', 'custom'] };
 
 export function periodState(key = 'main') {
   if (key === 'report' || key === 'card') {
@@ -68,7 +61,9 @@ export const rangeFor = (key) => rangeOf(periodState(key));
 
 // ---------- Ô nhập số tiền: phân cách hàng nghìn + gợi ý thêm 000 ----------
 // Áp dụng cho mọi ô tiền (class money, amount-input hoặc có data-money).
-// Gõ "45" → gợi ý nút [+000] → "45.000"; gõ tắt "1tr2", "50k" vẫn dùng được.
+// Đề xuất số tiền theo số chữ số đã gõ (x10 mũ): 1 số → 4,5,6; 2 số → 3,4,5; 3 số → 2,3,4; 4 số → 2,3; từ 5 số không đề xuất.
+// Gõ tắt "1tr2", "50k" vẫn dùng được.
+const SUGGEST_POWERS = { 1: [4, 5, 6], 2: [3, 4, 5], 3: [2, 3, 4], 4: [2, 3] };
 const MONEY_SEL = 'input.money, input.amount-input, input[data-money]';
 export const groupDigits = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
@@ -98,23 +93,28 @@ function zeroSuggest(inp) {
     if (!box) {
       box = document.createElement('div');
       box.className = 'zero-sug';
-      (inp.closest('.amount-row') || inp).insertAdjacentElement('afterend', box);
+      (inp.closest('.split-row') || inp).insertAdjacentElement('afterend', box);
     }
     inp._zeroBox = box;
     // Giữ bàn phím khi bấm gợi ý.
     box.addEventListener('pointerdown', (e) => e.preventDefault());
     box.addEventListener('mousedown', (e) => e.preventDefault());
     box.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-zero]');
+      const b = e.target.closest('[data-val]');
       if (!b) return;
-      inp.value = groupDigits(inp.value.replace(/\./g, '') + b.dataset.zero);
+      inp.value = groupDigits(b.dataset.val);
       inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
       inp.focus();
     });
   }
   const digits = inp.value.replace(/\./g, '');
-  if (isVndInput(inp) && /^\d{1,7}$/.test(digits) && Number(digits) > 0) {
-    box.innerHTML = '<button type="button" class="chip" data-zero="000">+000</button>';
+  const powers = SUGGEST_POWERS[digits.length];
+  if (isVndInput(inp) && powers && /^\d+$/.test(digits) && Number(digits) > 0) {
+    box.innerHTML = powers.map((p) => {
+      const v = String(Number(digits) * 10 ** p);
+      return `<button type="button" class="chip" data-val="${v}">${groupDigits(v)}</button>`;
+    }).join('');
     box.hidden = false;
   } else {
     box.hidden = true;
@@ -190,7 +190,7 @@ export function periodBar(key = 'main') {
       ${todayISO() < r.start || todayISO() > r.end ? `<button type="button" class="link center" data-act="period-today" ${k}>↺ Về ${p.type === 'day' ? 'hôm nay' : 'kỳ hiện tại'}</button>` : ''}`;
   return `
   <div class="period">
-    <div class="seg${typesFor(key).length > 3 ? ' small' : ''}">${typesFor(key).map((t) =>
+    <div class="seg${PERIOD_TYPES[key].length > 3 ? ' small' : ''}">${PERIOD_TYPES[key].map((t) =>
       `<button type="button" data-act="period-type" ${k} data-v="${t}" class="${p.type === t ? 'on' : ''}">${PERIOD_LABEL[t]}</button>`).join('')}
     </div>
     ${nav}
