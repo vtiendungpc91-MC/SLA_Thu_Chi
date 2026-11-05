@@ -340,7 +340,7 @@ actions.users = () => {
     headAction: '<button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt chung">⚙️</button>',
     body: `<h4 class="grp-h">👤 User <small>(${users.length}/${S.MAX_USERS})</small></h4>
       <div class="tile-grid one-col">${users.map((u) => tileHtml({
-        attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name, on: u.id === cur.id,
+        attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name + (u.special ? ' ⭐' : ''), on: u.id === cur.id,
         sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: users.length > 1,
       })).join('')}
       ${users.length < S.MAX_USERS ? '<button type="button" class="ptile-add block" data-add>＋ User</button>' : ''}</div>
