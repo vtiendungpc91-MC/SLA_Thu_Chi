@@ -765,3 +765,12 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .split-row select { flex: 1; min-width: 0; }
 .split-row .money-box { flex: 1.5; }
 .split-row .money-box > input { padding-left: 6px; padding-right: 6px; font-size: 15px; }
+/* Dòng giao dịch của thẻ trả trước: gọn 2 dòng, nút Withdraw chỉ có biểu tượng */
+.card-item { padding: 0 8px 0 0; gap: 4px; min-height: 0; }
+.card-item .grow-btn { padding: 12px 2px 12px 10px; gap: 10px; }
+.card-item .ci { width: 36px; height: 36px; font-size: 18px; border-radius: 10px; flex: 0 0 36px; }
+.card-item .grow b { font-size: 15px; line-height: 1.25; }
+.card-item .grow small { font-size: 12px; line-height: 1.25; white-space: nowrap; }
+.card-item .amt { font-size: 14px; line-height: 1.2; }
+.card-item .badge { margin-top: 1px; padding: 0 6px; font-size: 10px; line-height: 1.4; }
+.card-item .pay-btn { flex: 0 0 34px; width: 34px; height: 34px; min-height: 0; padding: 0; font-size: 17px; display: grid; place-items: center; }

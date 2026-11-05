@@ -980,12 +980,10 @@ function cardRow(t) {
   return `<div class="row card-item ${isDone(t) ? 'done' : ''}">
     <button type="button" class="grow-btn" data-act="card-open" data-id="${t.id}">
       ${catIcon(cat)}
-      <span class="grow"><b>${esc(cardLabel(t))}</b><small>${esc((cat || UNKNOWN_CAT).name)}</small>
-        <small class="when">${esc(txWhen(t))}</small>
-        ${isDone(t) && t.paid ? `<small class="income">✅ ${esc(t.paid.profileName)} · ${esc(t.paid.accountName)} · ${fmtDate(t.paid.date)}</small>` : ''}</span>
+      <span class="grow"><b>${esc(cardLabel(t))}</b><small>${esc((cat || UNKNOWN_CAT).name)}${t.createdAt ? ' · ' + fmtTimeVN(t.createdAt) : ''}${isDone(t) && t.paid ? ` · <span class="income">✅ ${esc(t.paid.profileName)}</span>` : ''}</small></span>
       <span class="amt">${fmt(t.amountVnd)}<small class="badge ${isDone(t) ? 'done' : 'open'}">${isDone(t) ? 'Done' : 'Chưa TT'}</small></span>
     </button>
-    ${isDone(t) ? '' : `<button type="button" class="btn primary small pay-btn" data-act="card-pay" data-id="${t.id}">💸 Withdraw</button>`}
+    ${isDone(t) ? '' : `<button type="button" class="btn primary small pay-btn" data-act="card-pay" data-id="${t.id}" aria-label="Withdraw thanh toán" title="Withdraw thanh toán">💸</button>`}
   </div>`;
 }
 
