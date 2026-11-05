@@ -100,12 +100,12 @@ export const emit = () => listeners.forEach((f) => f());
 
 // ---------- Người dùng & mục ----------
 // Người dùng (tối đa 3) lưu ở "stc-users". Mỗi người dùng có nhiều MỤC (sổ) thuộc 3 loại:
-// Ngân hàng, Đầu tư (sổ thu/chi có tài khoản) và Thẻ chi tiêu. Danh sách mục lưu ở "stc-profiles";
+// Ngân hàng, Đầu tư (sổ thu/chi có tài khoản) và Thẻ trả trước. Danh sách mục lưu ở "stc-profiles";
 // mỗi mục có database riêng. "Profile" trong code = một mục.
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ chi tiêu (1).
+// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ trả trước (2).
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
 export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
@@ -117,7 +117,7 @@ export const PROFILE_COLORS = [
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
-  card: { label: 'Thẻ chi tiêu', icon: '💳', max: 1 },
+  card: { label: 'Thẻ trả trước', icon: '💳', max: 2 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -656,9 +656,10 @@ export async function deleteTx(tx) {
   await remove('transactions', tx.id);
 }
 
-// ---------- Thẻ chi tiêu ----------
-// Thẻ chi tiêu là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
+// ---------- Thẻ trả trước ----------
+// Thẻ trả trước là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
 // Mỗi khoản chi có trạng thái open/done; "Withdraw thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
+export const CARD_TYPES = { credit: 'Thẻ Tín Dụng', wallet: 'Ví điện tử' };
 export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);
@@ -667,7 +668,7 @@ export const kindOfBook = (p) => p.kind || 'bank';
  * Đích Transfer / Withdraw theo loại mục đang mở:
  * - Ngân hàng: với Ngân hàng khác, Tiết kiệm, NEOBANK.
  * - Tiết kiệm: chỉ với các mục Ngân hàng.
- * - Thẻ chi tiêu: không transfer/withdraw.
+ * - Thẻ trả trước: không transfer/withdraw.
  */
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
@@ -1221,7 +1222,7 @@ async function exportBook(profileId) {
   return out;
 }
 
-/** Sao lưu TẤT CẢ người dùng và thẻ chi tiêu vào một file. */
+/** Sao lưu TẤT CẢ người dùng và thẻ trả trước vào một file. */
 export async function exportAll() {
   const profiles = getProfiles();
   const books = {};

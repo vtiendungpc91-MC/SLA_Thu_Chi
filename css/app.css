@@ -731,11 +731,15 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 #bf-od[hidden] { display: none; }
 /* User đặc biệt: Personal / Family */
 .topbar small.pf-p, .topbar small.pf-f { font-size: 11.5px; font-weight: 700; padding: 0; }
-.pf-p, .topbar small.pf-p { color: #4f6fe8; }
-.pf-f, .topbar small.pf-f { color: #e0701a; }
+.pf-p, .topbar small.pf-p { color: #d92d20; }
+.pf-f, .topbar small.pf-f { color: #2563eb; }
 .pf-field[hidden], #sp-box[hidden] { display: none; }
 #sp-box { display: flex; flex-direction: column; gap: 12px; }
-.pf-seg > * { display: flex; flex-direction: column; align-items: center; gap: 1px; font-weight: 700; }
+.pf-field { margin-top: -6px; }
+.pf-seg { background: none; padding: 0; gap: min(25vw, 30%); }
+.pf-seg > * { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px; font-weight: 700; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .pf-seg small { font-size: 11px; font-weight: 500; color: var(--muted); }
-.pf-seg > [data-pf=personal].on { color: #4f6fe8; }
-.pf-seg > [data-pf=family].on { color: #e0701a; }
+.pf-seg > .on { color: #fff; border-color: transparent; box-shadow: none; }
+.pf-seg > .on small { color: rgba(255, 255, 255, .9); }
+.pf-seg > [data-pf=personal].on { background: #d92d20; }
+.pf-seg > [data-pf=family].on { background: #2563eb; }

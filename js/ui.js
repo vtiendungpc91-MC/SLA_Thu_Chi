@@ -20,12 +20,12 @@ export function syncDatePick(inp) {
  * Hàng nhập tiền dùng chung: [Ngày 30%] [Ô số tiền], đề xuất số tiền ở dưới.
  * Ghi mới thì ngày cố định; chỉ sửa ngày được khi sửa giao dịch (editDate = true).
  */
-export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false, editDate = false }) {
+export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', big = false, editDate = false, after = '' }) {
   return `<div class="amt-line">
     <label class="date-pick mini${editDate ? '' : ' fixed'}"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
       <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}" ${editDate ? '' : 'disabled'}></label>
     <input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">
-  </div><div class="zero-sug" data-zero-for="${amtId}" hidden></div><em class="hint center" data-hint-for="${amtId}"></em>`;
+  </div>${after}<div class="zero-sug" data-zero-for="${amtId}" hidden></div><em class="hint center" data-hint-for="${amtId}"></em>`;
 }
 import { state } from './store.js';
 
