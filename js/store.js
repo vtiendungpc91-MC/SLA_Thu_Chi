@@ -767,7 +767,26 @@ export async function loadFlowStats(src) {
   return { configured: true, rules, txs, cats: [] };
 }
 export const cardBooks = (userId) => getProfiles().filter((p) => p.kind === 'card' && (!userId || p.owner === userId));
-export const CARD_SOURCES = ['MoMo', 'ZaloPay', 'ShopeePay', 'VNPay', 'Viettel Money', 'Apple Pay', 'Thẻ tín dụng', 'Khác'];
+
+/**
+ * Nhắc trích trả nợ thẻ: mỗi tháng đến ngày giờ đã đặt thì nhắc các khoản chưa thanh toán của những tháng trước.
+ * Khoản của tháng hiện tại không tính. Trước ngày nhắc của tháng này, các khoản đã quá kỳ nhắc trước vẫn còn hiện.
+ */
+export function cardDue() {
+  const cfg = state.settings.cardRemind;
+  if (!cfg?.day) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  const today = todayISO();
+  const y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7));
+  const [py, pm] = m === 1 ? [y - 1, 12] : [y, m - 1];
+  const remindOn = (yy, mm) => `${yy}-${pad(mm)}-${pad(Math.min(cfg.day, new Date(yy, mm, 0).getDate()))}`;
+  const time = cfg.time || ALERT_TIME;
+  const thisRemind = remindOn(y, m);
+  const reached = today > thisRemind || (today === thisRemind && fmtTimeVN(Date.now()) >= time);
+  const before = reached ? `${y}-${pad(m)}-01` : `${py}-${pad(pm)}-01`;
+  const items = state.transactions.filter((t) => t.status !== 'done' && t.date < before);
+  return { items, before, time, date: reached ? thisRemind : remindOn(py, pm) };
+}
 
 /** Withdraw thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
 export async function payCardItem(item, { profileId, accountId, date, pf = null }) {
@@ -789,9 +808,9 @@ export async function payCardItem(item, { profileId, accountId, date, pf = null 
   const txId = uid();
   await peer.put('transactions', {
     id: txId, type: 'expense', amount: item.amountVnd, currency: 'VND', rate: 1, amountVnd: item.amountVnd, date,
-    categoryId: cat.id, accountId, note: `${bookLabel(card)}: ${item.note || item.source}`, tags: [], splits: null, photoIds: [],
+    categoryId: cat.id, accountId, note: `${bookLabel(card)}: ${item.note || catName || 'Khoản chi'}`, tags: [], splits: null, photoIds: [],
     createdAt: Date.now(), updatedAt: Date.now(), ...(pf ? { pf } : {}),
-    cardPay: { cardId: card.id, cardName: bookLabel(card), itemId: item.id, source: item.source },
+    cardPay: { cardId: card.id, cardName: bookLabel(card), itemId: item.id, source: item.source || '' },
   });
   item.status = 'done';
   item.paid = { profileId, profileName: bookLabel(payer), accountId, accountName: acc?.name || '', txId, date, at: Date.now() };
@@ -1071,6 +1090,10 @@ export function getAlerts() {
     const days = diffDays(today, r.date);
     const stage = alertStage(days, r.remindDays || 0, r.time);
     if (stage) out.push({ key: `rem:${r.id}:${r.date}:${stage}`, kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date, time: r.time || ALERT_TIME });
+  }
+  const due = cardDue();
+  if (due?.items.length) {
+    out.push({ key: `cardpay:${due.before}`, kind: 'cardpay', id: 'cardpay', days: diffDays(today, due.date), title: 'Trích trả nợ thẻ', count: due.items.length, before: due.before, amount: due.items.reduce((s, t) => s + t.amountVnd, 0), date: due.date, time: due.time });
   }
   return out.sort((a, b) => a.days - b.days);
 }

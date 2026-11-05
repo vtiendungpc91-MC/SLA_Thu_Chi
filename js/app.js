@@ -68,8 +68,9 @@ async function notifyAlerts() {
     if (sent[a.key]) continue;
     const body = a.kind === 'budget'
       ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách`
-      : a.kind === 'reminder' ? fmtDue(a.days) : `${fmt(a.amount)} · ${fmtDue(a.days)}`;
-    const title = { debt: '🏦 Trả nợ: ', pending: '⏳ Cần xác nhận: ', recurring: '🔁 Sắp đến hạn: ', budget: '⚠️ Ngân sách: ', reminder: '🔔 Nhắc nhở: ' }[a.kind] + a.title;
+      : a.kind === 'reminder' ? fmtDue(a.days)
+        : a.kind === 'cardpay' ? `${a.count} khoản chưa thanh toán · ${fmt(a.amount)}` : `${fmt(a.amount)} · ${fmtDue(a.days)}`;
+    const title = { debt: '🏦 Trả nợ: ', pending: '⏳ Cần xác nhận: ', recurring: '🔁 Sắp đến hạn: ', budget: '⚠️ Ngân sách: ', reminder: '🔔 Nhắc nhở: ', cardpay: '💳 ' }[a.kind] + a.title;
     try {
       if (reg) await reg.showNotification(title, { body, tag: a.key, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: './#/home' } });
       else new Notification(title, { body, tag: a.key });
