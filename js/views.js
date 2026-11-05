@@ -41,9 +41,9 @@ function txWhen(t) {
     : `🕒 ${fmtDate(t.date)} · ghi lúc ${time} ${fmtDM(createdDay)}${createdDay.slice(0, 4) !== t.date.slice(0, 4) ? '/' + createdDay.slice(0, 4) : ''}`;
 }
 
-/** Nhãn khoản Transfer/Withdraw theo góc nhìn của sổ đang xem. */
+/** Nhãn khoản Transfer/Income theo góc nhìn của sổ đang xem. */
 function gopLabel(g) {
-  if (g.mode === 'trich') return g.dir === 'in' ? `Withdraw từ ${g.peerName}` : `Bị ${g.peerName} withdraw`;
+  if (g.mode === 'trich') return g.dir === 'in' ? `Income từ ${g.peerName}` : `Chuyển Income cho ${g.peerName}`;
   return g.dir === 'out' ? `Transfer cho ${g.peerName}` : `Nhận transfer từ ${g.peerName}`;
 }
 
@@ -167,8 +167,8 @@ const avatarFull = (p, cls) => (p.photo
 
 // --- Đầu trang: trái = User (dưới là số thông báo), phải = mục đang mở (dưới là tổng tiền của nhóm mục) ---
 const kindOf = (b) => (b.overdraft ? { label: 'Thấu chi', icon: '💳' } : S.BOOK_KINDS[b.kind] || S.BOOK_KINDS.bank);
-/** Tiết kiệm và Thấu chi chỉ có Transfer/Withdraw, không ghi thu/chi. */
-const transferOnly = (b = S.currentProfile()) => b.kind === 'saving' || !!b.overdraft;
+/** Tiết kiệm chỉ có Transfer, không ghi thu/chi. */
+const transferOnly = (b = S.currentProfile()) => b.kind === 'saving';
 
 function topBar(sub = '', right = '') {
   const u = S.currentUser(), b = S.currentProfile();
@@ -648,7 +648,7 @@ function userForm(u) {
   });
 }
 
-const ODRAFT_HINT = 'Chỉ Transfer/Withdraw, số dư được âm và vẫn cộng vào tổng Ngân hàng. Chuyển đi hoặc nhận về vượt hạn mức sẽ có cảnh báo.';
+const ODRAFT_HINT = 'Thu/Chi và Transfer như Bank, số dư được âm và vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức sẽ có cảnh báo.';
 
 /** Thêm/sửa mục (Ngân hàng / Tiết kiệm / Thẻ trả trước) của User hiện tại. */
 function bookForm(b, kind = 'bank') {
@@ -660,8 +660,8 @@ function bookForm(b, kind = 'bank') {
   const formId = 'bf-' + Date.now();
   const hint = {
     bank: 'Sổ thu/chi có 1 tài khoản ngân hàng và số dư.',
-    card: 'Ghi các khoản chi (MoMo, ZaloPay…), sau đó Withdraw tiền từ Ngân hàng để thanh toán từng khoản.',
-    saving: 'Như Ngân hàng nhưng chỉ nhận Transfer / bị Withdraw từ các mục Ngân hàng.',
+    card: 'Ghi các khoản chi (MoMo, ZaloPay…), sau đó thanh toán từng khoản từ Ngân hàng.',
+    saving: 'Chỉ Transfer với các mục Ngân hàng.',
   }[kind] || '';
   openSheet({
     title: `${b ? 'Sửa' : 'Thêm'} mục ${kindOf(f).label}`,
@@ -740,10 +740,10 @@ function bookForm(b, kind = 'bank') {
 // ================= Thống kê của mục Ngân hàng: thiết lập nguồn =================
 const moneyBookList = () => S.getProfiles().filter((p) => ['bank', 'saving', 'neo'].includes(p.kind || 'bank'));
 
-/** Thống kê Transfer/Withdraw: các luồng "từ mục → đến mục" + danh mục cần lấy. */
+/** Thống kê Transfer/Income: các luồng "từ mục → đến mục" + danh mục cần lấy. */
 function statFlowForm() {
   const books = moneyBookList();
-  if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Transfer/Withdraw');
+  if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Transfer/Income');
   const src = state.settings.statFlow || {};
   const has = (id) => books.some((b) => b.id === id);
   let rules = (src.rules || []).filter((r) => has(r.from) && has(r.to)).map((r) => ({ ...r }));
@@ -752,15 +752,15 @@ function statFlowForm() {
   const opts = (sel) => books.map((p) => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.icon + ' ' + S.bookLabel(p))}</option>`).join('');
   const formId = 'is-' + Date.now();
   openSheet({
-    title: '🔁 Thống kê Transfer/Withdraw',
+    title: '🔁 Thống kê Transfer/Income',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Đầu tư chứng khoán">`)}
       ${statIconField(statIcon(STATS.flow))}
-      <p class="muted small">Chỉ lấy các khoản <b>Transfer / Withdraw</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Transfer từ A cho B, hoặc B Withdraw từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
+      <p class="muted small">Chỉ lấy các khoản <b>Transfer / Income</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Transfer từ A cho B, hoặc B Income từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>🔁 Luồng tiền lấy vào</span><div id="is-rules"></div>
         <button type="button" class="btn ghost small" data-add-rule>＋ Thêm luồng</button></div>
-      <div class="field"><span>🏷️ Danh mục Transfer/Withdraw lấy vào <small class="muted">(không chọn = lấy tất cả)</small></span>
+      <div class="field"><span>🏷️ Danh mục Transfer/Income lấy vào <small class="muted">(không chọn = lấy tất cả)</small></span>
         <div class="check-list" id="is-cats"></div>
         <button type="button" class="btn ghost small" data-add-cat>＋ Thêm danh mục</button></div>
     </form>`,
@@ -805,7 +805,7 @@ function statFlowForm() {
 
 /** Thống kê Thu/Chi: chọn các mục (Ngân hàng / Tiết kiệm) + danh mục thu, chi cần lấy (theo tên danh mục). */
 function statTrackForm() {
-  const books = S.getProfiles().filter((p) => ['bank', 'saving'].includes(p.kind || 'bank') && !p.overdraft);
+  const books = S.getProfiles().filter((p) => ['bank', 'saving'].includes(p.kind || 'bank'));
   const src = state.settings.statTrack || {};
   const pickedBooks = new Set(src.books && src.books.length ? src.books : [S.currentProfile().id]);
   const inc = new Set(src.income || []), exp = new Set(src.expense || []);
@@ -880,7 +880,7 @@ function cardView() {
   <section class="card hero">
     <div class="hero-net"><small>Đã chi, chưa thanh toán (tất cả) · ${openAll.length} khoản</small><strong class="expense">${fmt(sumAmt(openAll))}</strong></div>
     ${quickButtons()}
-    ${openAll.length > 1 ? `<button type="button" class="btn primary block" data-act="card-pay-all">💸 Withdraw thanh toán tất cả (${fmt(sumAmt(openAll))})</button>` : ''}
+    ${openAll.length > 1 ? `<button type="button" class="btn primary block" data-act="card-pay-all">💸 Thanh toán tất cả (${fmt(sumAmt(openAll))})</button>` : ''}
   </section>
   ${periodBar('card')}
   <section class="card stats two-col">
@@ -896,9 +896,9 @@ function cardView() {
   <button type="button" class="fab" data-act="card-add" aria-label="Thêm khoản chi">+</button>`;
 }
 
-// ================= Thống kê Transfer/Withdraw và Thu/Chi ở Tổng quan =================
+// ================= Thống kê Transfer/Income và Thu/Chi ở Tổng quan =================
 const STATS = {
-  flow: { key: 'statFlow', icon: '🔁', label: 'Transfer/Withdraw', load: S.loadFlowStats, form: () => statFlowForm() },
+  flow: { key: 'statFlow', icon: '🔁', label: 'Transfer/Income', load: S.loadFlowStats, form: () => statFlowForm() },
   track: { key: 'statTrack', icon: '📊', label: 'Thu/Chi', load: S.loadTrackStats, form: () => statTrackForm() },
 };
 const statName = (st) => state.settings[st.key]?.name || st.label;
@@ -940,7 +940,7 @@ function statRow(t) {
   }
   const isW = t.gop.mode === 'trich';
   return `<div class="row tx mirror-row"><span class="ci" style="--c:${isW ? '#8e4ec6' : '#12a594'}">${isW ? '🔄' : '🔁'}</span>
-    <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isW ? 'Withdraw' : 'Transfer', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
+    <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isW ? 'Income' : 'Transfer', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
     <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
 }
 
@@ -983,7 +983,7 @@ function cardRow(t) {
       <span class="grow"><b>${esc(cardLabel(t))}</b><small>${esc((cat || UNKNOWN_CAT).name)}${t.createdAt ? ' · ' + fmtTimeVN(t.createdAt) : ''}${isDone(t) && t.paid ? ` · <span class="income">✅ ${esc(t.paid.profileName)}</span>` : ''}</small></span>
       <span class="amt">${fmt(t.amountVnd)}<small class="badge ${isDone(t) ? 'done' : 'open'}">${isDone(t) ? 'Done' : 'Chưa TT'}</small></span>
     </button>
-    ${isDone(t) ? '' : `<button type="button" class="btn primary small pay-btn" data-act="card-pay" data-id="${t.id}" aria-label="Withdraw thanh toán" title="Withdraw thanh toán">💸</button>`}
+    ${isDone(t) ? '' : `<button type="button" class="btn primary small pay-btn" data-act="card-pay" data-id="${t.id}" aria-label="Thanh toán" title="Thanh toán">💸</button>`}
   </div>`;
 }
 
@@ -1012,7 +1012,7 @@ actions['card-open'] = (el) => {
         <div class="kv"><span>Ngày thanh toán</span><b>${fmtDate(t.paid.date)}</b></div>` : ''}
       <div class="actions">${isDone(t)
         ? '<button type="button" class="btn ghost" data-unpay>↶ Hủy thanh toán</button>'
-        : '<button type="button" class="btn primary" data-pay>💸 Withdraw thanh toán</button><button type="button" class="btn ghost" data-edit>Sửa</button>'}
+        : '<button type="button" class="btn primary" data-pay>💸 Thanh toán</button><button type="button" class="btn ghost" data-edit>Sửa</button>'}
         <button type="button" class="btn danger" data-del>Xóa</button></div>
       ${isDone(t) ? '<p class="muted small">Hủy thanh toán sẽ xóa khoản chi tương ứng trong sổ của người đã trả và đưa khoản này về "Chưa thanh toán".</p>' : ''}
     </div>`,
@@ -1075,12 +1075,12 @@ function cardItemForm(item) {
   });
 }
 
-/** Withdraw thanh toán 1 hoặc nhiều khoản chi của thẻ từ tài khoản của một người dùng. */
+/** Thanh toán 1 hoặc nhiều khoản chi của thẻ từ tài khoản của một người dùng. */
 function cardPaySheet(items) {
   const users = sortByUser(S.moneyBooks().filter((p) => S.canTransfer(S.currentProfile(), p)));
   const total = sumAmt(items);
   openSheet({
-    title: items.length > 1 ? `Withdraw thanh toán ${items.length} khoản` : 'Withdraw thanh toán',
+    title: items.length > 1 ? `Thanh toán ${items.length} khoản` : 'Thanh toán',
     body: `<form class="form">
       <div class="note-box">${items.length > 1 ? `${items.length} khoản chưa thanh toán` : esc(cardLabel(items[0]))}<br><b class="expense big-amt">${fmt(total)}</b></div>
       <div class="field"><span>Người trả</span>${userChips('cp-who', users, (p) => `<button type="button" class="chip ${p.id === users[0].id ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
@@ -1089,7 +1089,7 @@ function cardPaySheet(items) {
       ${pfField()}
       ${datePick('cp-date', todayISO(), 'Ngày thanh toán', 'disabled')}
       <p class="muted small">Sổ của người trả sẽ ghi ${items.length > 1 ? 'các' : 'một'} khoản chi tương ứng; khoản của thẻ chuyển sang ✅ Done.</p>
-      <div class="actions"><button class="btn primary">💸 Withdraw ${fmt(total)}</button></div>
+      <div class="actions"><button class="btn primary">💸 Thanh toán ${fmt(total)}</button></div>
     </form>`,
     onMount(sh, close) {
       let whoId = users[0].id;
@@ -1134,7 +1134,7 @@ function cardPaySheet(items) {
           for (const it of items) await S.payCardItem(it, { profileId: whoId, accountId, date, pf });
         } catch (err) { return toast('⛔ ' + err.message, 4500); }
         close();
-        toast(`✅ Đã withdraw ${fmt(total)} từ ${S.bookLabel(who)}`);
+        toast(`✅ Đã thanh toán ${fmt(total)} từ ${S.bookLabel(who)}`);
       });
     },
   });
@@ -1162,7 +1162,7 @@ function homeView() {
     <div class="hero-bal"><span>Tổng số dư tài khoản</span><b>${fmt(S.totalBalance())}</b></div>
     <div class="acc-line">${esc(accLine())}</div>
     ${quickButtons()}
-    ${S.kindOfBook(S.currentProfile()) === 'bank' && !S.currentProfile().overdraft ? '<div class="home-stats" data-home-stats></div>' : ''}
+    ${S.kindOfBook(S.currentProfile()) === 'bank' ? '<div class="home-stats" data-home-stats></div>' : ''}
   </section>
 
   ${!loggedToday && hour >= 18 && !transferOnly() ? `<button type="button" class="banner" data-act="add">✏️ Hôm nay bạn chưa ghi khoản nào. Ghi ngay?</button>` : ''}
@@ -1256,7 +1256,7 @@ actions['tx-edit'] = (el) => {
   if (tx) (tx.gop ? gopDetail(tx) : tx.cardPay ? cardPayDetail(tx) : openTxForm({ tx }));
 };
 
-/** Khoản chi trong sổ người dùng được tạo khi withdraw thanh toán cho thẻ trả trước. */
+/** Khoản chi trong sổ người dùng được tạo khi thanh toán cho thẻ trả trước. */
 function cardPayDetail(tx) {
   const cp = tx.cardPay;
   const cardExists = S.getProfiles().some((p) => p.id === cp.cardId);
@@ -1284,8 +1284,8 @@ function cardPayDetail(tx) {
 }
 
 // ================= Transfer tiền giữa các người dùng =================
-// Người dùng khác (không tính thẻ trả trước) — dùng cho Transfer, Withdraw, chọn sổ để ghi.
-// Đích Transfer / Withdraw tùy loại mục đang mở (Ngân hàng, Tiết kiệm, NEOBANK, Cash Outflow).
+// Người dùng khác (không tính thẻ trả trước) — dùng cho Transfer, Income, chọn sổ để ghi.
+// Đích Transfer / Income tùy loại mục đang mở (Ngân hàng, Tiết kiệm, NEOBANK, Cash Outflow).
 const otherProfiles = (mode = 'gop') => sortByUser(S.transferTargets(mode));
 
 /** Gom các mục theo User (Secrecy ở cuối), giữ thứ tự mục trong từng User. */
@@ -1301,9 +1301,9 @@ const userChips = (id, books, chip) => `<div class="user-groups" id="${id}">${by
 
 actions.gop = () => openGopForm();
 
-/** Ô chọn danh mục Transfer/Withdraw (dùng chung mọi mục); chọn "＋ Thêm danh mục…" để tạo mới. */
+/** Ô chọn danh mục Transfer/Income (dùng chung mọi mục); chọn "＋ Thêm danh mục…" để tạo mới. */
 function flowCatField(id, selected = state.settings.lastFlowCat || '') {
-  return field('🏷️ Danh mục transfer/withdraw', `<select id="${id}" data-flowcat>${flowCatOptions(selected)}</select>`);
+  return field('🏷️ Danh mục transfer/income', `<select id="${id}" data-flowcat>${flowCatOptions(selected)}</select>`);
 }
 const flowCatOptions = (selected) => `<option value="">— Không phân loại —</option>`
   + S.flowCats().map((c) => `<option value="${esc(c.id)}" ${c.id === selected ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')
@@ -1322,12 +1322,12 @@ document.addEventListener('change', (e) => {
   if (sel.value) S.setSetting('lastFlowCat', sel.value, { silent: true });
 });
 
-/** Thêm danh mục Transfer/Withdraw: nhập tên, chọn biểu tượng. onDone nhận danh mục mới, hoặc null nếu hủy. */
+/** Thêm danh mục Transfer/Income: nhập tên, chọn biểu tượng. onDone nhận danh mục mới, hoặc null nếu hủy. */
 function flowCatSheet(onDone) {
   let icon = '🏷️', made = null;
   const formId = 'fc-' + Date.now();
   openSheet({
-    title: 'Thêm danh mục Transfer/Withdraw',
+    title: 'Thêm danh mục Transfer/Income',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên danh mục', '<input id="fc-name" required maxlength="30" placeholder="vd: Đầu tư, Học phí">')}
@@ -1347,6 +1347,13 @@ function flowCatSheet(onDone) {
       });
     },
   });
+}
+
+/** Thu/Chi ở mục Thấu chi: tiền ra hoặc vào vượt hạn mức thì cảnh báo. */
+function confirmOdTx(type, accountId, amount) {
+  const me = S.currentProfile();
+  if (!me.overdraft) return true;
+  return confirmOverdraft(type === 'income' ? { toId: me.id, toAccountId: accountId, amount } : { fromId: me.id, fromAccountId: accountId, amount });
 }
 
 /** Vượt hạn mức Thấu chi: cảnh báo, người dùng chọn tiếp tục hay không. */
@@ -1428,10 +1435,10 @@ function openGopForm() {
 function gopDetail(tx) {
   const out = tx.gop.dir === 'out';
   const isTrich = tx.gop.mode === 'trich';
-  const word = isTrich ? 'withdraw' : 'transfer';
+  const word = isTrich ? 'income' : 'transfer';
   const peerExists = S.getProfiles().some((p) => p.id === tx.gop.peer);
   openSheet({
-    title: isTrich ? (out ? 'Khoản bị withdraw' : 'Khoản withdraw') : (out ? 'Khoản transfer' : 'Khoản nhận transfer'),
+    title: isTrich ? (out ? 'Khoản chuyển Income' : 'Khoản Income') : (out ? 'Khoản transfer' : 'Khoản nhận transfer'),
     body: `<div class="detail">
       <div class="big-ic">${isTrich ? '🔄' : '🤝'}</div>
       <div class="kv"><span>Nội dung</span><b>${esc(gopLabel(tx.gop))}${peerExists ? '' : ' (người dùng đã xóa)'}</b></div>
@@ -1465,27 +1472,27 @@ function gopDetail(tx) {
 
 actions.trich = () => openTrichForm();
 
-/** Withdraw: lấy tiền từ tài khoản của người khác về tài khoản của mình (ngược với Transfer). */
+/** Income: lấy tiền từ tài khoản của người khác về tài khoản của mình (ngược với Transfer). */
 function openTrichForm() {
   const others = otherProfiles('trich');
   if (!others.length) {
-    toast('Chưa có mục nào để withdraw tiền');
+    toast('Chưa có ngân hàng nào trong Secrecy để Income');
     return actions.profiles();
   }
   const me = S.currentProfile();
   const formId = 'tr-' + Date.now();
   openSheet({
-    title: 'Withdraw tiền từ người khác',
-    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🔄 Withdraw</button>`,
+    title: 'Income từ Secrecy',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🔄 Income</button>`,
     body: `<form class="form" id="${formId}">
-      <p class="muted small">Sổ người bị withdraw ghi một khoản <b class="expense">chi</b>, sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="income">thu</b>. Người bị withdraw phải đủ số dư.</p>
-      <div class="field"><span>Withdraw từ</span>${userChips('tr-from', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
+      <p class="muted small">Rút tiền từ ngân hàng trong Secrecy về <b>${esc(S.bookLabel(me))}</b>: sổ nguồn ghi một khoản <b class="expense">chi</b>, sổ này ghi một khoản <b class="income">thu</b>. Nguồn phải đủ số dư.</p>
+      <div class="field"><span>Income từ</span>${userChips('tr-from', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc"><option>Đang tải…</option></select>`)}
       <em class="hint" id="tr-bal"></em>
       ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt', after: pfField() })}
       ${flowCatField('tr-fcat')}
       ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to">${accOptions(state.settings.lastAccount)}</select>`)}
-      ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Withdraw tiền học cho con">`)}
+      ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Income tháng 11">`)}
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'tr-amt');
@@ -1531,9 +1538,9 @@ function openTrichForm() {
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = Math.round(readMoney(amt.value));
-        if (!(v > 0)) return toast('Nhập số tiền withdraw');
+        if (!(v > 0)) return toast('Nhập số tiền income');
         const fromAccountId = $(sh, '#tr-facc').value;
-        if (!balances.has(fromAccountId)) return toast('Chọn tài khoản bị withdraw');
+        if (!balances.has(fromAccountId)) return toast('Chọn tài khoản nguồn');
         const from = others.find((x) => x.id === fromId);
         if (!await confirmOverdraft({ fromId, fromAccountId, toId: me.id, toAccountId: $(sh, '#tr-to').value, amount: v })) return;
         try {
@@ -1543,7 +1550,7 @@ function openTrichForm() {
           });
         } catch (err) { return toast('⛔ ' + err.message, 4500); }
         close();
-        toast(`🔄 Đã withdraw ${fmt(v)} từ ${S.bookLabel(from)}`);
+        toast(`🔄 Đã income ${fmt(v)} từ ${S.bookLabel(from)}`);
       });
     },
   });
@@ -2205,7 +2212,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   ensureCat();
   // Chọn người dùng để ghi vào đúng sổ (chỉ khi thêm mới và có từ 2 người dùng).
   const origin = returnTo || S.currentProfile().id;
-  const showWho = !isEdit && !fromRecurring && S.moneyBooks().length > 1;
+  const showWho = !isEdit && !fromRecurring && S.txBooks().length > 1;
   let switching = false;
   const rate0 = f.rate || S.rateOf(f.currency);
   let splitRows = f.splits && f.splits.length ? f.splits.map((p) => ({ categoryId: p.categoryId, amount: fmtNum(p.amountVnd / rate0) })) : [];
@@ -2218,12 +2225,12 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form txf" id="${formId}" autocomplete="off">
-      ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span>${userChips('tf-who', S.moneyBooks(), (p) =>
+      ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span>${userChips('tf-who', S.txBooks(), (p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${{ expense: '💸 ', income: '💰 ', transfer: '⇄ ' }[t] || ''}${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Transfer</button>' : ''}
-        ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Withdraw</button>' : ''}</div>
+        ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Income</button>' : ''}</div>
       ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc">${accOptions(f.accountId, true)}</select>`)}
       <em class="hint" id="tf-bal"></em>
       ${amountLine({ dateId: 'tf-date', date: f.date, amtId: 'tf-amt', amount: f.amount ? fmtNum(f.amount) : '', big: true, editDate: isEdit, after: pfField() })}
@@ -2316,7 +2323,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       }));
 
       // --- danh mục ---
-      // Danh mục dạng danh sách thả xuống (danh mục Transfer/Withdraw chỉ tạo qua chức năng riêng nên không hiện ở đây).
+      // Danh mục dạng danh sách thả xuống (danh mục Transfer/Income chỉ tạo qua chức năng riêng nên không hiện ở đây).
       function renderCats() {
         if (f.type === 'transfer') return;
         $(sh, '#tf-cat').innerHTML = S.catsOf(f.type).filter((c) => !/^(gop|trich)/.test(c.sys || '')).map((c) =>
@@ -2391,6 +2398,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         const toAccountId = f.type === 'transfer' ? $(sh, '#tf-to').value : null;
         if (f.type === 'transfer' && accountId === toAccountId) return toast('Tài khoản nguồn và tài khoản đích phải khác nhau');
         if (f.type !== 'income' && !checkFunds(accountId, amountVnd, isEdit ? tx : null)) return;
+        if (!isEdit && !await confirmOdTx(f.type, accountId, amountVnd)) return;
         const pf = pfc.value();
         if (pf) {
           const pfErr = await S.pfCheck({ oldPf: isEdit ? tx.pf : null, oldDelta: isEdit ? S.pfDelta(tx) : 0, pf, delta: (f.type === 'income' ? 1 : -1) * amountVnd });
@@ -2573,7 +2581,7 @@ actions.summary = () => {
   });
 };
 
-/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Transfer/Withdraw); Tiết kiệm chỉ có Transfer/Withdraw. */
+/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Transfer/Income); Tiết kiệm chỉ có Transfer/Income. */
 actions.add = (el) => {
   if (transferOnly()) return gopTrichChooser();
   openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
@@ -2581,12 +2589,13 @@ actions.add = (el) => {
 
 function gopTrichChooser() {
   const g = S.transferTargets('gop').length, t = S.transferTargets('trich').length;
-  if (!g && !t) return toast('Chưa có mục Ngân hàng nào để transfer/withdraw');
+  if (!g && !t) return toast('Chưa có mục nào để transfer');
+  if (g && !t) return openGopForm();
   openSheet({
     title: 'Chọn thao tác',
     body: `<div class="actions col">
       ${g ? '<button type="button" class="btn primary" data-x="gop">🤝 Transfer cho mục khác</button>' : ''}
-      ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Withdraw từ mục khác</button>' : ''}</div>`,
+      ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Income từ Secrecy</button>' : ''}</div>`,
     onMount(sh, close) {
       sh.addEventListener('click', (e) => {
         const b = e.target.closest('[data-x]');
@@ -2599,22 +2608,22 @@ function gopTrichChooser() {
 }
 
 // ================= Mẫu nhập nhanh =================
-// Mỗi mục Ngân hàng/Đầu tư có 4 mẫu (Chi, Thu, Transfer, Withdraw); thẻ trả trước có 1 mẫu.
+// Mỗi mục Ngân hàng/Đầu tư có 4 mẫu (Chi, Thu, Transfer, Income); thẻ trả trước có 1 mẫu.
 // Thiết lập trong Cài đặt; bật "Hiện" thì có nút ⚡ ở Tổng quan, bấm vào chỉ cần nhập số tiền rồi OK.
 const QUICK_KINDS = {
   expense: { icon: '💸', label: 'Mẫu Chi nhanh', def: 'Chi nhanh' },
   income: { icon: '💰', label: 'Mẫu Thu nhanh', def: 'Thu nhanh' },
   gop: { icon: '🤝', label: 'Mẫu Transfer nhanh', def: 'Transfer nhanh' },
-  trich: { icon: '🔄', label: 'Mẫu Withdraw nhanh', def: 'Withdraw nhanh' },
+  trich: { icon: '🔄', label: 'Mẫu Income nhanh', def: 'Income nhanh' },
   card: { icon: '💳', label: 'Mẫu chi thẻ nhanh 1', def: 'Chi thẻ nhanh 1' },
   card2: { icon: '💳', label: 'Mẫu chi thẻ nhanh 2', def: 'Chi thẻ nhanh 2' },
   card3: { icon: '💳', label: 'Mẫu chi thẻ nhanh 3', def: 'Chi thẻ nhanh 3' },
 };
 // Chữ ngắn trên nút ⚡ ở Tổng quan (tên đầy đủ của mẫu hiện khi bấm vào).
-const QUICK_SHORT = { expense: 'Chi', income: 'Thu', gop: 'Transfer', trich: 'Withdraw', card: 'Chi', card2: 'Chi', card3: 'Chi' };
+const QUICK_SHORT = { expense: 'Chi', income: 'Thu', gop: 'Transfer', trich: 'Income', card: 'Chi', card2: 'Chi', card3: 'Chi' };
 // Thẻ trả trước có 3 mẫu chi nhanh: card, card2, card3.
 const isCardK = (k) => /^card\d?$/.test(k);
-const quickKindsFor = () => (S.isCard() ? ['card', 'card2', 'card3'] : transferOnly() ? ['gop', 'trich'] : ['expense', 'income', 'gop', 'trich']);
+const quickKindsFor = () => (S.isCard() ? ['card', 'card2', 'card3'] : transferOnly() ? ['gop'] : S.hasIncome(S.currentProfile()) ? ['expense', 'income', 'gop', 'trich'] : ['expense', 'income', 'gop']);
 const quickOf = (k) => (state.settings.quick || {})[k] || null;
 const saveQuick = (k, q) => S.setSetting('quick', { ...(state.settings.quick || {}), [k]: q });
 const myAccount = () => S.activeAccounts()[0];
@@ -2625,7 +2634,7 @@ function quickDesc(k, q) {
   const cat = q.categoryId && S.catById(q.categoryId);
   const peer = peerOf(q);
   if (k === 'gop') return peer ? `Transfer cho ${S.bookLabel(peer)}` : 'Chưa chọn người nhận';
-  if (k === 'trich') return peer ? `Withdraw từ ${S.bookLabel(peer)}` : 'Chưa chọn người bị withdraw';
+  if (k === 'trich') return peer ? `Income từ ${S.bookLabel(peer)}` : 'Chưa chọn nguồn';
   return [cat ? `${cat.icon} ${cat.name}` : 'Chưa chọn danh mục', q.note].filter(Boolean).join(' · ');
 }
 
@@ -2685,6 +2694,7 @@ actions['quick-run'] = (el) => {
         try {
           if (k === 'expense' || k === 'income') {
             if (k === 'expense' && !checkFunds(acc.id, v)) return;
+            if (!await confirmOdTx(k, acc.id, v)) return;
             const pfErr = pf ? await S.pfCheck({ pf, delta: k === 'income' ? v : -v }) : null;
             if (pfErr) return toast('⛔ ' + pfErr, 4500);
             const cat = S.catById(q.categoryId) || S.catsOf(k)[0];
@@ -2740,8 +2750,8 @@ actions['quick-edit'] = (el) => {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên nút', `<input id="qe-name" maxlength="24" value="${esc(q.name || '')}" placeholder="vd: Ăn trưa, Lương, Transfer tiền chợ">`)}
-      ${isPeer ? `${field(k === 'gop' ? 'Transfer cho' : 'Withdraw từ', `<select id="qe-peer">${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + p.name)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
-        ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản của người bị withdraw', '<select id="qe-pacc"><option>Đang tải…</option></select>')}
+      ${isPeer ? `${field(k === 'gop' ? 'Transfer cho' : 'Income từ', `<select id="qe-peer">${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + p.name)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
+        ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản nguồn', '<select id="qe-pacc"><option>Đang tải…</option></select>')}
         ${flowCatField('qe-fcat', q.flowCat || '')}`
         : field('Danh mục', `<select id="qe-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === q.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
 
@@ -2786,12 +2796,12 @@ actions['quick-edit'] = (el) => {
 };
 
 // ================= Secrecy: NEOBANK & Cash Outflow =================
-// NEOBANK: tài khoản ảo có số dư chỉnh tay, các mục Ngân hàng có thể Withdraw tiền về.
-// Cash Outflow: nơi nhận tiền Transfer từ các mục Ngân hàng. Ẩn thì không hiện thông tin, nhưng Transfer/Withdraw vẫn dùng được.
+// NEOBANK: tài khoản ảo có số dư chỉnh tay, các mục Ngân hàng có thể Income tiền về.
+// Cash Outflow: nơi nhận tiền Transfer từ các mục Ngân hàng. Ẩn thì không hiện thông tin, nhưng Transfer/Income vẫn dùng được.
 function secrecyHtml() {
   const hidden = S.secrecyHidden();
   const head = sectionTitle('🔐 Secrecy', `<label class="switch" title="Hiện mục Secrecy"><input type="checkbox" data-secrecy-toggle ${hidden ? '' : 'checked'}><i></i></label>`);
-  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Transfer/Withdraw. Các mẫu nhanh đã thiết lập với NEOBANK vẫn hoạt động. Bật công tắc để xem.</p>`;
+  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Transfer/Income. Các mẫu nhanh đã thiết lập với NEOBANK vẫn hoạt động. Bật công tắc để xem.</p>`;
   return `${head}${['neo'].map((kind) => {
     const k = S.BOOK_KINDS[kind];
     const list = S.secrecyBooks(kind);
@@ -2806,7 +2816,7 @@ function secrecyHtml() {
       ${list.length < k.max ? `<button type="button" class="row add-row" data-act="secrecy-add" data-kind="${kind}"><span class="ci">＋</span><span class="grow"><b>Thêm ${k.label}</b></span></button>` : ''}
     </section>`;
   }).join('')}
-  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng <b>Transfer cho</b> để gửi tiền vào, <b>Withdraw từ</b> để lấy tiền về.</p>`;
+  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng <b>Transfer cho</b> để gửi tiền vào; Bank của User đặc biệt dùng <b>Income</b> để lấy tiền về.</p>`;
 }
 
 actions['secrecy-add'] = (el) => secrecyForm(null, el.dataset.kind);
@@ -2828,7 +2838,7 @@ async function secrecyForm(b, kind) {
     body: `<form class="form" id="${formId}">
       ${field('Tên', `<input id="sc-name" required maxlength="24" value="${esc(b ? b.name : '')}" placeholder="${neo ? 'vd: Cake, Timo, Ví ảo' : 'vd: Biếu bố mẹ, Chi ngoài'}">`)}
       ${neo ? amountField('sc-bal', cur, 'Số dư hiện tại') : b ? `<p class="muted">Đã nhận transfer: <b>${fmt(cur)}</b></p>` : ''}
-      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Các mục Ngân hàng transfer vào sẽ cộng, withdraw về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
+      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Các mục Ngân hàng transfer vào sẽ cộng, Income về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
     </form>`,
     onMount(sh, close) {
       const bal = neo ? bindMoney(sh, 'sc-bal') : null;
@@ -2889,7 +2899,7 @@ function settingsView() {
         aria-label="${p.locked ? 'Mở khóa' : 'Khóa'}">${p.locked ? '🔒<small>Đang khóa</small>' : '🔓<small>Mở</small>'}</button>
     </div>`).join('')}
   </section>`).join('')}
-  <p class="muted small">🔒 Mục bị khóa không thể chuyển tiền đi: chi, transfer, chuyển khoản, trả nợ, bị người khác withdraw, trả tiền thẻ (thẻ bị khóa thì không ghi khoản chi mới). Tiền vào vẫn nhận bình thường. Bấm lần nữa để mở khóa.</p>
+  <p class="muted small">🔒 Mục bị khóa không thể chuyển tiền đi: chi, transfer, chuyển khoản, trả nợ, bị Income, trả tiền thẻ (thẻ bị khóa thì không ghi khoản chi mới). Tiền vào vẫn nhận bình thường. Bấm lần nữa để mở khóa.</p>
 
   ${secrecyHtml()}
 
@@ -2964,7 +2974,7 @@ function bookSettingsView() {
     ${quickSettingsHtml()}
 
     ${S.isSpecialBook(p) ? pfSettingsHtml() : ''}
-    ${S.kindOfBook(p) === 'bank' && !p.overdraft ? statSettingsHtml() : ''}
+    ${S.kindOfBook(p) === 'bank' ? statSettingsHtml() : ''}
 
     ${sectionTitle('Tài khoản ngân hàng')}
     <section class="card list">${S.activeAccounts().map((a) => {
