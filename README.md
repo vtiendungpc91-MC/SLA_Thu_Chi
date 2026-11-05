@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v6.11.1 (06/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v6.11.3 (06/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -29,7 +29,7 @@ Nút góc trái trên chọn User và xem Notifications. Nút góc phải trên 
 | **Thấu chi** | Nhập hạn mức và số dư lúc tạo, sau đó không sửa được (xóa rồi tạo lại). Thu/Chi và Transfer như Bank, được âm số dư, vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức thì cảnh báo, không chặn |
 | **Tiết kiệm** | Chỉ Transfer với các mục Ngân hàng |
 | **Thẻ trả trước** | Không có số dư: ghi khoản chi (số tiền, danh mục, nội dung), rồi thanh toán từng khoản hoặc tất cả từ mục Bank. Cài đặt thẻ có nhắc trích trả nợ theo ngày và giờ, gồm các khoản chưa trả trước tháng hiện tại |
-| **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Bank + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Bank và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Bank của User này mới giao dịch được với User khác |
+| **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Bank + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Bank và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Bank của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
 | **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ, Nhắc nhở |
 | **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done |
 | **Thống kê ở Tổng quan** | Transfer/Income và Thu/Chi theo nguồn tự chọn, đặt được tên và biểu tượng, bật/tắt trong Cài đặt của mục Bank |

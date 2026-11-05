@@ -1164,12 +1164,16 @@ export async function kindTotal(userId, kind) {
 // Personal = pfBase + các giao dịch gắn nhãn personal trong Bank và Thấu chi của User.
 // Family = tổng số dư Bank + Thấu chi − Personal, nên tổng 2 phần luôn bằng số dư.
 export const PF_LABEL = { personal: 'Personal', family: 'Family' };
-const CLOSED_MSG = 'Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User';
+const CLOSED_MSG = 'Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User (Thấu chi được Transfer thêm đến Secrecy)';
 export const specialUser = () => getUsers().find((u) => u.special);
 export function isSpecialBook(b) { return !!b && kindOfBook(b) === 'bank' && !!userOf(b)?.special; }
 const closedBook = (b) => !!userOf(b)?.special && !(kindOfBook(b) === 'bank' && !b.overdraft);
 /** Chỉ Bank của User đặc biệt mới giao dịch được với User khác. */
-export function canTransfer(a, b) { return a.owner === b.owner || (!closedBook(a) && !closedBook(b)); }
+export function canTransfer(a, b) {
+  // Ngoại lệ: Thấu chi của User đặc biệt được Transfer đến ngân hàng trong Secrecy.
+  if (a.overdraft && kindOfBook(b) === 'neo') return true;
+  return a.owner === b.owner || (!closedBook(a) && !closedBook(b));
+}
 /** Cần chọn Personal/Family khi tiền đi vào/ra khỏi nhóm Bank + Thấu chi (giữa Bank và Thấu chi thì không). */
 export function pfNeeded(aId, bId = null) {
   const find = (id) => getProfiles().find((p) => p.id === id);

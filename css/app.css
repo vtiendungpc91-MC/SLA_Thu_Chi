@@ -341,8 +341,8 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .who-pick .chip.on { background: var(--c); border-color: var(--c); color: #fff; }
 /* Tổng số dư ở Tổng quan: to hơn 150%, đỏ đậm */
 .hero-bal { align-items: center; }
-.hero-bal b { font-size: 150%; font-weight: 800; color: #e8590c; font-variant-numeric: tabular-nums; }
-@media (prefers-color-scheme: dark) { .hero-bal b { color: #ff9f5a; } }
+.hero-bal b { font-size: 150%; font-weight: 800; color: #000; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) { .hero-bal b { color: #fff; } }
 .hero-bal b.income { color: var(--income); }
 .hero > .hero-net:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
