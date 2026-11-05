@@ -341,8 +341,8 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .who-pick .chip.on { background: var(--c); border-color: var(--c); color: #fff; }
 /* Tổng số dư ở Tổng quan: to hơn 150%, đỏ đậm */
 .hero-bal { align-items: center; }
-.hero-bal b { font-size: 150%; font-weight: 800; color: #9b1c1c; font-variant-numeric: tabular-nums; }
-@media (prefers-color-scheme: dark) { .hero-bal b { color: #ff7b7b; } }
+.hero-bal b { font-size: 150%; font-weight: 800; color: #2563eb; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) { .hero-bal b { color: #7aa7ff; } }
 .hero-bal b.income { color: var(--income); }
 .hero > .hero-net:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
@@ -743,3 +743,8 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .pf-seg > .on small { color: rgba(255, 255, 255, .9); }
 .pf-seg > [data-pf=personal].on { background: #d92d20; }
 .pf-seg > [data-pf=family].on { background: #2563eb; }
+/* Dòng Personal / Family dưới Thấu chi; nhóm mục theo User */
+.pf-line { display: flex; justify-content: space-between; gap: 8px; margin-top: -2px; padding: 0 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pf-line b { font-weight: 700; }
+.user-groups { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.user-group > small { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
