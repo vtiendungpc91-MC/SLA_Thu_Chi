@@ -341,8 +341,8 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .who-pick .chip.on { background: var(--c); border-color: var(--c); color: #fff; }
 /* Tổng số dư ở Tổng quan: to hơn 150%, đỏ đậm */
 .hero-bal { align-items: center; }
-.hero-bal b { font-size: 150%; font-weight: 800; color: #2563eb; font-variant-numeric: tabular-nums; }
-@media (prefers-color-scheme: dark) { .hero-bal b { color: #7aa7ff; } }
+.hero-bal b { font-size: 150%; font-weight: 800; color: #e8590c; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) { .hero-bal b { color: #ff9f5a; } }
 .hero-bal b.income { color: var(--income); }
 .hero > .hero-net:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
@@ -559,10 +559,10 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .range-pick .date-pick { flex: 0 1 auto; font-size: 12.5px; padding: 4px 8px; min-height: 32px; }
 /* ---------- Hàng nhập tiền: [Ngày 20%] [Số tiền 60%] [+000 20%] ---------- */
 .amt-line { display: grid; grid-template-columns: 20% 1fr 20%; gap: 6px; align-items: center; }
-.amt-line > input { width: 100%; min-width: 0; text-align: right; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); padding: 8px 10px; min-height: 48px; }
-.amt-line > input.amount-input { font-size: 26px; font-weight: 700; }
-.amt-line > input.money { font-size: 20px; font-weight: 700; }
-.amt-line > input:focus { outline: none; border-color: var(--primary); }
+.amt-line .money-box > input { width: 100%; min-width: 0; text-align: right; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); padding: 8px 10px; min-height: 48px; }
+.amt-line .money-box > input.amount-input { font-size: 26px; font-weight: 700; }
+.amt-line .money-box > input.money { font-size: 20px; font-weight: 700; }
+.amt-line .money-box > input:focus { outline: none; border-color: var(--primary); }
 .date-pick.mini { flex-direction: column; justify-content: center; align-items: center; gap: 0; width: 100%; min-height: 48px; padding: 4px 2px; border-radius: 12px; }
 .date-pick.mini .dp-text { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
 .date-pick.mini .dp-text small { font-size: 10px; color: var(--muted); }
@@ -748,3 +748,14 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .pf-line b { font-weight: 700; }
 .user-groups { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .user-group > small { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+/* Mục đang chọn (Ngày/Tuần/Tháng, Ngân sách/Trả nợ…) nền cam */
+.period .seg > .on, .seg.tabs > .on, .seg.small > .on { background: #e8590c; color: #fff; box-shadow: none; }
+.chip-star { font-size: 13px; line-height: 1; flex: 0 0 auto; }
+/* Ô tiền: chừa lề phải cho nút +000 */
+.money-box { position: relative; flex: 1 1 auto; width: 100%; min-width: 0; }
+.money-box > input, .amt-line .money-box > input, .split-row .money-box > input { display: block; width: 100%; padding-right: 66px; }
+.plus000 { position: absolute; top: 5px; bottom: 5px; right: 5px; width: 56px; padding: 0; border: 0; border-radius: 9px; background: var(--primary-soft); color: var(--primary); font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; cursor: pointer; }
+.plus000:active { filter: brightness(.9); }
+.split-row .money-box { flex: 1; }
+.split-row .money-box > input { padding-right: 50px; }
+.split-row .plus000 { width: 44px; font-size: 12px; }

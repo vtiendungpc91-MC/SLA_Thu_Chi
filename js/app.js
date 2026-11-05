@@ -121,6 +121,14 @@ async function start() {
   window.addEventListener('hashchange', route);
   route();
   notifyAlerts();
+  // App đang mở: đến giờ hẹn thì cập nhật số thông báo và gửi thông báo.
+  let lastKeys = null;
+  setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
+    const keys = (await S.userAlerts(S.currentUser().id)).map((a) => a.key).join();
+    if (lastKeys !== null && keys !== lastKeys) { refresh(); notifyAlerts(); }
+    lastKeys = keys;
+  }, 30000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') onResume();
   });

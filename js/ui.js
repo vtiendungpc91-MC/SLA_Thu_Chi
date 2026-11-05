@@ -16,6 +16,9 @@ export function syncDatePick(inp) {
   t.innerHTML = t.dataset.mini ? `<small>${esc(t.dataset.label)}</small><b>${d}</b>` : `${esc(t.dataset.label)}: <b>${d}</b>`;
 }
 
+/** Ô tiền kèm nút +000 nằm trong ô, sát lề phải. */
+export const moneyBox = (input) => `<div class="money-box">${input}<button type="button" class="plus000" data-plus000 tabindex="-1" aria-label="Thêm 000">+000</button></div>`;
+
 /**
  * Hàng nhập tiền dùng chung: [Ngày 30%] [Ô số tiền], đề xuất số tiền ở dưới.
  * Ghi mới thì ngày cố định; chỉ sửa ngày được khi sửa giao dịch (editDate = true).
@@ -24,7 +27,7 @@ export function amountLine({ dateId, date, amtId, amount = '', label = 'Ngày', 
   return `<div class="amt-line">
     <label class="date-pick mini${editDate ? '' : ' fixed'}"><span class="dp-text" data-label="${esc(label)}" data-mini="1"><small>${esc(label)}</small><b>${date ? fmtDate(date) : 'chưa chọn'}</b></span>
       <input type="date" id="${dateId}" value="${esc(date || '')}" aria-label="${esc(label)}" ${editDate ? '' : 'disabled'}></label>
-    <input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">
+    ${moneyBox(`<input id="${amtId}" class="${big ? 'amount-input' : 'money'}" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(amount)}" aria-label="Số tiền">`)}
   </div>${after}<div class="zero-sug" data-zero-for="${amtId}" hidden></div><em class="hint center" data-hint-for="${amtId}"></em>`;
 }
 import { state } from './store.js';
@@ -96,7 +99,7 @@ function zeroSuggest(inp) {
     if (!box) {
       box = document.createElement('div');
       box.className = 'zero-sug';
-      (inp.closest('.split-row') || inp).insertAdjacentElement('afterend', box);
+      (inp.closest('.split-row') || inp.closest('.money-box') || inp).insertAdjacentElement('afterend', box);
     }
     inp._zeroBox = box;
     // Giữ bàn phím khi bấm gợi ý.
@@ -129,6 +132,21 @@ document.addEventListener('input', (e) => {
   if (!inp.matches || !inp.matches(MONEY_SEL)) return;
   if (isVndInput(inp)) reformatMoney(inp);
   zeroSuggest(inp);
+});
+
+// Nút +000 trong ô tiền: giữ bàn phím khi bấm, chỉ thêm khi ô đang là số (bỏ qua ô trống và cách gõ tắt 1tr2, 50k).
+document.addEventListener('pointerdown', (e) => { if (e.target.closest?.('[data-plus000]')) e.preventDefault(); });
+document.addEventListener('mousedown', (e) => { if (e.target.closest?.('[data-plus000]')) e.preventDefault(); });
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-plus000]');
+  if (!b) return;
+  const inp = b.parentElement.querySelector('input');
+  if (/^\d[\d.]*$/.test(inp.value)) {
+    inp.value = `${inp.value.replace(/\./g, '')}000`;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  inp.focus();
 });
 
 let toastTimer;

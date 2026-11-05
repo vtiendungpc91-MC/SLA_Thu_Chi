@@ -2,7 +2,7 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import {
-  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
@@ -135,7 +135,7 @@ function checkFunds(accountId, amountVnd, ignoreTx = null) {
 
 const field = (label, inner, extra = '') => `<label class="field" ${extra}><span>${label}</span>${inner}</label>`;
 const amountField = (id, value, label = 'Số tiền') =>
-  field(label, `<div class="money-row"><input id="${id}" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 50k, 1tr2" value="${value ? fmtNum(value) : ''}"></div><div class="zero-sug" data-zero-for="${id}" hidden></div><em class="hint" data-hint-for="${id}"></em>`);
+  field(label, `<div class="money-row">${moneyBox(`<input id="${id}" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 50k, 1tr2" value="${value ? fmtNum(value) : ''}">`)}</div><div class="zero-sug" data-zero-for="${id}" hidden></div><em class="hint" data-hint-for="${id}"></em>`);
 
 /** Gắn gợi ý đọc số tiền dưới ô nhập. */
 function bindMoney(root, id) {
@@ -175,7 +175,7 @@ function topBar(sub = '', right = '') {
   return `<header class="top topbar">
     <div class="chip-col">
       <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
-        ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span> <i>▾</i></button>
+        ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
       <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
     <div class="chip-col right">
@@ -304,8 +304,8 @@ function notifRow(a) {
     ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách (${fmtShort(a.amount)} / ${fmtShort(a.limit)})`
     : a.kind === 'pending'
       ? `${fmtShort(a.amount)} · kỳ ${fmtDate(a.date)}${a.noFunds ? ' · chưa ghi được vì thiếu số dư' : ' · chờ xác nhận'}`
-      : a.kind === 'reminder' ? `${fmtDue(a.days)} · ${fmtDate(a.date)}${a.note ? ' · ' + a.note : ''}`
-        : `${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}`;
+      : a.kind === 'reminder' ? `${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}${a.note ? ' · ' + a.note : ''}`
+        : `${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}`;
   const tone = (a.kind === 'budget' ? a.level >= 100 : a.days < 0) ? 'over' : a.kind === 'recurring' ? '' : 'warn';
   return `<div class="notif-row ${tone}"><span class="n-ic">${NOTIF[a.kind].icon}</span>
     <span class="grow"><b>${esc(a.title)}</b><small>${esc(a.bookName)} · ${esc(sub)}</small></span>
@@ -1891,7 +1891,7 @@ function debtsTab() {
     const tone = days < 0 ? 'over' : days <= (d.remindDays ?? state.settings.remindDays) ? 'warn' : '';
     return `<button type="button" class="row alert ${tone}" data-act="debt-open" data-id="${d.id}">
       <span class="ci" style="--c:#0d74ce">🏦</span>
-      <span class="grow"><b>${esc(S.debtName(d))}</b><small>${fmtDate(d.dueDate)} · ${fmtDue(days)}${d.repeat === 'monthly' ? ` · hằng tháng${d.periodsLeft != null ? `, còn ${d.periodsLeft} kỳ` : ''}` : ''}</small>
+      <span class="grow"><b>${esc(S.debtName(d))}</b><small>${fmtDate(d.dueDate)}${d.time ? ' ' + d.time : ''} · ${fmtDue(days)}${d.repeat === 'monthly' ? ` · hằng tháng${d.periodsLeft != null ? `, còn ${d.periodsLeft} kỳ` : ''}` : ''}</small>
       ${d.method ? `<small>💳 ${esc(d.method)}</small>` : ''}</span>
       <span class="amt">${fmt(d.amount)}</span></button>`;
   }).join('')}</div>` : empty('🏦', 'Chưa có khoản trả nợ nào.')}
@@ -1901,9 +1901,12 @@ function debtsTab() {
     `<button type="button" class="row" data-act="debt-open" data-id="${d.id}"><span class="ci">✅</span><span class="grow"><b>${esc(S.debtName(d))}</b><small>${(d.history || []).length} lần trả</small></span><span class="amt">${fmt((d.history || []).reduce((s, h) => s + h.amount, 0))}</span></button>`).join('')}</div></details>` : ''}`;
 }
 
+const DEFAULT_ALERT_TIME = '08:00';
+const alertTimeField = (id, time) => field('Giờ thông báo', `<input type="time" id="${id}" value="${esc(time || '')}">`);
+
 actions['debt-edit'] = (el) => {
   const d = state.debts.find((x) => x.id === el.dataset.id);
-  const f = d ? { ...d } : { bank: '', title: '', amount: 0, dueDate: todayISO(), repeat: 'monthly', periodsLeft: null, method: PAY_METHODS[0], note: '', accountId: state.settings.lastAccount, remindDays: Number(state.settings.remindDays) };
+  const f = d ? { ...d } : { bank: '', title: '', amount: 0, dueDate: todayISO(), repeat: 'monthly', periodsLeft: null, method: PAY_METHODS[0], note: '', accountId: state.settings.lastAccount, remindDays: Number(state.settings.remindDays), time: DEFAULT_ALERT_TIME };
   const methodIsPreset = PAY_METHODS.includes(f.method);
   openSheet({
     title: d ? 'Sửa khoản trả nợ' : 'Thêm khoản trả nợ',
@@ -1912,7 +1915,8 @@ actions['debt-edit'] = (el) => {
       ${field('Nội dung khoản nợ', `<input id="df-title" value="${esc(f.title)}" placeholder="vd: Vay mua xe, Thẻ tín dụng, Trả transfer iPhone">`)}
       ${amountField('df-amt', f.amount, 'Số tiền mỗi kỳ')}
       <div class="two">${datePick('df-date', f.dueDate, 'Ngày đến hạn')}
-      ${field('Nhắc trước (ngày)', `<input type="number" id="df-rem" min="0" max="30" value="${esc(f.remindDays ?? 3)}">`)}</div>
+      ${alertTimeField('df-time', f.time)}</div>
+      ${field('Nhắc trước (ngày)', `<input type="number" id="df-rem" min="0" max="30" value="${esc(f.remindDays ?? 3)}">`)}
       <div class="two">${field('Lặp lại', `<select id="df-rep"><option value="monthly" ${f.repeat === 'monthly' ? 'selected' : ''}>Hằng tháng</option><option value="none" ${f.repeat === 'none' ? 'selected' : ''}>Một lần</option></select>`)}
       ${field('Số kỳ còn lại', `<input type="number" id="df-left" min="1" placeholder="Không giới hạn" value="${f.periodsLeft ?? ''}">`, 'data-left')}</div>
       ${field('Cách thức thanh toán', `<select id="df-method">${PAY_METHODS.map((m) => `<option ${m === f.method || (!methodIsPreset && m === 'Khác') ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>`)}
@@ -1936,7 +1940,7 @@ actions['debt-edit'] = (el) => {
           ...f, bank: $(sh, '#df-bank').value.trim(), title: $(sh, '#df-title').value.trim(), amount: Math.round(v),
           dueDate, dueDay: Number(dueDate.slice(8)), repeat: rep.value, periodsLeft: rep.value === 'monthly' && left ? Math.max(1, Number(left)) : null,
           method: $(sh, '#df-method').value, note: $(sh, '#df-note').value.trim(), accountId: $(sh, '#df-acc').value,
-          remindDays: Number($(sh, '#df-rem').value) || 0, done: d ? d.done && dueDate === d.dueDate : false, history: f.history || [],
+          time: $(sh, '#df-time').value || null, remindDays: Number($(sh, '#df-rem').value) || 0, done: d ? d.done && dueDate === d.dueDate : false, history: f.history || [],
         });
         close(); toast('Đã lưu khoản trả nợ');
       });
@@ -2018,7 +2022,7 @@ function debtPay(d) {
 function debtEvent(d) {
   const rrule = d.repeat === 'monthly' ? `FREQ=MONTHLY${d.periodsLeft != null ? ';COUNT=' + d.periodsLeft : ''}` : null;
   return {
-    uid: 'debt-' + d.id, date: d.dueDate, rrule, remindDays: d.remindDays ?? state.settings.remindDays,
+    uid: 'debt-' + d.id, date: d.dueDate, rrule, remindDays: d.remindDays ?? state.settings.remindDays, time: d.time,
     title: `🏦 Trả nợ ${S.debtName(d)}: ${fmt(d.amount)}`,
     description: `Cách thanh toán: ${d.method || ''}\n${d.note || ''}`,
   };
@@ -2049,10 +2053,10 @@ function remindersTab() {
   const today = todayISO();
   const list = [...(state.settings.reminders || [])].sort((a, b) => (a.date < b.date ? -1 : 1));
   return `
-  <p class="muted small">Tạo nhắc nhở khi cần. Đến ngày, nhắc nhở hiện trong <b>Notifications</b> của User.</p>
+  <p class="muted small">Đến ngày giờ đã chọn, nhắc nhở hiện trong <b>Notifications</b> của User. Muốn điện thoại báo chuông cả khi đóng app: mở nhắc nhở đã lưu, bấm <b>Thêm vào Lịch</b>.</p>
   ${list.length ? `<div class="card list">${list.map((r) => `<div class="row quick-row">
     <button type="button" class="grow-btn" data-act="rem-edit" data-id="${esc(r.id)}"><span class="ci">🔔</span>
-      <span class="grow"><b>${esc(r.title)}</b><small>${fmtDate(r.date)} · ${fmtDue(diffDays(today, r.date))}${r.repeat === 'month' ? ' · hằng tháng' : ''}${r.note ? ' · ' + esc(r.note) : ''}</small></span></button>
+      <span class="grow"><b>${esc(r.title)}</b><small>${fmtDate(r.date)}${r.time ? ' ' + r.time : ''} · ${fmtDue(diffDays(today, r.date))}${r.repeat === 'month' ? ' · hằng tháng' : ''}${r.note ? ' · ' + esc(r.note) : ''}</small></span></button>
     <button type="button" class="btn small ghost" data-act="rem-done" data-id="${esc(r.id)}">Xong</button></div>`).join('')}</div>` : empty('🔔', 'Chưa có nhắc nhở nào.')}
   <button type="button" class="btn primary block" data-act="rem-edit">+ Tạo nhắc nhở</button>`;
 }
@@ -2060,18 +2064,19 @@ function remindersTab() {
 actions['rem-done'] = async (el) => { await S.doneReminder(el.dataset.id); toast('Đã xong'); };
 actions['rem-edit'] = (el) => {
   const r = (state.settings.reminders || []).find((x) => x.id === el.dataset.id);
-  const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', note: '' };
+  const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', note: '', time: DEFAULT_ALERT_TIME };
   const formId = 'rm-' + Date.now();
   openSheet({
     title: r ? 'Sửa nhắc nhở' : 'Tạo nhắc nhở',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Nội dung', `<input id="rm-title" required maxlength="60" value="${esc(f.title)}" placeholder="vd: Đóng học phí, gia hạn bảo hiểm">`)}
-      ${datePick('rm-date', f.date, 'Ngày nhắc')}
+      <div class="two">${datePick('rm-date', f.date, 'Ngày nhắc')}
+      ${alertTimeField('rm-time', f.time)}</div>
       <div class="two">${field('Nhắc trước (ngày)', `<input type="number" id="rm-before" min="0" max="30" value="${esc(f.remindDays || 0)}">`)}
       ${field('Lặp lại', `<select id="rm-rep"><option value="none" ${f.repeat !== 'month' ? 'selected' : ''}>Một lần</option><option value="month" ${f.repeat === 'month' ? 'selected' : ''}>Hằng tháng</option></select>`)}</div>
       ${field('Ghi chú (không bắt buộc)', `<input id="rm-note" value="${esc(f.note || '')}">`)}
-      ${r ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa nhắc nhở</button></div>' : ''}
+      ${r ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa nhắc nhở</button><button type="button" class="btn ghost" data-ics>📅 Thêm vào Lịch</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
       $(sh, 'form').addEventListener('submit', async (e) => {
@@ -2080,10 +2085,14 @@ actions['rem-edit'] = (el) => {
         const date = $(sh, '#rm-date').value;
         if (!title) return toast('Nhập nội dung');
         if (!date) return toast('Chọn ngày nhắc');
-        await S.saveReminder({ ...f, title, date, day: Number(date.slice(8)), remindDays: Number($(sh, '#rm-before').value) || 0, repeat: $(sh, '#rm-rep').value, note: $(sh, '#rm-note').value.trim() });
+        await S.saveReminder({ ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || null, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: $(sh, '#rm-rep').value, note: $(sh, '#rm-note').value.trim() });
         close(); toast('Đã lưu nhắc nhở');
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => { await S.deleteReminder(r.id); close(); toast('Đã xóa'); });
+      $(sh, '[data-ics]')?.addEventListener('click', () => calendarSheet('nhac-nho.ics', buildAllDayICS([{
+        uid: 'rem-' + r.id, date: r.date, rrule: r.repeat === 'month' ? 'FREQ=MONTHLY' : null, remindDays: r.remindDays || 0, time: r.time,
+        title: `🔔 ${r.title}`, description: r.note || '',
+      }])));
     },
   });
 };
@@ -2319,7 +2328,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         if (!splitRows.length) splitRows = [{ categoryId: f.categoryId, amount: amtIn.value }, { categoryId: S.catsOf(f.type)[1]?.id, amount: '' }];
         splitBox.innerHTML = splitRows.map((r, i) => `<div class="split-row" data-i="${i}">
           <select data-k="categoryId">${catOptions(f.type, r.categoryId)}</select>
-          <input data-k="amount" class="money" inputmode="decimal" placeholder="Số tiền" value="${esc(r.amount)}">
+          ${moneyBox(`<input data-k="amount" class="money" inputmode="decimal" placeholder="Số tiền" value="${esc(r.amount)}">`)}
           <button type="button" class="icon-btn" data-rm aria-label="Bỏ">✕</button></div>`).join('')
           + `<div class="split-foot"><button type="button" class="btn ghost small" data-add>+ Thêm dòng</button><em id="tf-split-info"></em></div>`;
         renderSplitInfo();
@@ -2945,7 +2954,7 @@ function bookSettingsView() {
     ${sectionTitle('Phân bổ thu nhập & quỹ dự phòng')}
     <section class="card form">
       ${field('Phương pháp', `<select data-set="method"><option value="none" ${s.method === 'none' ? 'selected' : ''}>Không dùng</option>${Object.entries(S.METHODS).map(([k, m]) => `<option value="${k}" ${s.method === k ? 'selected' : ''}>${m.name}</option>`).join('')}</select>`)}
-      ${field('Thu nhập dự kiến/tháng (dùng khi chưa ghi khoản thu)', `<input class="money" inputmode="decimal" data-set="expectedIncome" data-money value="${s.expectedIncome ? fmtNum(s.expectedIncome) : ''}" placeholder="vd: 15tr">`)}
+      ${field('Thu nhập dự kiến/tháng (dùng khi chưa ghi khoản thu)', moneyBox(`<input class="money" inputmode="decimal" data-set="expectedIncome" data-money value="${s.expectedIncome ? fmtNum(s.expectedIncome) : ''}" placeholder="vd: 15tr">`))}
       ${field('Quỹ dự phòng = số tháng chi tiêu', `<select data-set="emergencyMonths" data-num>${[3, 4, 6, 9, 12].map((n) => `<option value="${n}" ${Number(s.emergencyMonths) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`)}
       <p class="muted small">Gán nhóm 50/30/20 hoặc lọ JARS cho từng danh mục trong "Danh mục thu chi".</p>
     </section>`;

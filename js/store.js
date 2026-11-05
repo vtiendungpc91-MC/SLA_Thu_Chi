@@ -1,6 +1,6 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
 import { db, dbOf, STORES, useProfile, dropProfile } from './db.js';
-import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate, fmt } from './utils.js';
+import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate, fmt, fmtTimeVN } from './utils.js';
 
 const LIST = STORES.filter((s) => s !== 'settings' && s !== 'photos');
 
@@ -1024,6 +1024,19 @@ export function emergencyInfo() {
 }
 
 // ---------- Nhắc nhở ----------
+/**
+ * Giai đoạn báo của khoản có giờ hẹn: null = chưa đến lúc; 'pre' = nhắc trước; 'due' = đến hạn.
+ * Báo từ đúng giờ đã chọn của ngày nhắc đầu tiên, và báo lại đúng giờ đó trong ngày đến hạn.
+ */
+function alertStage(days, remind, time) {
+  if (days > remind) return null;
+  const reached = !time || fmtTimeVN(Date.now()) >= time;
+  if (days === remind && !reached) return null;
+  return days < 0 || (days === 0 && reached) ? 'due' : 'pre';
+}
+/** Khóa thông báo: khoản có giờ hẹn được báo riêng cho từng giai đoạn. */
+const alertKey = (base, time, stage) => (time ? `${base}:${stage}` : base);
+
 export function getAlerts() {
   const today = todayISO();
   const def = Number(state.settings.remindDays) || 0;
@@ -1031,8 +1044,9 @@ export function getAlerts() {
   for (const d of state.debts) {
     if (d.done) continue;
     const days = diffDays(today, d.dueDate);
-    if (days <= (d.remindDays ?? def)) {
-      out.push({ key: `debt:${d.id}:${d.dueDate}`, kind: 'debt', id: d.id, days, title: debtName(d), amount: d.amount, date: d.dueDate });
+    const stage = alertStage(days, d.remindDays ?? def, d.time);
+    if (stage) {
+      out.push({ key: alertKey(`debt:${d.id}:${d.dueDate}`, d.time, stage), kind: 'debt', id: d.id, days, title: debtName(d), amount: d.amount, date: d.dueDate, time: d.time });
     }
   }
   for (const r of state.recurring) {
@@ -1055,7 +1069,8 @@ export function getAlerts() {
   }
   for (const r of state.settings.reminders || []) {
     const days = diffDays(today, r.date);
-    if (days <= (r.remindDays || 0)) out.push({ key: `rem:${r.id}:${r.date}`, kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date });
+    const stage = alertStage(days, r.remindDays || 0, r.time);
+    if (stage) out.push({ key: alertKey(`rem:${r.id}:${r.date}`, r.time, stage), kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date, time: r.time });
   }
   return out.sort((a, b) => a.days - b.days);
 }
