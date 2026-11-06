@@ -402,12 +402,12 @@ actions.books = () => {
   const countOf = (kind) => mine.filter((b) => (b.kind || 'bank') === kind).length;
   openSheet({
     title: `Mục của ${u.name}`,
-    body: `<div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(u.color)}">
+    body: `<div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(overColor(u))}">
         <button type="button" class="over-main" data-over>
-          <b>📊 ${esc(overName(u))}</b>
+          <b>${esc(overIcon(u))} ${esc(overName(u))}</b>
           ${S.USER_KINDS.map((kind) => `<span class="over-row"><span>${S.BOOK_KINDS[kind].icon} ${kind === 'bank' ? 'Bank' : S.BOOK_KINDS[kind].label} <small>(${countOf(kind)})</small></span><b data-over-sum="${kind}">…</b></span>`).join('')}
         </button>
-        <button type="button" class="ptile-edit" data-over-edit aria-label="Đổi tên">✎</button>
+        <button type="button" class="ptile-edit" data-over-edit aria-label="Thiết lập">✎</button>
       </div>` + S.USER_KINDS.map((kind) => {
       const k = S.BOOK_KINDS[kind];
       const list = mine.filter((b) => (b.kind || 'bank') === kind).sort((a, b) => !!a.overdraft - !!b.overdraft);
@@ -1189,21 +1189,25 @@ function cardPaySheet(items) {
 
 // ================= Tổng quan =================
 const overName = (u) => u.overName || 'Tổng quan';
+const overIcon = (u) => u.overIcon || '📊';
+const overColor = (u) => u.overColor || u.color;
 const OVER_TABS = [['bank', '🏦 Bank'], ['saving', '🐷 Tiết Kiệm'], ['card', '💳 Thẻ trả trước']];
 const overCache = new Map();
 let overToken = 0;
 
 function overNameForm(u) {
+  const f = { icon: overIcon(u), color: overColor(u) };
   const formId = 'ov-' + Date.now();
   openSheet({
-    title: 'Đổi tên thẻ Tổng quan',
+    title: 'Thiết lập thẻ Tổng quan',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
-    body: `<form class="form" id="${formId}">${field('Tên hiển thị', `<input id="ov-name" maxlength="24" value="${esc(u.overName || '')}" placeholder="Tổng quan">`)}</form>`,
+    body: `<form class="form" id="${formId}">${field('Tên hiển thị', `<input id="ov-name" maxlength="24" value="${esc(u.overName || '')}" placeholder="Tổng quan">`)}${looksFields(f, false)}</form>`,
     onMount(sh, close) {
+      bindLooks(sh, f);
       $(sh, 'form').addEventListener('submit', (e) => {
         e.preventDefault();
-        S.saveUser({ id: u.id, overName: $(sh, '#ov-name').value.trim() });
-        close(); refresh(); toast('Đã đổi tên');
+        S.saveUser({ id: u.id, overName: $(sh, '#ov-name').value.trim(), overIcon: f.icon, overColor: f.color });
+        close(); refresh(); toast('Đã lưu');
       });
     },
   });
@@ -1218,8 +1222,8 @@ function homeView() {
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
     </div>
     <div class="chip-col right">
-      <button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(u.color)}" title="Chọn / tạo mục">
-        <span class="chip-name">${esc(overName(u))}</span> <i>▾</i></button>
+      <button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(overColor(u))}" title="Chọn / tạo mục">
+        <span class="chip-av">${esc(overIcon(u))}</span><span class="chip-name">${esc(overName(u))}</span> <i>▾</i></button>
     </div>
   </header>
   <div class="over-lines">

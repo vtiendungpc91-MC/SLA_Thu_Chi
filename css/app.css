@@ -826,3 +826,6 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .ol { display: flex; width: 100%; justify-content: space-between; }
 .ol > *:first-child { text-align: left; }
 .ol > *:last-child { margin-left: auto; text-align: right; }
+/* Chú thích nút nhanh: dàn đều cả bề ngang */
+.qk-legend { flex-wrap: nowrap; gap: 4px; }
+.qk-legend > span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; }
