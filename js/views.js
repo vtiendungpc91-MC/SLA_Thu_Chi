@@ -954,7 +954,7 @@ function bindStatDel(sh, item, close) {
 }
 async function saveStat(item, data) {
   const list = S.statsOf();
-  const row = { ...data, id: item?.id || 'st' + Date.now() };
+  const row = { ...data, id: item?.id || 'st' + Date.now(), show: item?.show !== false };
   await S.setSetting('stats', item ? list.map((x) => (x.id === item.id ? row : x)) : [...list, row]);
 }
 const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
@@ -1012,11 +1012,14 @@ actions['stat-new'] = () => {
 /** Phần Thống kê trong Cài đặt riêng của mục: công tắc ẩn/hiện, danh sách, nút tạo. */
 function statSettingsHtml() {
   const list = S.statsOf();
-  return `${sectionTitle('📊 Thống kê', `<label class="switch" title="Ẩn/hiện ở Tổng quan"><input type="checkbox" data-stats-toggle ${S.statShowOf() ? 'checked' : ''}><i></i></label>`)}
-  <section class="card list">${list.map((st) => `<button type="button" class="row" data-act="stat-setup" data-id="${esc(st.id)}"><span class="ci">${esc(statIcon(st))}</span>
-      <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label}</small></span><span>✎</span></button>`).join('')}
-    ${list.length < S.STAT_MAX ? `<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b><small>${list.length}/${S.STAT_MAX}</small></span></button>` : ''}
-  </section>`;
+  const open = state.settings.statListOpen !== false;
+  return `${sectionTitle(`📊 Thống kê <small class="muted">(${list.length}/${S.STAT_MAX})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="statListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
+  ${open ? `<section class="card list">${list.map((st) => `<div class="row quick-row">
+      <button type="button" class="grow-btn" data-act="stat-setup" data-id="${esc(st.id)}"><span class="ci">${esc(statIcon(st))}</span>
+        <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label}</small></span><span>✎</span></button>
+      <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-stat-show="${esc(st.id)}" ${st.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
+    ${list.length < S.STAT_MAX ? '<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b></span></button>' : ''}
+  </section>` : ''}`;
 }
 
 function cardRow(t) {
@@ -1246,11 +1249,11 @@ async function overCard(b) {
   const o = await S.bookOverview(b);
   const isCard = b.kind === 'card';
   const st = o.settings;
-  const quicks = S.quickShowOf(st) ? S.quicksOf(st).filter((q) => S.quickTypesFor(b).includes(q.type)).slice(0, S.QUICK_MAX[S.kindOfBook(b)]) : [];
+  const quicks = S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type)).slice(0, S.QUICK_MAX[S.kindOfBook(b)]);
   let stats = '';
-  if (!isCard && S.statShowOf(st)) {
+  if (!isCard) {
     const r = todayRange();
-    for (const x of S.statsOf(st).slice(0, S.STAT_MAX)) {
+    for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
       const m = await STATS[x.type].load(x);
       const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
       const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
@@ -1262,11 +1265,11 @@ async function overCard(b) {
   const sub = isCard ? (S.CARD_TYPES[b.cardType] || '')
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
   return `<section class="card over-acc" style="--c:${esc(b.color)}">
-    <button type="button" class="over-head" data-act="book-open" data-id="${esc(b.id)}">
+    <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
       <span class="ol"><b>${esc(b.icon || kindOf(b).icon)} ${esc(b.name)}${b.locked ? ' 🔒' : ''}</b><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmt(o.balance)}</b></span>
       <span class="ol ol-sm"><small>${esc(sub)}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
-    </button>
+    </div>
     ${quickRows(quicks, b.id)}
     ${stats ? `<div class="home-stats">${stats}</div>` : ''}
   </section>`;
@@ -2830,11 +2833,14 @@ function quickSettingsHtml() {
   const b = S.currentProfile();
   const max = S.QUICK_MAX[S.kindOfBook(b)];
   const list = S.quicksOf().filter((q) => S.quickTypesFor(b).includes(q.type));
-  return `${sectionTitle('⚡ Mẫu nhập nhanh', `<label class="switch" title="Ẩn/hiện ở Tổng quan"><input type="checkbox" data-quicks-toggle ${S.quickShowOf() ? 'checked' : ''}><i></i></label>`)}
-  <section class="card list">${list.map((q) => `<button type="button" class="row" data-act="quick-edit" data-id="${esc(q.id)}"><span class="ci">${QUICK_KINDS[q.type].icon}</span>
-      <span class="grow"><b>${esc(q.name)}</b><small>${QUICK_KINDS[q.type].label} · ${esc(quickDesc(q.type, q))}</small></span><span>✎</span></button>`).join('')}
-    ${list.length < max ? `<button type="button" class="row add-row" data-act="quick-new"><span class="ci">＋</span><span class="grow"><b>Tạo nút nhanh</b><small>${list.length}/${max}</small></span></button>` : ''}
-  </section>`;
+  const open = state.settings.quickListOpen !== false;
+  return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${list.length}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
+  ${open ? `<section class="card list">${list.map((q) => `<div class="row quick-row">
+      <button type="button" class="grow-btn" data-act="quick-edit" data-id="${esc(q.id)}"><span class="ci">${QUICK_KINDS[q.type].icon}</span>
+        <span class="grow"><b>${esc(q.name)}</b><small>${QUICK_KINDS[q.type].label} · ${esc(quickDesc(q.type, q))}</small></span><span>✎</span></button>
+      <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-quick-show="${esc(q.id)}" ${q.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
+    ${list.length < max ? '<button type="button" class="row add-row" data-act="quick-new"><span class="ci">＋</span><span class="grow"><b>Tạo nút nhanh</b></span></button>' : ''}
+  </section>` : ''}`;
 }
 
 actions['quick-new'] = () => {
@@ -2896,7 +2902,7 @@ actions['quick-edit'] = (el) => {
         e.preventDefault();
         const name = $(sh, '#qe-name').value.trim();
         if (!name) return toast('Nhập tên nút');
-        const out = { id: q.id || 'q' + Date.now(), type: k, pf: pfc.value(), name, note: $(sh, '#qe-note').value.trim() };
+        const out = { id: q.id || 'q' + Date.now(), type: k, pf: pfc.value(), name, note: $(sh, '#qe-note').value.trim(), show: q.show !== false };
         if (isPeer) { out.peerId = $(sh, '#qe-peer').value; out.peerAccountId = $(sh, '#qe-pacc').value || null; out.flowCat = $(sh, '#qe-fcat').value || null; }
         else out.categoryId = $(sh, '#qe-cat').value;
         const list = S.quicksOf();
@@ -3169,18 +3175,19 @@ async function mountSettings(root) {
     S.setSecrecyHidden(!e.target.checked);
     toast(e.target.checked ? 'Đã hiện mục Secrecy' : 'Đã ẩn mục Secrecy');
   });
-  root.querySelector('[data-quicks-toggle]')?.addEventListener('change', async (e) => {
-    await S.setSetting('quickShow', e.target.checked);
-    toast(e.target.checked ? 'Đã hiện nút nhanh ở Tổng quan' : 'Đã ẩn nút nhanh');
-  });
+  root.querySelectorAll('[data-list-toggle]').forEach((el) => el.addEventListener('change', () => S.setSetting(el.dataset.listToggle, el.checked)));
+  root.querySelectorAll('[data-quick-show]').forEach((el) => el.addEventListener('change', async () => {
+    await S.setSetting('quicks', S.quicksOf().map((q) => (q.id === el.dataset.quickShow ? { ...q, show: el.checked } : q)));
+    toast(el.checked ? 'Đã hiện nút ở Tổng quan' : 'Đã ẩn nút khỏi Tổng quan');
+  }));
   root.querySelectorAll('[data-tab-toggle]').forEach((el) => el.addEventListener('change', async () => {
     await S.setSetting(el.dataset.tabToggle, el.checked);
     toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');
   }));
-  root.querySelector('[data-stats-toggle]')?.addEventListener('change', async (e) => {
-    await S.setSetting('statShow', e.target.checked);
-    toast(e.target.checked ? 'Đã hiện thống kê ở Tổng quan' : 'Đã ẩn thống kê');
-  });
+  root.querySelectorAll('[data-stat-show]').forEach((el) => el.addEventListener('change', async () => {
+    await S.setSetting('stats', S.statsOf().map((x) => (x.id === el.dataset.statShow ? { ...x, show: el.checked } : x)));
+    toast(el.checked ? 'Đã hiện ở Tổng quan' : 'Đã ẩn khỏi Tổng quan');
+  }));
   root.querySelector('[data-lock-toggle]')?.addEventListener('change', async (e) => {
     if (e.target.checked) {
       setLockEnabled(true);

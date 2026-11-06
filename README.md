@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.0.1 (06/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.0.3 (06/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -32,8 +32,8 @@ Màn hình chính là **Tổng quan** của User: 3 thẻ Bank, Tiết Kiệm, T
 | **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Bank + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Bank và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Bank của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
 | **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ, Nhắc nhở |
 | **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done |
-| **Thống kê ở Tổng quan** | Tối đa 3 thống kê mỗi mục Bank/Tiết kiệm, loại Transfer/Income hoặc Thu/Chi, đặt được tên và biểu tượng, số liệu trong ngày. Một công tắc ẩn/hiện trong Cài đặt của mục |
-| **Nút nhanh** | Tạo trong Cài đặt của mục, tên tối đa 8 ký tự, icon cố định theo loại (💸 Chi, 💰 Thu, 🤝 Transfer, 🔄 Income). Tối đa Bank 8, Tiết kiệm 4, Thẻ 8. Hiện ở Tổng quan, mỗi dòng tối đa 4 nút, tối đa 2 dòng, có công tắc ẩn/hiện |
+| **Thống kê ở Tổng quan** | Tối đa 3 thống kê mỗi mục Bank/Tiết kiệm, loại Transfer/Income hoặc Thu/Chi, đặt được tên và biểu tượng, số liệu trong ngày. Trong Cài đặt của mục, mỗi thống kê có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách |
+| **Nút nhanh** | Tạo trong Cài đặt của mục, tên tối đa 8 ký tự, icon cố định theo loại (💸 Chi, 💰 Thu, 🤝 Transfer, 🔄 Income). Tối đa Bank 8, Tiết kiệm 4, Thẻ 8. Hiện ở Tổng quan, mỗi dòng tối đa 4 nút, tối đa 2 dòng. Mỗi nút có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách |
 | **Nhập số tiền** | Tự thêm dấu chấm hàng nghìn, nút **+000** bên phải ô, đề xuất số tiền ngay dưới ô. Ngày cố định là hôm nay khi ghi mới, chỉ sửa khi mở lại giao dịch |
 | **Giao dịch** | Lọc theo kỳ, loại và nhiều danh mục đã có trong lịch sử; tìm kiếm; tóm tắt; xuất CSV |
 | **Báo cáo** | Theo ngày, tháng, quý, năm hoặc khoảng tự chọn; biểu đồ theo thời gian và danh mục |

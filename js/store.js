@@ -1176,11 +1176,6 @@ export function quicksOf(st = state.settings) {
   return Object.entries(st.quick || {}).filter(([, q]) => q)
     .map(([k, q]) => ({ ...q, id: k, type: /^card/.test(k) ? 'card' : k, name: String(q.name || '').slice(0, 8) }));
 }
-export function quickShowOf(st = state.settings) {
-  if (st.quickShow !== undefined) return st.quickShow !== false;
-  const old = Object.values(st.quick || {}).filter(Boolean);
-  return !old.length || old.some((q) => q.show);
-}
 /** Danh sách thống kê; dữ liệu kiểu cũ (statFlow, statTrack) được đọc thành danh sách. */
 export function statsOf(st = state.settings) {
   if (Array.isArray(st.stats)) return st.stats;
@@ -1188,11 +1183,6 @@ export function statsOf(st = state.settings) {
   if (st.statFlow) out.push({ ...st.statFlow, id: 'flow', type: 'flow' });
   if (st.statTrack) out.push({ ...st.statTrack, id: 'track', type: 'track' });
   return out;
-}
-export function statShowOf(st = state.settings) {
-  if (st.statShow !== undefined) return st.statShow !== false;
-  const old = [st.statFlow, st.statTrack].filter(Boolean);
-  return !old.length || old.some((x) => x.show);
 }
 
 /** Số liệu trong ngày của một mục (đọc trực tiếp từ sổ của mục đó). */

@@ -786,7 +786,8 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .over-lines { display: flex; flex-direction: column; gap: 2px; margin: 2px 2px 0; }
 .over-lines > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 16px; }
 .over-lines .over-r { margin-left: auto; padding: 0; font-weight: 700; font-size: 11.5px; }
-.over-lines small[data-kind-total] { font-size: 15.4px; font-weight: 800; color: var(--income); letter-spacing: -.2px; }
+.over-lines small[data-kind-total] { font-size: 15.4px; font-weight: 800; color: #000; letter-spacing: -.2px; }
+@media (prefers-color-scheme: dark) { .over-lines small[data-kind-total] { color: #fff; } }
 .over-lines small.pf-p { color: #d92d20; }
 .over-lines small.pf-f { color: #2563eb; }
 .over-lines .over-saving { padding: 0; font-size: 11.5px; font-weight: 700; color: var(--income); }
@@ -820,3 +821,8 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .cat-filter > summary::after { content: ' ▾'; }
 .cat-filter .check-list { margin-top: 6px; }
 .title-acts { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* Dòng tài khoản ở Tổng quan: luôn căn sát 2 lề, kể cả trên iPhone */
+.over-head { display: flex; flex-direction: column; align-items: stretch; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ol { display: flex; width: 100%; justify-content: space-between; }
+.ol > *:first-child { text-align: left; }
+.ol > *:last-child { margin-left: auto; text-align: right; }
