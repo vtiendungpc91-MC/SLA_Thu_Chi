@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v6.11.3 (06/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.0.1 (06/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -16,7 +16,7 @@ User (tối đa 3)
 Secrecy (ngoài các User): NEOBANK
 ```
 
-Nút góc trái trên chọn User và xem Notifications. Nút góc phải trên chọn mục, dưới nút hiện tổng tiền của nhóm mục.
+Màn hình chính là **Tổng quan** của User: 3 thẻ Bank, Tiết Kiệm, Thẻ trả trước, mỗi thẻ liệt kê các tài khoản với số dư, thu/chi trong ngày, nút nhanh và thống kê. Nút góc trái chọn User và xem Notifications. Nút góc phải có thẻ Tổng quan (đổi tên được) và danh sách mục; chọn mục sẽ mở Giao dịch, Báo cáo, Kế hoạch, Cài đặt của mục đó, nút Đóng luôn về Tổng quan.
 
 ## Tính năng
 
@@ -32,10 +32,10 @@ Nút góc trái trên chọn User và xem Notifications. Nút góc phải trên 
 | **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Bank + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Bank và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Bank của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
 | **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ, Nhắc nhở |
 | **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done |
-| **Thống kê ở Tổng quan** | Transfer/Income và Thu/Chi theo nguồn tự chọn, đặt được tên và biểu tượng, bật/tắt trong Cài đặt của mục Bank |
-| **Mẫu nhập nhanh** | Nút ⚡ ở Tổng quan, chỉ cần nhập số tiền rồi OK |
+| **Thống kê ở Tổng quan** | Tối đa 3 thống kê mỗi mục Bank/Tiết kiệm, loại Transfer/Income hoặc Thu/Chi, đặt được tên và biểu tượng, số liệu trong ngày. Một công tắc ẩn/hiện trong Cài đặt của mục |
+| **Nút nhanh** | Tạo trong Cài đặt của mục, tên tối đa 8 ký tự, icon cố định theo loại (💸 Chi, 💰 Thu, 🤝 Transfer, 🔄 Income). Tối đa Bank 8, Tiết kiệm 4, Thẻ 8. Hiện ở Tổng quan, mỗi dòng tối đa 4 nút, tối đa 2 dòng, có công tắc ẩn/hiện |
 | **Nhập số tiền** | Tự thêm dấu chấm hàng nghìn, nút **+000** bên phải ô, đề xuất số tiền ngay dưới ô. Ngày cố định là hôm nay khi ghi mới, chỉ sửa khi mở lại giao dịch |
-| **Giao dịch** | Lọc theo kỳ, loại, tài khoản và danh mục đã có trong lịch sử; tìm kiếm; xuất CSV |
+| **Giao dịch** | Lọc theo kỳ, loại và nhiều danh mục đã có trong lịch sử; tìm kiếm; tóm tắt; xuất CSV |
 | **Báo cáo** | Theo ngày, tháng, quý, năm hoặc khoảng tự chọn; biểu đồ theo thời gian và danh mục |
 | **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt), khóa riêng từng mục được |
 | **Dữ liệu** | Sao lưu **tất cả** vào 1 file `.json` và khôi phục từ file đó; nút Save nhanh |

@@ -1160,6 +1160,70 @@ export async function kindTotal(userId, kind) {
   return total;
 }
 
+// ---------- Màn hình Tổng quan chung: nút nhanh, thống kê, số liệu trong ngày của từng mục ----------
+export const QUICK_MAX = { bank: 8, saving: 4, card: 8 };
+export const STAT_MAX = 3;
+/** Loại nút nhanh mỗi mục được tạo. */
+export function quickTypesFor(b) {
+  const k = kindOfBook(b);
+  if (k === 'card') return ['card'];
+  if (k === 'saving') return ['gop'];
+  return hasIncome(b) ? ['expense', 'income', 'gop', 'trich'] : ['expense', 'income', 'gop'];
+}
+/** Danh sách nút nhanh; dữ liệu kiểu cũ (mỗi loại 1 mẫu) được đọc thành danh sách. */
+export function quicksOf(st = state.settings) {
+  if (Array.isArray(st.quicks)) return st.quicks;
+  return Object.entries(st.quick || {}).filter(([, q]) => q)
+    .map(([k, q]) => ({ ...q, id: k, type: /^card/.test(k) ? 'card' : k, name: String(q.name || '').slice(0, 8) }));
+}
+export function quickShowOf(st = state.settings) {
+  if (st.quickShow !== undefined) return st.quickShow !== false;
+  const old = Object.values(st.quick || {}).filter(Boolean);
+  return !old.length || old.some((q) => q.show);
+}
+/** Danh sách thống kê; dữ liệu kiểu cũ (statFlow, statTrack) được đọc thành danh sách. */
+export function statsOf(st = state.settings) {
+  if (Array.isArray(st.stats)) return st.stats;
+  const out = [];
+  if (st.statFlow) out.push({ ...st.statFlow, id: 'flow', type: 'flow' });
+  if (st.statTrack) out.push({ ...st.statTrack, id: 'track', type: 'track' });
+  return out;
+}
+export function statShowOf(st = state.settings) {
+  if (st.statShow !== undefined) return st.statShow !== false;
+  const old = [st.statFlow, st.statTrack].filter(Boolean);
+  return !old.length || old.some((x) => x.show);
+}
+
+/** Số liệu trong ngày của một mục (đọc trực tiếp từ sổ của mục đó). */
+export async function bookOverview(b) {
+  const { peer, accs } = await openPeerBook(b.id);
+  const txs = await peer.getAll('transactions');
+  const settings = { ...DEFAULT_SETTINGS };
+  for (const r of await peer.getAll('settings')) settings[r.key] = r.value;
+  const today = todayISO();
+  const active = accs.filter((a) => !a.archived).sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
+  let balance = 0, income = 0, expense = 0;
+  if (kindOfBook(b) === 'card') {
+    for (const t of txs) {
+      if (t.status !== 'done') balance += t.amountVnd;
+      if (t.date === today) expense += t.amountVnd;
+      if (t.paid?.date === today) income += t.amountVnd;
+    }
+  } else {
+    for (const a of active) {
+      balance += Number(a.initial) || 0;
+      for (const t of txs) balance += txEffect(t, a.id);
+    }
+    for (const t of txs) {
+      if (t.date !== today) continue;
+      if (t.type === 'income') income += t.amountVnd;
+      else if (t.type === 'expense') expense += t.amountVnd;
+    }
+  }
+  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings };
+}
+
 // ---------- User đặc biệt: Personal / Family ----------
 // Personal = pfBase + các giao dịch gắn nhãn personal trong Bank và Thấu chi của User.
 // Family = tổng số dư Bank + Thấu chi − Personal, nên tổng 2 phần luôn bằng số dư.

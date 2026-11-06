@@ -36,7 +36,7 @@ import { state } from './store.js';
 export const ui = {
   period: null, // Tổng quan + Giao dịch: { type: day|month, anchor }
   reportPeriod: null, // Báo cáo: { type: day|month|quarter|year|custom, anchor, from, to }
-  txFilter: { type: 'all', q: '', categoryId: null, tag: null, accountId: null },
+  txFilter: { type: 'all', q: '', categoryIds: [], tag: null },
   reportType: 'expense',
   planTab: 'budget',
 };

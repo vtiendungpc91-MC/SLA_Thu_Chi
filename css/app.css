@@ -782,3 +782,41 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .row.tx .grow small.when { font-size: 11px; line-height: 1.2; }
 .row.tx .amt { font-size: 14px; line-height: 1.2; }
 .row.tx .amt small { font-size: 11px; line-height: 1.1; }
+/* Tổng quan chung */
+.over-lines { display: flex; flex-direction: column; gap: 2px; margin: 2px 2px 0; }
+.over-lines > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 16px; }
+.over-lines .over-r { margin-left: auto; padding: 0; font-weight: 700; font-size: 11.5px; }
+.over-lines small[data-kind-total] { font-size: 15.4px; font-weight: 800; color: var(--income); letter-spacing: -.2px; }
+.over-lines small.pf-p { color: #d92d20; }
+.over-lines small.pf-f { color: #2563eb; }
+.over-lines .over-saving { padding: 0; font-size: 11.5px; font-weight: 700; color: var(--income); }
+.over-lines .over-card { padding: 0; font-size: 11.5px; font-weight: 700; color: var(--expense); }
+.over-lines .notif-count { padding: 0; }
+.over-acc { padding: 10px 12px; margin-bottom: 10px; }
+.over-head { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 0; text-align: left; background: none; border: 0; color: inherit; }
+.ol { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.ol > *:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ol > *:last-child { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.ol-bal { font-size: 17px; font-weight: 800; }
+.ol-sm { font-size: 12.5px; font-weight: 600; min-height: 15px; }
+.ol-sm small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.qk-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+.qk-row { display: flex; gap: 6px; margin-top: 5px; }
+.qk-btn { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 8px 3px; font-size: 12.5px; }
+.qk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.over-acc .home-stats { margin-top: 8px; }
+
+/* Thẻ Tổng quan trong màn hình nút phải */
+.over-tile { margin-bottom: 12px; }
+.over-main { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 12px 44px 12px 14px; text-align: left; background: none; border: 0; color: inherit; }
+.over-main > b { font-size: 16px; }
+.over-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+.over-row b { font-variant-numeric: tabular-nums; }
+.over-row small { color: var(--muted); }
+
+/* Giao dịch: lọc nhiều danh mục */
+.cat-filter > summary { display: inline-block; list-style: none; cursor: pointer; }
+.cat-filter > summary::-webkit-details-marker { display: none; }
+.cat-filter > summary::after { content: ' ▾'; }
+.cat-filter .check-list { margin-top: 6px; }
+.title-acts { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
