@@ -70,8 +70,8 @@ const SEED_INCOME = [
 const SYS_CATS = {
   'gop-out': { type: 'expense', name: 'Transfer cho người nhà', icon: '🤝', rule: 'needs', jar: 'NEC', color: '#12a594' },
   'gop-in': { type: 'income', name: 'Nhận transfer', icon: '🤝', color: '#12a594' },
-  'trich-in': { type: 'income', name: 'Income', icon: '🔄', color: '#8e4ec6' },
-  'trich-out': { type: 'expense', name: 'Chuyển Income', icon: '🔄', rule: 'needs', jar: 'NEC', color: '#8e4ec6' },
+  'trich-in': { type: 'income', name: 'Get In', icon: '🔄', color: '#8e4ec6' },
+  'trich-out': { type: 'expense', name: 'Chuyển Get In', icon: '🔄', rule: 'needs', jar: 'NEC', color: '#8e4ec6' },
 };
 
 function seedRows() {
@@ -263,7 +263,7 @@ export function currentUser() {
 export const userOf = (book) => getUsers().find((u) => u.id === book.owner);
 export const userBooks = (userId) => getProfiles().filter((b) => b.owner === userId);
 // ---------- Khóa mục ----------
-// Mục bị khóa: không chuyển tiền đi được (chi, transfer, chuyển khoản, trả nợ, bị income, trả tiền thẻ; thẻ thì không ghi khoản chi mới).
+// Mục bị khóa: không chuyển tiền đi được (chi, transfer, chuyển khoản, trả nợ, bị Get In, trả tiền thẻ; thẻ thì không ghi khoản chi mới).
 // Tiền vào (thu, nhận transfer) vẫn được.
 export const isLocked = (bookId) => !!getProfiles().find((b) => b.id === bookId)?.locked;
 export function setLocked(bookId, locked) {
@@ -368,11 +368,11 @@ export async function loadAll() {
     state.categories = cats;
     state.accounts = accs;
   }
-  // Đổi tên danh mục hệ thống Income cũ (giữ nguyên nếu người dùng đã tự đặt tên khác).
-  const oldFlowNames = { 'trich-in': 'Withdraw từ người nhà', 'trich-out': 'Bị withdraw cho người nhà' };
+  // Đổi tên danh mục hệ thống Get In cũ (giữ nguyên nếu người dùng đã tự đặt tên khác).
+  const oldFlowNames = { 'trich-in': ['Withdraw từ người nhà', 'Get In'], 'trich-out': ['Bị withdraw cho người nhà', 'Chuyển Get In'] };
   for (const c of state.categories) {
-    if (oldFlowNames[c.sys] === c.name) {
-      c.name = c.sys === 'trich-in' ? 'Income' : 'Chuyển Income';
+    if (oldFlowNames[c.sys]?.includes(c.name)) {
+      c.name = c.sys === 'trich-in' ? 'Get In' : 'Chuyển Get In';
       await db.put('categories', c);
     }
   }
@@ -498,14 +498,14 @@ export async function peerBalance(profileId, accountId) {
 }
 
 /**
- * Income tiền (ngược với Transfer): lấy tiền từ tài khoản của người khác về tài khoản của mình.
- * Sổ mình ghi khoản THU "Income từ …", sổ người kia ghi khoản CHI "Bị … income". Người kia phải đủ số dư.
+ * Get In tiền (ngược với Transfer): lấy tiền từ tài khoản của người khác về tài khoản của mình.
+ * Sổ mình ghi khoản THU "Get In từ …", sổ người kia ghi khoản CHI "Chuyển Get In cho …". Người kia phải đủ số dư.
  */
 export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null, pf = null }) {
   const me = currentProfile();
   const from = getProfiles().find((p) => p.id === fromProfileId);
-  if (!from || from.id === me.id) throw new Error('Chọn nguồn Income');
-  if (!hasIncome(me) || kindOfBook(from) !== 'neo') throw new Error('Income chỉ dành cho Bank của User đặc biệt, rút từ ngân hàng trong Secrecy');
+  if (!from || from.id === me.id) throw new Error('Chọn nguồn Get In');
+  if (!transferTargets('trich', me, { includeHidden: true }).some((p) => p.id === from.id)) throw new Error('Mục này không được Get In từ nguồn đã chọn');
   if (!canTransfer(me, from)) throw new Error(CLOSED_MSG);
   const { peer, cats, accs } = await openPeerBook(from.id);
   const locked = lockError(from.id);
@@ -520,11 +520,11 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
   await peer.put('transactions', {
     ...base, id: uid(), type: 'expense', categoryId: cats.find((c) => c.sys === 'trich-out').id, accountId: fromAccountId,
-    note: note || `Chuyển Income cho ${bookLabel(me)}`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(), ...mark,
+    note: note || `Chuyển Get In cho ${bookLabel(me)}`, gop: { id: gid, mode: 'trich', dir: 'out', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(), ...mark,
   });
   return put('transactions', {
     ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
-    note: note || `Income từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat }, ...mark,
+    note: note || `Get In từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat }, ...mark,
   });
 }
 
@@ -546,7 +546,7 @@ export async function overdraftWarnings({ fromId, fromAccountId, toId, toAccount
   return out;
 }
 
-/** Sửa ngày của khoản Transfer/Income ở cả 2 sổ. */
+/** Sửa ngày của khoản Transfer/Get In ở cả 2 sổ. */
 export async function setGopDate(tx, date) {
   if (tx.gop && getProfiles().some((p) => p.id === tx.gop.peer)) {
     const peer = dbOf(tx.gop.peer);
@@ -667,25 +667,25 @@ export async function deleteTx(tx) {
 
 // ---------- Thẻ trả trước ----------
 // Thẻ trả trước là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
-// Mỗi khoản chi có trạng thái open/done; "Income thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
+// Mỗi khoản chi có trạng thái open/done; "Get In thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
 export const CARD_TYPES = { credit: 'Thẻ Tín Dụng', wallet: 'Ví điện tử' };
 export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);
 /** Các mục ghi được Thu/Chi: Bank và Thấu chi của mọi User. */
 export const txBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
-/** Chỉ Bank của User đặc biệt mới có Income. */
+/** Bank của User đặc biệt được Get In từ Secrecy; Thấu chi được Get In từ Bank/Thấu chi khác. */
 export const hasIncome = (b) => !!userOf(b)?.special && (b.kind || 'bank') === 'bank' && !b.overdraft;
 export const kindOfBook = (p) => p.kind || 'bank';
 /**
- * Đích Transfer / Income theo loại mục đang mở:
+ * Đích Transfer / Get In theo loại mục đang mở:
  * - Ngân hàng: với Ngân hàng khác, Tiết kiệm, NEOBANK.
  * - Tiết kiệm: chỉ với các mục Ngân hàng.
- * - Thẻ trả trước: không transfer/income.
+ * - Thẻ trả trước: không transfer/Get In.
  */
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
-  const allowed = mode === 'trich' ? (hasIncome(from) ? ['neo'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
+  const allowed = mode === 'trich' ? (hasIncome(from) ? ['neo'] : from.overdraft ? ['bank'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
   // Secrecy đang ẩn thì không hiện trong form; mẫu nhanh đã thiết lập gọi thẳng gop/trich nên vẫn chạy.
   const hide = !includeHidden && secrecyHidden();
   return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && !(hide && p.owner === SECRECY) && canTransfer(from, p));
@@ -722,7 +722,7 @@ export async function peerCategories(bookId) {
 }
 
 // ---------- Đầu tư: đọc giao dịch từ 1 mục Ngân hàng theo danh mục đã chọn ----------
-// ---------- Danh mục Transfer / Income (dùng chung mọi mục, cho phép thêm) ----------
+// ---------- Danh mục Transfer / Get In (dùng chung mọi mục, cho phép thêm) ----------
 const FLOW_CATS_KEY = 'stc-flow-cats';
 const DEFAULT_FLOW_CATS = [
   { id: 'fc-invest', name: 'Đầu tư', icon: '📈' },
@@ -746,12 +746,21 @@ export function addFlowCat(name, icon = '🏷️') {
 }
 export const flowCatById = (id) => flowCats().find((c) => c.id === id);
 
-// ---------- Đầu tư: chỉ lấy dòng tiền Transfer/Income theo luồng "từ mục → đến mục" ----------
+// ---------- Icon của 4 loại giao dịch (cài đặt chung, dùng cho các nút nhanh) ----------
+const TX_ICONS_KEY = 'stc-tx-icons';
+export const TX_ICON_DEFAULTS = { expense: '💸', income: '💰', gop: '🤝', trich: '🔄' };
+export const txIcons = () => ({ ...TX_ICON_DEFAULTS, ...(readJSON(TX_ICONS_KEY) || {}) });
+export function setTxIcon(type, icon) {
+  localStorage.setItem(TX_ICONS_KEY, JSON.stringify({ ...txIcons(), [type]: icon }));
+  emit();
+}
+
+// ---------- Đầu tư: chỉ lấy dòng tiền Transfer/Get In theo luồng "từ mục → đến mục" ----------
 /**
  * source = { rules: [{ from, to, as: 'income'|'expense' }], flowCats: [id] }.
- * Mỗi khoản Transfer/Income được ghi ở mục nguồn (from) là một khoản "ra" có gop.peer = mục đích (to).
- * Đọc trực tiếp từ mục nguồn nên khi xóa giao dịch transfer/income, mục Đầu tư cũng mất theo.
- * flowCats rỗng = lấy mọi danh mục transfer/income.
+ * Mỗi khoản Transfer/Get In được ghi ở mục nguồn (from) là một khoản "ra" có gop.peer = mục đích (to).
+ * Đọc trực tiếp từ mục nguồn nên khi xóa giao dịch transfer/Get In, mục Đầu tư cũng mất theo.
+ * flowCats rỗng = lấy mọi danh mục transfer/Get In.
  */
 export async function loadFlowStats(src) {
   const live = (id) => getProfiles().some((p) => p.id === id && p.kind !== 'outflow');
@@ -801,7 +810,7 @@ export function cardDue() {
   return { items, before, time, date: reached ? thisRemind : remindOn(py, pm) };
 }
 
-/** Income thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
+/** Get In thanh toán một khoản chi của thẻ (đang mở thẻ) từ tài khoản của một người dùng. */
 export async function payCardItem(item, { profileId, accountId, date, pf = null }) {
   const card = currentProfile();
   const payer = getProfiles().find((p) => p.id === profileId);
@@ -1161,20 +1170,20 @@ export async function kindTotal(userId, kind) {
 }
 
 // ---------- Màn hình Tổng quan chung: nút nhanh, thống kê, số liệu trong ngày của từng mục ----------
-export const QUICK_MAX = { bank: 8, saving: 4, card: 8 };
+export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
 export const STAT_MAX = 3;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
   if (k === 'card') return ['card'];
   if (k === 'saving') return ['gop'];
-  return hasIncome(b) ? ['expense', 'income', 'gop', 'trich'] : ['expense', 'income', 'gop'];
+  return hasIncome(b) || b.overdraft ? ['expense', 'income', 'gop', 'trich'] : ['expense', 'income', 'gop'];
 }
 /** Danh sách nút nhanh; dữ liệu kiểu cũ (mỗi loại 1 mẫu) được đọc thành danh sách. */
 export function quicksOf(st = state.settings) {
   if (Array.isArray(st.quicks)) return st.quicks;
   return Object.entries(st.quick || {}).filter(([, q]) => q)
-    .map(([k, q]) => ({ ...q, id: k, type: /^card/.test(k) ? 'card' : k, name: String(q.name || '').slice(0, 8) }));
+    .map(([k, q]) => ({ ...q, id: k, type: /^card/.test(k) ? 'card' : k, name: String(q.name || '').slice(0, 12) }));
 }
 /** Danh sách thống kê; dữ liệu kiểu cũ (statFlow, statTrack) được đọc thành danh sách. */
 export function statsOf(st = state.settings) {
@@ -1259,7 +1268,7 @@ export async function pfCheck({ oldPf = null, oldDelta = 0, pf = null, delta = 0
   return null;
 }
 
-/** Kiểm tra nhãn Personal/Family của Transfer, Income, trả nợ; trả về phần cần ghi thêm vào giao dịch. */
+/** Kiểm tra nhãn Personal/Family của Transfer, Get In, trả nợ; trả về phần cần ghi thêm vào giao dịch. */
 async function pfMark(a, b, pf, delta) {
   if (!pfNeeded(a.id, b ? b.id : null)) return {};
   if (!pf) throw new Error('Chọn Personal hoặc Family');
@@ -1336,7 +1345,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), profiles, books, flowCats: flowCats() };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), profiles, books, flowCats: flowCats(), txIcons: txIcons() };
 }
 
 /**
@@ -1361,6 +1370,7 @@ export async function importAny(data) {
   if (Array.isArray(data.users) && data.users.length) saveUsers(data.users);
   else localStorage.removeItem(USERS_KEY);
   if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
+  if (data.txIcons) localStorage.setItem(TX_ICONS_KEY, JSON.stringify(data.txIcons));
   // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.
   for (const k of ['stc-model', 'stc-model5', 'stc-model6']) localStorage.removeItem(k);
   const target = data.profiles.some((p) => p.id === data.current) ? data.current : getProfiles()[0].id;

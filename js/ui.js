@@ -190,6 +190,10 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
   wrap.querySelector('[data-close]').addEventListener('click', close);
   const sheet = wrap.querySelector('.sheet');
   onMount && onMount(sheet, close);
+  // Mỗi mục chỉ có 1 tài khoản: ô tài khoản chỉ để xem, không bấm chọn được.
+  const lockAccounts = () => sheet.querySelectorAll('select[data-acc]').forEach((s) => { s.disabled = s.options.length <= 1; });
+  lockAccounts();
+  new MutationObserver(lockAccounts).observe(sheet, { childList: true, subtree: true });
   return close;
 }
 
