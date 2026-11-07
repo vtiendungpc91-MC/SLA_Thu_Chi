@@ -10,7 +10,7 @@ import {
   fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN,
 } from './utils.js';
 import { donut, bars } from './charts.js';
-import { iconPickerHtml, bindIconPicker } from './icons.js';
+import { iconPickerHtml, bindIconPicker, MONEY_PAIRS } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
 import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile } from './autosave.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay } from './lock.js';
@@ -3000,7 +3000,7 @@ actions['tx-icon'] = (el) => {
     title: `Icon ${QUICK_KINDS[t].label}`,
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
-      <div class="field"><span>Biểu tượng đang chọn <b id="ti-now">${esc(icon)}</b></span>${iconPickerHtml('ti-icons', icon)}</div>
+      <div class="field"><span>Biểu tượng đang chọn <b id="ti-now">${esc(icon)}</b></span>${iconPickerHtml('ti-icons', icon, { pairs: MONEY_PAIRS })}</div>
       ${icon !== S.TX_ICON_DEFAULTS[t] ? `<div class="actions"><button type="button" class="btn ghost" data-reset>Về mặc định ${S.TX_ICON_DEFAULTS[t]}</button></div>` : ''}
     </form>`,
     onMount(sh, close) {

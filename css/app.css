@@ -916,7 +916,8 @@ html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #14544d; c
 html.dark .quick-btn.q-trich { background: #4a2f78; color: #e0cefa; border-color: #7652b3; }
 
 /* Dòng thông báo chạy ở Tổng quan */
-.over-ticker { flex: 1 1 0; min-width: 0; padding: 0; border: 0; background: none; text-align: left; font-size: 11.5px; font-weight: 700; color: #e8590c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.over-ticker { flex: 1 1 0; min-width: 0; padding: 0; border: 0; background: none; text-align: left; font-size: 11.5px; font-weight: 700; color: #2563eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.dark .over-ticker { color: #7aa7ff; }
 .over-ticker[hidden] { display: none; }
 .over-ticker.tick { animation: ticker-in .35s ease; }
 @keyframes ticker-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -928,3 +929,6 @@ html.dark .quick-btn.q-trich { background: #4a2f78; color: #e0cefa; border-color
 .rep-box[hidden] { display: none; }
 .book-pick { padding: 6px 0; background: none; }
 .sheet-body > .book-pick { margin-bottom: 8px; }
+/* Cặp icon tiền ra / tiền vào trong bộ chọn icon của nút nhanh */
+.ip-pairs { display: grid; grid-template-columns: auto repeat(5, 1fr); gap: 4px 6px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.ip-pairs > span { font-size: 12px; font-weight: 700; color: var(--muted); }
