@@ -105,7 +105,7 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ tín dụng (5).
+// User (tối đa 3): Bank (3), Thấu chi (2), Tiết kiệm (2), Thẻ tín dụng (5). User đặc biệt: 1 Bank, 1 Thấu chi.
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
 export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
@@ -121,6 +121,12 @@ export const BOOK_KINDS = {
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
+export const OVERDRAFT_MAX = 2;
+/** Số mục tối đa của Bank hoặc Thấu chi: tính riêng từng loại, User đặc biệt mỗi loại 1. */
+export function moneyBookMax(userId, overdraft) {
+  if (getUsers().find((u) => u.id === userId)?.special) return 1;
+  return overdraft ? OVERDRAFT_MAX : BOOK_KINDS.bank.max;
+}
 export const ownerType = (u) => (u && u.type === 'category' ? 'category' : 'user');
 
 const readJSON = (key) => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } };
@@ -332,8 +338,12 @@ export function saveProfile(p) {
     // Thẻ tín dụng và Ví điện tử giới hạn riêng từng loại.
     const isCreditCard = (b) => !!b.credit || b.cardType === 'credit';
     const same = list.filter((b) => b.owner === p.owner && (b.kind || 'bank') === (p.kind || 'bank')
-      && (p.kind !== 'card' || isCreditCard(b) === isCreditCard(p)));
-    if (p.owner && same.length >= kind.max) throw new Error(`Tối đa ${kind.max} mục ${p.kind === 'card' ? CARD_TYPES[isCreditCard(p) ? 'credit' : 'wallet'] : kind.label}`);
+      && (p.kind !== 'card' || isCreditCard(b) === isCreditCard(p))
+      && ((p.kind || 'bank') !== 'bank' || !!b.overdraft === !!p.overdraft));
+    const isMoney = (p.kind || 'bank') === 'bank';
+    const max = isMoney && p.owner ? moneyBookMax(p.owner, p.overdraft) : kind.max;
+    const label = isMoney ? (p.overdraft ? 'Thấu chi' : 'Account') : p.kind === 'card' ? CARD_TYPES[isCreditCard(p) ? 'credit' : 'wallet'] : kind.label;
+    if (p.owner && same.length >= max) throw new Error(`Tối đa ${max} mục ${label}`);
     p.id = uid().replace(/-/g, '').slice(0, 12);
     p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
     list.push(p);
@@ -351,7 +361,7 @@ export async function deleteProfile(id) {
   if (!book) return;
   const siblings = userBooks(book.owner).filter((b) => b.id !== id);
   if (book.owner !== SECRECY && !siblings.length) throw new Error('Mỗi User cần ít nhất 1 mục');
-  if (isSpecialBook(book)) throw new Error('Không xóa được Bank và Thấu chi của User đặc biệt');
+  if (isSpecialBook(book)) throw new Error('Không xóa được Account và Thấu chi của User đặc biệt');
   saveProfiles(getProfiles().filter((p) => p.id !== id));
   if (localStorage.getItem(CURRENT_KEY) === id) await switchProfile(siblings[0].id);
   await dropProfile(id);
@@ -1294,7 +1304,7 @@ export async function bookOverview(b, range) {
 // Personal = pfBase + các giao dịch gắn nhãn personal trong Bank và Thấu chi của User.
 // Family = tổng số dư Bank + Thấu chi − Personal, nên tổng 2 phần luôn bằng số dư.
 export const PF_LABEL = { personal: 'Personal', family: 'Family' };
-const CLOSED_MSG = 'Không giao dịch được: Secrecy chỉ dành cho Bank của User đặc biệt; Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User';
+const CLOSED_MSG = 'Không giao dịch được: Secrecy chỉ dành cho Account của User đặc biệt; Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User';
 export const specialUser = () => getUsers().find((u) => u.special);
 export function isSpecialBook(b) { return !!b && kindOfBook(b) === 'bank' && !!userOf(b)?.special; }
 const closedBook = (b) => !!userOf(b)?.special && !(kindOfBook(b) === 'bank' && !b.overdraft);

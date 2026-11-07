@@ -435,13 +435,12 @@ actions.books = () => {
       const list = tabBooks(u.id, tab);
       const isMoney = tab === 'bank' || tab === 'od';
       const isCardTab = tab === 'credit' || tab === 'wallet';
-      const shared = isMoney ? tabBooks(u.id, 'bank').length + tabBooks(u.id, 'od').length : list.length;
-      const max = S.BOOK_KINDS[isMoney ? 'bank' : isCardTab ? 'card' : tab].max;
-      const room = shared < max && !(u.special && isMoney) && tab !== 'wallet';
+      const max = isMoney ? S.moneyBookMax(u.id, tab === 'od') : S.BOOK_KINDS[isCardTab ? 'card' : tab].max;
+      // Bank và Thấu chi của User đặc biệt tạo sẵn lúc thiết lập, không thêm tay.
+      const room = list.length < max && !(u.special && isMoney) && tab !== 'wallet';
       // Nhóm trống mà hết chỗ tạo thêm thì không cần hiện.
       if (!list.length && !room) return '';
-      // Bank và Thấu chi dùng chung giới hạn: mỗi nhóm hiện số còn được phép của riêng nó.
-      const count = (u.special && isMoney) || tab === 'wallet' ? `(${list.length})` : `(${list.length}/${max - (shared - list.length)})`;
+      const count = tab === 'wallet' ? `(${list.length})` : `(${list.length}/${max})`;
       const pfLine = u.special && tab === 'od'
         ? '<div class="pf-line"><span class="pf-p">Personal <b data-pf-val="personal">…</b></span><span class="pf-f">Family <b data-pf-val="family">…</b></span></div>' : '';
       return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${count}</small></span></h4>
@@ -579,7 +578,7 @@ const specialFields = () => `
   ${amountField('sp-limit', 0, 'Hạn mức Thấu chi')}
   ${amountField('sp-od', 0, 'Số dư Thấu chi hiện tại')}
   <label class="check"><input type="checkbox" id="sp-neg"> Số dư Thấu chi đang âm</label>
-  <div class="kv"><span>Tổng Bank + Thấu chi</span><b id="sp-total">0 ₫</b></div>
+  <div class="kv"><span>Tổng Account + Thấu chi</span><b id="sp-total">0 ₫</b></div>
   ${amountField('sp-personal', 0, 'Phần Personal')}
   <div class="kv"><span>Phần Family (tự tính)</span><b id="sp-family">0 ₫</b></div>`;
 function bindSpecialFields(sh) {
@@ -601,11 +600,11 @@ function bindSpecialFields(sh) {
       if (!Number.isFinite(b) || b < 0) return toast('Nhập số dư Ngân hàng hiện tại'), null;
       if (!(l > 0)) return toast('Nhập hạn mức Thấu chi'), null;
       if (!Number.isFinite(o)) return toast('Nhập số dư Thấu chi hiện tại'), null;
-      if (b + o < 0) return toast('Tổng Bank + Thấu chi đang âm nên không chia được Personal / Family', 4000), null;
+      if (b + o < 0) return toast('Tổng Account + Thấu chi đang âm nên không chia được Personal / Family', 4000), null;
       if (!Number.isFinite(p) || p < 0) return toast('Nhập phần Personal'), null;
       if (p > b + o) return toast(`Personal không được lớn hơn tổng ${fmt(b + o)}`, 4000), null;
       const over = Math.abs(o) > l ? '\n⚠️ Số dư Thấu chi vượt hạn mức.' : '';
-      if (!confirm(`Bank: ${fmt(b)}\nThấu chi: ${fmt(o)} · hạn mức ${fmt(l)}\nPersonal: ${fmt(p)}\nFamily: ${fmt(b + o - p)}${over}\n\nSau này muốn đổi phải Reset. Đồng ý?`)) return null;
+      if (!confirm(`Account: ${fmt(b)}\nThấu chi: ${fmt(o)} · hạn mức ${fmt(l)}\nPersonal: ${fmt(p)}\nFamily: ${fmt(b + o - p)}${over}\n\nSau này muốn đổi phải Reset. Đồng ý?`)) return null;
       return { bank: b, limit: l, overdraft: o, personal: p };
     },
   };
@@ -646,7 +645,7 @@ actions['pf-convert'] = () => {
       <div class="kv"><span>Family</span><b class="pf-f" data-pc="family">…</b></div>
       <div class="seg" id="pc-dir"><button type="button" data-from="personal" class="on">Personal → Family</button><button type="button" data-from="family">Family → Personal</button></div>
       ${amountField('pc-amt', 0, 'Số tiền chuyển')}
-      <p class="muted small">Chỉ đổi cách chia giữa 2 phần, số dư Bank và Thấu chi không đổi.</p>
+      <p class="muted small">Chỉ đổi cách chia giữa 2 phần, số dư Account và Thấu chi không đổi.</p>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'pc-amt');
@@ -689,7 +688,7 @@ function userForm(u) {
       ${field('Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ">`)}
       ${looksFields(f, true)}
       ${u ? '' : '<p class="muted small">User mới có sẵn 1 mục 🏦 Ngân hàng.</p>'}
-      ${!u && !S.specialUser() ? `<label class="check"><input type="checkbox" id="uf-special"> ⭐ User đặc biệt (có sẵn Bank + Thấu chi, chia Personal / Family)</label>
+      ${!u && !S.specialUser() ? `<label class="check"><input type="checkbox" id="uf-special"> ⭐ User đặc biệt (có sẵn Account + Thấu chi, chia Personal / Family)</label>
         <div id="sp-box" hidden>${specialFields()}</div>` : ''}
       ${u?.special ? '<p class="muted small">⭐ User đặc biệt.</p><div class="actions"><button type="button" class="btn ghost" data-act="pf-reset">🔄 Reset số dư, hạn mức, Personal / Family</button></div>' : ''}
       ${u && users.length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa User</button></div>' : ''}
@@ -720,8 +719,8 @@ function userForm(u) {
   });
 }
 
-const CREDIT_HINT = 'Có Thu/Chi như một tài khoản, luôn hiện số âm là tiền đang nợ, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Bank.';
-const ODRAFT_HINT = 'Thu/Chi và Transfer như Bank, số dư được âm và vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức sẽ có cảnh báo.';
+const CREDIT_HINT = 'Có Thu/Chi như một tài khoản, luôn hiện số âm là tiền đang nợ, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Account.';
+const ODRAFT_HINT = 'Thu/Chi và Transfer như Account, số dư được âm và vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức sẽ có cảnh báo.';
 
 /** Thêm/sửa mục (Ngân hàng / Tiết kiệm / Thẻ trả trước) của User hiện tại. */
 function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
@@ -1256,7 +1255,7 @@ function creditPaySheet() {
   const debt = -S.accountBalance(S.activeAccounts()[0]);
   if (debt <= 0) return toast('Thẻ không còn nợ');
   const users = sortByUser(S.moneyBooks().filter((p) => S.canTransfer(card, p)));
-  if (!users.length) return toast('Chưa có mục Bank để thanh toán');
+  if (!users.length) return toast('Chưa có mục Account để thanh toán');
   const formId = 'cr-' + Date.now();
   openSheet({
     title: 'Thanh toán thẻ',
@@ -1315,7 +1314,7 @@ function creditPaySheet() {
 const overName = (u) => u.overName || 'Tổng quan';
 const overIcon = (u) => u.overIcon || '📊';
 const overColor = (u) => u.overColor || u.color;
-const OVER_TABS = [['bank', 'Bank Account'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['credit', 'Thẻ tín dụng'], ['wallet', 'Ví điện tử']];
+const OVER_TABS = [['bank', 'Account'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['credit', 'Thẻ tín dụng'], ['wallet', 'Ví điện tử']];
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', credit: '💳', wallet: '👛' };
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
 const overTabs = (userId) => OVER_TABS.filter(([tab]) => tab !== 'wallet' || tabBooks(userId, 'wallet').length);
@@ -3146,7 +3145,7 @@ function secrecyHtml() {
       ${list.length < k.max ? `<button type="button" class="row add-row" data-act="secrecy-add" data-kind="${kind}"><span class="ci">＋</span><span class="grow"><b>Thêm ${k.label}</b></span></button>` : ''}
     </section>`;
   }).join('')}
-  <p class="muted small">🏧 NEOBANK: chỉ Bank của User đặc biệt giao dịch được, dùng <b>Transfer</b> để gửi tiền vào và <b>Get In</b> để lấy tiền về.</p>`;
+  <p class="muted small">🏧 NEOBANK: chỉ Account của User đặc biệt giao dịch được, dùng <b>Transfer</b> để gửi tiền vào và <b>Get In</b> để lấy tiền về.</p>`;
 }
 
 actions['secrecy-add'] = (el) => secrecyForm(null, el.dataset.kind);
@@ -3168,7 +3167,7 @@ async function secrecyForm(b, kind) {
     body: `<form class="form" id="${formId}">
       ${field('Tên', `<input id="sc-name" required maxlength="24" value="${esc(b ? b.name : '')}" placeholder="${neo ? 'vd: Cake, Timo, Ví ảo' : 'vd: Biếu bố mẹ, Chi ngoài'}">`)}
       ${neo ? amountField('sc-bal', cur, 'Số dư hiện tại') : b ? `<p class="muted">Đã nhận transfer: <b>${fmt(cur)}</b></p>` : ''}
-      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Bank của User đặc biệt transfer vào sẽ cộng, Get In về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
+      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Account của User đặc biệt transfer vào sẽ cộng, Get In về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
     </form>`,
     onMount(sh, close) {
       const bal = neo ? bindMoney(sh, 'sc-bal') : null;

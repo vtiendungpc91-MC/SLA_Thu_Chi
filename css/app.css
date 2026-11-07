@@ -894,3 +894,7 @@ html.dark .qk-legend, html.dark .rc-head small { color: var(--muted); }
 html.dark .over-pay { background: var(--soft); }
 html.dark .av-edit > i, html.dark .over-ic > i { background: var(--soft); color: var(--text); }
 .theme-btn { font-size: 18px; }
+/* Màu thẻ đang chọn ở Tổng quan: Account giữ cam mặc định của .seg.tabs */
+.seg.tabs > [data-act="over-tab"][data-v="od"].on { background: #74c0fc; color: #0b2545; }
+.seg.tabs > [data-act="over-tab"][data-v="saving"].on { background: #2b8a3e; color: #fff; }
+.seg.tabs > [data-act="over-tab"][data-v="credit"].on { background: #e03131; color: #fff; }
