@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.9.0 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.10.0 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -12,12 +12,11 @@ Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server 
 User (tối đa 3)
 ├── Bank và Thấu chi (hiển thị 2 thẻ riêng, tổng tối đa 3)
 ├── Tiết kiệm (tối đa 2)
-├── Thẻ tín dụng (tối đa 2)
-└── Ví điện tử (tối đa 2)
+└── Thẻ tín dụng (tối đa 5)
 Secrecy (ngoài các User): NEOBANK
 ```
 
-Màn hình chính là **Tổng quan** của User: 5 thẻ Bank, Thấu chi, Tiết Kiệm, Thẻ tín dụng, Ví điện tử, mỗi thẻ liệt kê các tài khoản với số dư, thu/chi trong ngày, nút nhanh và thống kê. Nút góc trái chọn User và xem Notifications. Nút góc phải có thẻ Tổng quan (đổi được tên, biểu tượng, màu) và danh sách mục; chọn mục sẽ mở Giao dịch, Báo cáo, Kế hoạch, Cài đặt của mục đó, nút Đóng luôn về Tổng quan.
+Màn hình chính là **Tổng quan** của User: 4 thẻ Bank, Thấu chi, Tiết Kiệm, Thẻ tín dụng, mỗi thẻ liệt kê các tài khoản với số dư, thu/chi trong ngày, nút nhanh và thống kê. Nút góc trái chọn User và xem Notifications. Nút góc phải có thẻ Tổng quan (đổi được tên, biểu tượng, màu) và danh sách mục; chọn mục sẽ mở Giao dịch, Báo cáo, Kế hoạch, Cài đặt của mục đó, nút Đóng luôn về Tổng quan.
 
 ## Tính năng
 
@@ -30,8 +29,8 @@ Màn hình chính là **Tổng quan** của User: 5 thẻ Bank, Thấu chi, Ti�
 | **Bank** | Sổ thu/chi có 1 tài khoản ngân hàng và số dư |
 | **Thấu chi** | Nhập hạn mức và số dư lúc tạo, sau đó không sửa được (xóa rồi tạo lại). Thu/Chi và Transfer như Bank, được âm số dư, vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức thì cảnh báo, không chặn |
 | **Tiết kiệm** | Chỉ Transfer và Get In với Bank/Thấu chi |
-| **Thẻ Tín Dụng** | Tạo mới nhập số nợ hiện tại. Có Thu/Chi, luôn hiện số âm, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Bank; không cho thu hoặc trả vượt số nợ. Tổng quan hiện tổng nợ thẻ |
-| **Ví điện tử** | Không có số dư: ghi khoản chi (số tiền, danh mục, nội dung), rồi thanh toán từng khoản hoặc tất cả từ mục Bank. Cài đặt thẻ có nhắc trích trả nợ theo ngày và giờ, gồm các khoản chưa trả trước tháng hiện tại |
+| **Thẻ Tín Dụng** | Tạo mới nhập hạn mức âm tối đa và số nợ hiện tại; Chi vượt hạn mức bị chặn. Có Thu/Chi, luôn hiện số âm, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Bank; không cho thu hoặc trả vượt số nợ. Tổng quan hiện tổng nợ thẻ |
+| **Ví điện tử (đã bỏ, không tạo mới được; ví cũ vẫn dùng được)** | Không có số dư: ghi khoản chi (số tiền, danh mục, nội dung), rồi thanh toán từng khoản hoặc tất cả từ mục Bank. Cài đặt thẻ có nhắc trích trả nợ theo ngày và giờ, gồm các khoản chưa trả trước tháng hiện tại |
 | **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Bank + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Bank và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Bank của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
 | **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ, Nhắc nhở |
 | **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done |

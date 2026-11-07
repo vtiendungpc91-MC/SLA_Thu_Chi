@@ -105,7 +105,7 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ tín dụng (2), Ví điện tử (2).
+// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ tín dụng (5).
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
 export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
@@ -117,7 +117,7 @@ export const PROFILE_COLORS = [
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
-  card: { label: 'Thẻ trả trước', icon: '💳', max: 2 },
+  card: { label: 'Thẻ tín dụng', icon: '💳', max: 5 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -566,8 +566,10 @@ export function creditError(delta, ignoreTx = null) {
   if (!currentProfile().credit) return null;
   const acc = activeAccounts()[0];
   const base = available(acc.id, ignoreTx);
-  if (base + delta <= 0) return null;
-  return `Thẻ chỉ đang nợ ${fmt(Math.max(0, -base))}, không được vượt quá số nợ`;
+  if (base + delta > 0) return `Thẻ chỉ đang nợ ${fmt(Math.max(0, -base))}, không được vượt quá số nợ`;
+  const limit = Number(currentProfile().limit) || 0;
+  if (limit && delta < 0 && base + delta < -limit) return `Vượt hạn mức ${fmt(limit)}: đang nợ ${fmt(Math.max(0, -base))}, chỉ còn dùng được ${fmt(Math.max(0, limit + base))}`;
+  return null;
 }
 
 /** Thanh toán Thẻ tín dụng (đang mở thẻ) một phần hoặc toàn bộ từ tài khoản của một mục khác. */
@@ -1010,6 +1012,7 @@ export async function processRecurring() {
       const tx = txFromTemplate(r, r.nextDate);
       // Khoản chi/chuyển khoản không đủ số dư: không tự ghi, để lại thành mục "cần xử lý".
       if (tx.type !== 'income' && fundsError(tx.accountId, tx.amountVnd)) break;
+      if (creditError(pfDelta(tx))) break;
       // User đặc biệt: chưa chọn Personal/Family hoặc phần đó không đủ tiền thì cũng để lại cho người dùng xử lý.
       if (isSpecialBook(currentProfile())) {
         if (!tx.pf || await pfCheck({ pf: tx.pf, delta: pfDelta(tx) })) break;

@@ -121,8 +121,10 @@ function balHint(el, { have, need, bookId, who = '' }) {
     return;
   }
   if (S.getProfiles().some((b) => b.id === bookId && b.credit)) {
-    el.textContent = `Thẻ tín dụng · đang nợ ${fmt(Math.max(0, -have))}`;
-    el.className = 'hint';
+    const lim = Number(S.getProfiles().find((b) => b.id === bookId).limit) || 0;
+    const over = lim && have - need < -lim;
+    el.textContent = `Thẻ tín dụng · đang nợ ${fmt(Math.max(0, -have))}` + (lim ? ` · còn dùng được ${fmt(Math.max(0, lim + have))}` : '') + (over ? ' — ⚠️ vượt hạn mức' : '');
+    el.className = 'hint' + (over ? ' warn-red' : '');
     return;
   }
   const od = S.getProfiles().find((b) => b.id === bookId && b.overdraft);
@@ -227,6 +229,7 @@ async function fillTopBar(root) {
     debtEl.hidden = !credits.length;
     debtEl.textContent = `Nợ thẻ ${fmt(debt)}`;
     savingEl.textContent = `Tiết kiệm ${fmt(saving)}`;
+    cardEl.hidden = !tabBooks(u.id, 'wallet').length;
     cardEl.textContent = `Ví điện tử ${fmt(wallet)}`;
   } else {
     const room = innerWidth / 2 - 44;
@@ -315,7 +318,7 @@ async function fillProfileSums(root) {
     try {
       const s = await S.profileSummary(p);
       el.innerHTML = s.credit
-        ? `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${S.CARD_TYPES.credit} · ${s.balance < 0 ? 'đang nợ' : 'hết nợ'}</small>`
+        ? `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.limit ? `Hạn mức ${fmtShort(p.limit)}` : S.CARD_TYPES.credit} · ${s.balance < 0 ? 'đang nợ' : 'hết nợ'}</small>`
         : s.kind === 'card'
         ? `<b class="${s.unpaid ? 'expense' : 'income'}">${fmt(s.unpaid)}</b><small>${p.cardType ? S.CARD_TYPES[p.cardType] + ' · ' : ''}${s.count ? `${s.count} khoản chưa TT` : 'Đã thanh toán hết'}</small>`
         : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.overdraft ? `Thấu chi · hạn mức ${fmtShort(p.limit)}` : 'Số dư'}</small>`;
@@ -425,15 +428,15 @@ actions.books = () => {
     body: `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(overColor(u))}">
         <div role="button" tabindex="0" class="over-main" data-over>
           <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}</b>
-          ${OVER_TABS.map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
+          ${overTabs(u.id).map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
         </div>
-      </div>` + OVER_TABS.map(([tab, label]) => {
+      </div>` + overTabs(u.id).map(([tab, label]) => {
       const list = tabBooks(u.id, tab);
       const isMoney = tab === 'bank' || tab === 'od';
       const isCardTab = tab === 'credit' || tab === 'wallet';
       const shared = isMoney ? tabBooks(u.id, 'bank').length + tabBooks(u.id, 'od').length : list.length;
       const max = S.BOOK_KINDS[isMoney ? 'bank' : isCardTab ? 'card' : tab].max;
-      const room = shared < max && !(u.special && isMoney);
+      const room = shared < max && !(u.special && isMoney) && tab !== 'wallet';
       const pfLine = u.special && tab === 'od'
         ? '<div class="pf-line"><span class="pf-p">Personal <b data-pf-val="personal">…</b></span><span class="pf-f">Family <b data-pf-val="family">…</b></span></div>' : '';
       return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${isMoney ? `(${list.length}) · Bank + Thấu chi: ${shared}/${max}` : `(${list.length}/${max})`}</small></span></h4>
@@ -732,7 +735,8 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
       ${kind === 'card' && b && !b.credit ? `<div class="field"><span>Loại thẻ</span><div class="seg" id="bf-card">${Object.entries(S.CARD_TYPES).map(([v, label]) =>
         `<button type="button" data-c="${v}" class="${v === (f.cardType || 'credit') ? 'on' : ''}">${label}</button>`).join('')}</div></div>` : ''}
       <p class="muted small">${k.icon} Mục của <b>${esc(owner.name)}</b>. <span id="bf-hint">${isOd ? ODRAFT_HINT : b?.credit || (kind === 'card' && !b && (f.cardType || 'credit') === 'credit') ? CREDIT_HINT : hint}</span></p>
-      ${kind === 'card' && !b && f.cardType === 'credit' ? `<div id="bf-debt-box">${amountField('bf-debt', 0, 'Số dư đang nợ hiện tại')}<p class="muted small">⚠️ Sau khi tạo không sửa được số này, chỉ thay đổi qua Chi, Thu và Thanh toán.</p></div>` : ''}
+      ${b?.credit ? amountField('bf-climit', b.limit || 0, 'Hạn mức âm tối đa có thể dùng') : ''}
+      ${kind === 'card' && !b && f.cardType === 'credit' ? `<div id="bf-debt-box">${amountField('bf-climit', 0, 'Hạn mức âm tối đa có thể dùng')}${amountField('bf-debt', 0, 'Số dư đang nợ hiện tại')}<p class="muted small">⚠️ Sau khi tạo không sửa được số này, chỉ thay đổi qua Chi, Thu và Thanh toán.</p></div>` : ''}
       ${isOd && !b ? `<div id="bf-od">
         ${amountField('bf-limit', 0, 'Hạn mức thấu chi')}
         ${amountField('bf-init', 0, 'Số dư lúc đầu')}
@@ -751,6 +755,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
       setTimeout(() => { if (!b) $(sh, '#pf-name').focus(); }, 250);
       let cardType = f.cardType || 'credit';
       const debtIn = kind === 'card' && !b && f.cardType === 'credit' ? bindMoney(sh, 'bf-debt') : null;
+      const climIn = b?.credit || debtIn ? bindMoney(sh, 'bf-climit') : null;
       $(sh, '#bf-card')?.addEventListener('click', (e) => {
         const t = e.target.closest('[data-c]');
         if (!t) return;
@@ -772,7 +777,16 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
           data.credit = true;
           const debt = debtIn.value.trim() ? Math.round(readMoney(debtIn.value)) : 0;
           if (!Number.isFinite(debt) || debt < 0) return toast('Số nợ chưa đúng');
+          const lim = Math.round(readMoney(climIn.value));
+          if (!(lim > 0)) return toast('Nhập hạn mức âm tối đa');
+          if (debt > lim) return toast(`Số nợ không được lớn hơn hạn mức ${fmt(lim)}`, 3500);
+          data.limit = lim;
           initial = -debt;
+        }
+        if (b?.credit) {
+          const lim = climIn.value.trim() ? Math.round(readMoney(climIn.value)) : 0;
+          if (!Number.isFinite(lim) || lim < 0) return toast('Hạn mức chưa đúng');
+          data.limit = lim;
         }
         if (isOd && !b) {
           data.overdraft = true;
@@ -1295,6 +1309,9 @@ const overIcon = (u) => u.overIcon || '📊';
 const overColor = (u) => u.overColor || u.color;
 const OVER_TABS = [['bank', 'Bank'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['credit', 'Thẻ tín dụng'], ['wallet', 'Ví điện tử']];
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', credit: '💳', wallet: '👛' };
+/** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
+const overTabs = (userId) => OVER_TABS.filter(([tab]) => tab !== 'wallet' || tabBooks(userId, 'wallet').length);
+const overKindNow = () => (overTabs(S.currentUser().id).some(([tab]) => tab === ui.overKind) ? ui.overKind : 'bank');
 /** Các mục của một thẻ ở Tổng quan: Bank và Thấu chi tách riêng. */
 const tabBooks = (userId, tab) => S.userBooks(userId).filter((b) => {
   if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft;
@@ -1335,7 +1352,7 @@ function overNameForm(u) {
 
 function homeView() {
   const u = S.currentUser();
-  const kind = ui.overKind || 'bank';
+  const kind = overKindNow();
   return `<header class="top topbar">
     <div class="chip-col">
       <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
@@ -1355,7 +1372,7 @@ function homeView() {
   <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div></div>
   <div class="over-date"><small>📅 ${fmtDayHeader(todayISO())}</small>
     <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-  <div class="seg tabs">${OVER_TABS.map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
+  <div class="seg tabs">${overTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
   <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) || '<p class="muted small center">Đang tải…</p>'}</div>
   ${fab()}`;
 }
@@ -1430,7 +1447,7 @@ async function overCard(b) {
         ${m.configured ? `<strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong>` : ''}<i>›</i></button>`;
     }
   }
-  const sub = b.kind === 'card' ? (S.CARD_TYPES[b.cardType] || '')
+  const sub = b.kind === 'card' ? (b.credit && b.limit ? `Hạn mức ${fmtShort(b.limit)}` : S.CARD_TYPES[b.cardType] || '')
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
   return `<section class="card over-acc" style="--c:${esc(b.color)}">
     <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
@@ -1452,7 +1469,7 @@ async function fillOverview(root) {
   const token = ++overToken;
   overExpiry = Infinity;
   const u = S.currentUser();
-  const kind = ui.overKind || 'bank';
+  const kind = overKindNow();
   const books = tabBooks(u.id, kind);
   try {
     let html = '';
@@ -2797,7 +2814,7 @@ function viewImage(src) {
 /** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Transfer/Get In); Tiết kiệm chỉ có Transfer/Get In. */
 actions.add = async (el) => {
   if (current.route === 'home') {
-    const kind = ui.overKind || 'bank';
+    const kind = overKindNow();
     const books = tabBooks(S.currentUser().id, kind);
     if (!books.length) return toast('Chưa có mục nào. Bấm nút góc phải để tạo.');
     if (!books.some((b) => b.id === S.currentProfile().id)) await S.switchProfile(books[0].id);
