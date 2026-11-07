@@ -201,13 +201,13 @@ async function fillTopBar(root) {
   if (!count || !total) return;
   const onHome = current.route === 'home';
   const u = S.currentUser(), kind = onHome ? 'bank' : S.kindOfBook(S.currentProfile());
-  const [alerts, sum] = await Promise.all([S.userAlerts(u.id), S.kindTotal(u.id, kind)]);
+  const [alerts, sum] = await Promise.all([S.userAlerts(u.id), S.kindTotal(u.id, kind, { visibleOnly: true })]);
   count.hidden = !alerts.length;
   count.textContent = `🔔 ${alerts.length} thông báo`;
   total.innerHTML = (kind === 'card' ? '<small>Chưa TT</small> ' : '') + fmt(sum);
   // Số tiền rất lớn hoặc màn hình hẹp: thu nhỏ vừa đủ để không đè lên nút + giữa màn hình.
   if (onHome) {
-    const [saving, card] = await Promise.all([S.kindTotal(u.id, 'saving'), S.kindTotal(u.id, 'card')]);
+    const [saving, card] = await Promise.all([S.kindTotal(u.id, 'saving', { visibleOnly: true }), S.kindTotal(u.id, 'card', { visibleOnly: true })]);
     const savingEl = root.querySelector('[data-over-saving]'), cardEl = root.querySelector('[data-over-card]');
     if (!savingEl || !cardEl) return; // Đã rời Tổng quan trong lúc đọc dữ liệu.
     savingEl.textContent = `Tiết kiệm ${fmt(saving)}`;
@@ -301,7 +301,7 @@ async function fillProfileSums(root) {
     } catch { el.textContent = ''; }
   }
   for (const el of root.querySelectorAll('[data-usum]')) {
-    const books = S.userBooks(el.dataset.usum);
+    const books = S.userBooks(el.dataset.usum).filter((b) => !b.hideHome);
     try {
       let balance = 0, unpaid = 0;
       for (const b of books) {
@@ -404,7 +404,7 @@ actions.books = () => {
     body: `<div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(overColor(u))}">
         <button type="button" class="over-main" data-over>
           <b>${esc(overIcon(u))} ${esc(overName(u))}</b>
-          ${OVER_TABS.map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
+          ${OVER_TABS.map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab, true).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
         </button>
         <button type="button" class="ptile-edit" data-over-edit aria-label="Thiết lập">✎</button>
       </div>` + OVER_TABS.map(([tab, label]) => {
@@ -417,7 +417,7 @@ actions.books = () => {
         ? '<div class="pf-line"><span class="pf-p">Personal <b data-pf-val="personal">…</b></span><span class="pf-f">Family <b data-pf-val="family">…</b></span></div>' : '';
       return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${isMoney ? `(${list.length}) · Bank + Thấu chi: ${money}/${max}` : `(${list.length}/${max})`}</small></span></h4>
         <div class="tile-grid one-col">${list.map((b) => tileHtml({
-          attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : ''), on: b.id === cur,
+          attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : '') + (b.hideHome ? ' 🙈' : ''), on: b.id === cur,
           sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1 && !S.isSpecialBook(b),
         })).join('')}
         ${pfLine}
@@ -951,7 +951,7 @@ async function saveStat(item, data) {
   await S.setSetting('stats', item ? list.map((x) => (x.id === item.id ? row : x)) : [...list, row]);
 }
 const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-const todayRange = () => getRange('day', todayISO());
+const overRange = () => getRange(ui.overPeriod || 'day', todayISO());
 
 function statRow(t) {
   const sign = t.type === 'income' ? 1 : -1;
@@ -966,7 +966,7 @@ function statRow(t) {
     <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
 }
 
-/** Bấm dòng thống kê ở Tổng quan: xem chi tiết trong ngày. */
+/** Bấm dòng thống kê ở Tổng quan: xem chi tiết theo kỳ đang chọn. */
 actions['stat-open'] = async (el) => {
   const { id, book } = el.dataset;
   await inBook(book);
@@ -974,14 +974,14 @@ actions['stat-open'] = async (el) => {
   if (!st) return;
   const m = await STATS[st.type].load(st);
   if (!m.configured) return STATS[st.type].form(st);
-  const r = todayRange();
+  const r = overRange();
   const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
   const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
   openSheet({
     title: `${statIcon(st)} ${statName(st)} · ${r.label}`,
     body: `<section class="card stats two-col"><div><small>Thu</small><b class="income">${fmt(inc)}</b></div><div><small>Chi</small><b class="expense">${fmt(exp)}</b></div></section>
       <p class="center"><small class="muted">Chênh lệch</small> <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b></p>
-      ${list.length ? `<div class="card list">${list.map(statRow).join('')}</div>` : empty('📭', 'Không có giao dịch phù hợp trong ngày.')}`,
+      ${list.length ? `<div class="card list">${list.map(statRow).join('')}</div>` : empty('📭', 'Không có giao dịch phù hợp trong kỳ.')}`,
   });
 };
 actions['stat-setup'] = (el) => {
@@ -1187,14 +1187,15 @@ const overColor = (u) => u.overColor || u.color;
 const OVER_TABS = [['bank', 'Bank'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['card', 'Thẻ trả trước']];
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', card: '💳' };
 /** Các mục của một thẻ ở Tổng quan: Bank và Thấu chi tách riêng. */
-const tabBooks = (userId, tab) => S.userBooks(userId).filter((b) => {
+const tabBooks = (userId, tab, visibleOnly = false) => S.userBooks(userId).filter((b) => {
+  if (visibleOnly && b.hideHome) return false;
   if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft;
   if (tab === 'od') return !!b.overdraft;
   return S.kindOfBook(b) === tab;
 });
 async function tabTotal(userId, tab) {
   let total = 0;
-  for (const b of tabBooks(userId, tab)) {
+  for (const b of tabBooks(userId, tab, true)) {
     const s = await S.profileSummary(b);
     total += s.kind === 'card' ? s.unpaid : s.balance;
   }
@@ -1202,6 +1203,7 @@ async function tabTotal(userId, tab) {
 }
 const overCache = new Map();
 let overToken = 0;
+let overExpiry = Infinity;
 
 function overNameForm(u) {
   const f = { icon: overIcon(u), color: overColor(u) };
@@ -1239,9 +1241,11 @@ function homeView() {
     <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
     <div><small class="chip-sub over-card" data-over-card></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
   </div>
-  <div class="title-row"><div><h1>${esc(overName(u))}</h1><small>📅 ${fmtDayHeader(todayISO())}</small></div></div>
+  <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div></div>
+  <div class="over-date"><small>📅 ${fmtDayHeader(todayISO())}</small>
+    <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="seg tabs">${OVER_TABS.map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
-  <div data-over-list>${overCache.get(`${u.id}:${kind}`) || '<p class="muted small center">Đang tải…</p>'}</div>
+  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) || '<p class="muted small center">Đang tải…</p>'}</div>
   ${fab()}`;
 }
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; refresh(); };
@@ -1257,14 +1261,50 @@ function quickRows(list, bookId) {
     ${row(list.slice(0, first))}${row(list.slice(first))}`;
 }
 
+/** Các giao dịch vừa ghi bằng nút nhanh: có nút Recall trong 10 phút, có nút ẩn/hiện. */
+function recentRows(list, b) {
+  if (!list.length) return '';
+  const rows = list.map((t) => {
+    const k = QUICK_KINDS[t.quick.type] || QUICK_KINDS.expense;
+    const sign = t.type === 'income' ? 1 : -1;
+    return `<div class="rc-row"><span class="rc-name">${k.icon} ${esc(t.quick.name)} <small>${fmtTimeVN(t.createdAt)}</small></span>
+      <span class="rc-amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span>
+      <button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}">↩ Recall</button></div>`;
+  }).join('');
+  return `<div class="rc-box">
+    <div class="rc-head"><small>Vừa ghi bằng nút nhanh (${list.length})</small><button type="button" class="link rc-toggle" data-act="recent-toggle" data-id="${esc(b.id)}">${b.hideRecent ? 'Hiện' : 'Ẩn'}</button></div>
+    ${b.hideRecent ? '' : rows}
+  </div>`;
+}
+actions['recent-toggle'] = (el) => {
+  const b = S.getProfiles().find((x) => x.id === el.dataset.id);
+  if (!b) return;
+  S.saveProfile({ id: b.id, hideRecent: !b.hideRecent });
+  refresh();
+};
+actions['quick-recall'] = async (el) => {
+  const { id, book } = el.dataset;
+  await inBook(book);
+  const t = state.transactions.find((x) => x.id === id);
+  if (!t) return refresh();
+  if (Date.now() - (t.createdAt || 0) >= S.RECALL_MS) { toast('Đã quá 10 phút, muốn xóa hãy vào Giao dịch'); return refresh(); }
+  const pfErr = await S.pfRemoveError(t);
+  if (pfErr) return toast('⛔ ' + pfErr, 4500);
+  if (!confirm(`Hủy khoản ${fmt(t.amountVnd)} của nút "${t.quick?.name || ''}"?${t.gop ? ' Giao dịch ở mục bên kia cũng bị xóa.' : ''}`)) return;
+  await S.deleteTx(t);
+  toast('Đã hủy giao dịch');
+};
+
+let recallTimer = null;
 async function overCard(b) {
-  const o = await S.bookOverview(b);
+  const r = overRange();
+  const o = await S.bookOverview(b, r);
+  overExpiry = Math.min(overExpiry, ...o.recent.map((t) => t.createdAt + S.RECALL_MS));
   const isCard = b.kind === 'card';
   const st = o.settings;
   const quicks = S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type)).slice(0, S.QUICK_MAX[S.kindOfBook(b)]);
   let stats = '';
   if (!isCard) {
-    const r = todayRange();
     for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
       const m = await STATS[x.type].load(x);
       const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
@@ -1283,6 +1323,7 @@ async function overCard(b) {
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
     ${quickRows(quicks, b.id)}
+    ${recentRows(o.recent, b)}
     ${stats ? `<div class="home-stats">${stats}</div>` : ''}
   </section>`;
 }
@@ -1291,17 +1332,24 @@ async function overCard(b) {
 async function fillOverview(root) {
   const box = root.querySelector('[data-over-list]');
   if (!box) return;
+  root.querySelector('#over-period')?.addEventListener('change', (e) => { ui.overPeriod = e.target.value; refresh(); });
   const token = ++overToken;
+  overExpiry = Infinity;
   const u = S.currentUser();
   const kind = ui.overKind || 'bank';
-  const books = tabBooks(u.id, kind);
+  const books = tabBooks(u.id, kind, true);
   try {
     let html = '';
     for (const b of books) html += await overCard(b);
     if (!books.length) html = empty('🗂️', 'Chưa có mục nào. Bấm nút góc phải để tạo.');
     if (token !== overToken || !box.isConnected) return;
     box.innerHTML = html;
-    overCache.set(`${u.id}:${kind}`, html);
+    overCache.set(`${u.id}:${kind}:${ui.overPeriod || 'day'}`, html);
+    // Dòng Recall tự biến mất đúng lúc hết 10 phút.
+    clearTimeout(recallTimer);
+    if (overExpiry !== Infinity) {
+      recallTimer = setTimeout(() => { if (current.route === 'home') refresh(); }, Math.max(1000, overExpiry - Date.now() + 500));
+    }
   } catch (err) { console.warn(err); }
 }
 
@@ -2337,6 +2385,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     type, amount: null, currency: 'VND', date: todayISO(), categoryId: st.lastCat?.[type] || null,
     accountId: st.lastAccount, toAccountId: null, note: '', tags: [], splits: null, photoIds: [], ...(preset || {}),
   };
+  const typeAllowed = (t) => isEdit || fromRecurring || t === 'transfer' || S.featureOn(S.currentProfile(), t);
+  if (!typeAllowed(f.type)) f.type = f.type === 'expense' ? 'income' : 'expense';
   const accs = S.activeAccounts();
   if (!S.accById(f.accountId)) f.accountId = accs[0]?.id;
   if (f.type === 'transfer' && !f.toAccountId) f.toAccountId = accs.find((a) => a.id !== f.accountId)?.id;
@@ -2364,7 +2414,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span>${userChips('tf-who', S.txBooks(), (p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>` : ''}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
-      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).map((t) => `<button type="button" data-v="${t}">${{ expense: '💸 ', income: '💰 ', transfer: '⇄ ' }[t] || ''}${TYPE_LABEL[t]}</button>`).join('')}
+      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).filter(typeAllowed).map((t) => `<button type="button" data-v="${t}">${{ expense: '💸 ', income: '💰 ', transfer: '⇄ ' }[t] || ''}${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Transfer</button>' : ''}
         ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Get In</button>' : ''}</div>
       ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc" data-acc>${accOptions(f.accountId, true)}</select>`)}
@@ -2630,18 +2680,19 @@ function viewImage(src) {
 actions.add = async (el) => {
   if (current.route === 'home') {
     const kind = ui.overKind || 'bank';
-    const books = tabBooks(S.currentUser().id, kind);
+    const books = tabBooks(S.currentUser().id, kind, true);
     if (!books.length) return toast('Chưa có mục nào. Bấm nút góc phải để tạo.');
     if (!books.some((b) => b.id === S.currentProfile().id)) await S.switchProfile(books[0].id);
     if (kind === 'card') return cardItemForm(null);
   }
-  if (transferOnly()) return gopTrichChooser();
+  const cur = S.currentProfile();
+  if (transferOnly() || (!S.featureOn(cur, 'expense') && !S.featureOn(cur, 'income'))) return gopTrichChooser();
   openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
 };
 
 function gopTrichChooser() {
   const g = S.transferTargets('gop').length, t = S.transferTargets('trich').length;
-  if (!g && !t) return toast('Chưa có mục nào để transfer');
+  if (!g && !t) return toast('Mục này không có giao dịch nào đang bật hoặc chưa có mục để chuyển');
   if (g && !t) return openGopForm();
   openSheet({
     title: 'Chọn thao tác',
@@ -2751,7 +2802,7 @@ actions['quick-run'] = async (el) => {
         if (!(v > 0)) return toast('Nhập số tiền');
         const pf = pfc.value();
         const date = $(sh, '#qr-date').value || todayISO();
-        const base = { amount: v, currency: 'VND', rate: 1, amountVnd: v, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
+        const base = { amount: v, currency: 'VND', rate: 1, amountVnd: v, date, tags: [], splits: null, photoIds: [], createdAt: Date.now(), quick: { id: q.id, name: q.name, type: k } };
         try {
           if (k === 'expense' || k === 'income') {
             if (k === 'expense' && !checkFunds(acc.id, v)) return;
@@ -2763,11 +2814,11 @@ actions['quick-run'] = async (el) => {
           } else if (k === 'gop') {
             const toAcc = q.peerAccountId || (await S.peerAccounts(peer.id))[0]?.id;
             if (!await confirmOverdraft({ fromId: S.currentProfile().id, fromAccountId: acc.id, toId: peer.id, toAccountId: toAcc, amount: v })) return;
-            await S.gop({ toProfileId: peer.id, amount: v, fromAccountId: acc.id, toAccountId: toAcc, date, note: q.note || '', flowCat: q.flowCat || null, pf });
+            await S.gop({ toProfileId: peer.id, amount: v, fromAccountId: acc.id, toAccountId: toAcc, date, note: q.note || '', flowCat: q.flowCat || null, pf, quick: base.quick });
           } else if (k === 'trich') {
             const fromAcc = q.peerAccountId || (await S.peerAccounts(peer.id))[0]?.id;
             if (!await confirmOverdraft({ fromId: peer.id, fromAccountId: fromAcc, toId: S.currentProfile().id, toAccountId: acc.id, amount: v })) return;
-            await S.trich({ fromProfileId: peer.id, amount: v, fromAccountId: fromAcc, toAccountId: acc.id, date, note: q.note || '', flowCat: q.flowCat || null, pf });
+            await S.trich({ fromProfileId: peer.id, amount: v, fromAccountId: fromAcc, toAccountId: acc.id, date, note: q.note || '', flowCat: q.flowCat || null, pf, quick: base.quick });
           } else {
             const locked = S.lockError(S.currentProfile().id);
             if (locked) return toast(locked, 4500);
@@ -2891,7 +2942,7 @@ function secrecyHtml() {
       ${list.length < k.max ? `<button type="button" class="row add-row" data-act="secrecy-add" data-kind="${kind}"><span class="ci">＋</span><span class="grow"><b>Thêm ${k.label}</b></span></button>` : ''}
     </section>`;
   }).join('')}
-  <p class="muted small">🏧 NEOBANK: các mục Ngân hàng <b>Transfer cho</b> để gửi tiền vào; Bank của User đặc biệt dùng <b>Get In</b> để lấy tiền về.</p>`;
+  <p class="muted small">🏧 NEOBANK: chỉ Bank của User đặc biệt giao dịch được, dùng <b>Transfer</b> để gửi tiền vào và <b>Get In</b> để lấy tiền về.</p>`;
 }
 
 actions['secrecy-add'] = (el) => secrecyForm(null, el.dataset.kind);
@@ -2913,7 +2964,7 @@ async function secrecyForm(b, kind) {
     body: `<form class="form" id="${formId}">
       ${field('Tên', `<input id="sc-name" required maxlength="24" value="${esc(b ? b.name : '')}" placeholder="${neo ? 'vd: Cake, Timo, Ví ảo' : 'vd: Biếu bố mẹ, Chi ngoài'}">`)}
       ${neo ? amountField('sc-bal', cur, 'Số dư hiện tại') : b ? `<p class="muted">Đã nhận transfer: <b>${fmt(cur)}</b></p>` : ''}
-      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Các mục Ngân hàng transfer vào sẽ cộng, Get In về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
+      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Bank của User đặc biệt transfer vào sẽ cộng, Get In về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
     </form>`,
     onMount(sh, close) {
       const bal = neo ? bindMoney(sh, 'sc-bal') : null;
@@ -2960,9 +3011,9 @@ function settingsView() {
       <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
-  <p class="muted small">Chọn User để xem và khóa các mục của người đó ở phần bên dưới.</p>
+  <p class="muted small">Chọn User để xem và ẩn/hiện các mục của người đó ở phần bên dưới.</p>
 
-  ${sectionTitle(`Các mục & khóa của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
+  ${sectionTitle(`Các mục của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
   ${[settingsUser()].map((u) => `
   <section class="card list">${S.userBooks(u.id).map((p) => `
     <div class="row book-row ${p.locked ? 'is-locked' : ''} ${p.id === S.currentProfile().id ? 'is-current' : ''}">
@@ -2970,11 +3021,12 @@ function settingsView() {
         ${avatar(p)}<span class="grow"><b>${esc(p.name)}${p.locked ? ' 🔒' : ''}</b>
         <small>${esc(kindOf(p).label)} · ${p.id === S.currentProfile().id ? 'Đang mở' : 'Bấm để mở'}</small></span>
         <span class="psum" data-psum="${esc(p.id)}">…</span></button>
-      <button type="button" class="lock-btn ${p.locked ? 'on' : ''}" data-act="book-lock" data-id="${esc(p.id)}"
-        aria-label="${p.locked ? 'Mở khóa' : 'Khóa'}">${p.locked ? '🔒<small>Đang khóa</small>' : '🔓<small>Mở</small>'}</button>
+      ${p.kind === 'card' ? `<button type="button" class="lock-btn ${p.locked ? 'on' : ''}" data-act="book-lock" data-id="${esc(p.id)}"
+        aria-label="${p.locked ? 'Mở khóa' : 'Khóa'}">${p.locked ? '🔒<small>Đang khóa</small>' : '🔓<small>Mở</small>'}</button>`
+    : `<label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-home-show="${esc(p.id)}" ${p.hideHome ? '' : 'checked'}><i></i></label>`}
     </div>`).join('')}
   </section>`).join('')}
-  <p class="muted small">🔒 Mục bị khóa không thể chuyển tiền đi: chi, transfer, chuyển khoản, trả nợ, bị Get In, trả tiền thẻ (thẻ bị khóa thì không ghi khoản chi mới). Tiền vào vẫn nhận bình thường. Bấm lần nữa để mở khóa.</p>
+  <p class="muted small">Công tắc: hiện hoặc ẩn Bank, Thấu chi, Tiết kiệm ở Tổng quan. Mục đang ẩn không cộng vào các số tổng đang hiển thị, tiền và giao dịch vẫn giữ nguyên. Thẻ trả trước bị khóa thì không ghi khoản chi mới.</p>
 
   ${txIconSettingsHtml()}
 
@@ -3023,6 +3075,21 @@ actions['card-remind-save'] = async () => {
   toast(`Sẽ nhắc lúc ${time} ngày ${day} hằng tháng`);
 };
 
+/** Cài đặt riêng: bật/tắt 4 tính năng (Bank, Thấu chi) và cho phép trừ tiền (Bank, Thấu chi, Tiết kiệm). */
+function txPermHtml(p) {
+  const features = S.kindOfBook(p) === 'bank' ? `${sectionTitle('Tính năng giao dịch')}
+  <section class="card form">${S.TX_FEATURES.map((f) => `<div class="row-between"><span>${QUICK_KINDS[f].icon} ${QUICK_KINDS[f].label}</span>
+      <label class="switch"><input type="checkbox" data-feature="${f}" ${S.featureOn(p, f) ? 'checked' : ''}><i></i></label></div>`).join('')}
+    <p class="muted small">Tắt thì mục này không tạo được giao dịch loại đó, nút nhanh cùng loại cũng ẩn. Giao dịch đã có vẫn giữ.</p>
+  </section>` : '';
+  return `${features}${sectionTitle('Tiền ra')}
+  <section class="card form">
+    <div class="row-between"><span>Cho phép trừ tiền khỏi tài khoản</span>
+      <label class="switch"><input type="checkbox" data-allow-out ${p.locked ? '' : 'checked'}><i></i></label></div>
+    <p class="muted small">Tắt thì không chi, transfer, trả nợ, trả thẻ hay bị Get In từ mục này được. Tiền vào vẫn nhận bình thường.</p>
+  </section>`;
+}
+
 function bookSettingsView() {
   const s = state.settings;
   const p = S.currentProfile();
@@ -3040,7 +3107,7 @@ function bookSettingsView() {
     </section>
     ${quickSettingsHtml()}`;
   } else {
-    body = `${sectionTitle('Hiển thị')}
+    body = `${txPermHtml(p)}${sectionTitle('Hiển thị')}
     <section class="card form">
       ${[['showReports', '📊 Hiện mục Báo cáo'], ['showPlan', '🎯 Hiện mục Kế hoạch']].map(([k, label]) => `
       <div class="row-between"><span>${label}</span>
@@ -3129,6 +3196,17 @@ async function mountSettings(root) {
   root.querySelector('[data-secrecy-toggle]')?.addEventListener('change', (e) => {
     S.setSecrecyHidden(!e.target.checked);
     toast(e.target.checked ? 'Đã hiện mục Secrecy' : 'Đã ẩn mục Secrecy');
+  });
+  root.querySelectorAll('[data-home-show]').forEach((el) => el.addEventListener('change', () => {
+    S.setHomeHidden(el.dataset.homeShow, !el.checked);
+    toast(el.checked ? 'Đã hiện ở Tổng quan' : 'Đã ẩn khỏi Tổng quan, không cộng vào số tổng');
+  }));
+  root.querySelectorAll('[data-feature]').forEach((el) => el.addEventListener('change', () => {
+    S.setFeature(S.currentProfile().id, el.dataset.feature, el.checked);
+  }));
+  root.querySelector('[data-allow-out]')?.addEventListener('change', (e) => {
+    S.setLocked(S.currentProfile().id, !e.target.checked);
+    toast(e.target.checked ? 'Đã cho phép trừ tiền' : 'Đã tắt trừ tiền khỏi tài khoản này');
   });
   root.querySelectorAll('[data-list-toggle]').forEach((el) => el.addEventListener('change', () => S.setSetting(el.dataset.listToggle, el.checked)));
   root.querySelectorAll('[data-quick-show]').forEach((el) => el.addEventListener('change', async () => {

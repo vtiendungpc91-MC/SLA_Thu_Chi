@@ -272,7 +272,8 @@ export function setLocked(bookId, locked) {
 }
 export function lockError(bookId) {
   const b = getProfiles().find((x) => x.id === bookId);
-  return b && b.locked ? `🔒 Mục "${bookLabel(b)}" đang khóa — mở khóa trong Cài đặt để chuyển tiền đi` : null;
+  if (!b || !b.locked) return null;
+  return b.kind === 'card' ? `🔒 Mục "${bookLabel(b)}" đang khóa` : `🔒 Mục "${bookLabel(b)}" đang tắt trừ tiền — bật lại trong Cài đặt của mục`;
 }
 
 /** Nhãn đầy đủ của một mục: "Tôi · Ngân hàng". */
@@ -466,11 +467,12 @@ export async function peerAccounts(profileId) {
  * Transfer tiền: sổ người transfer ghi khoản CHI "Transfer cho …", sổ người nhận ghi khoản THU "Nhận transfer từ …".
  * Hai giao dịch liên kết qua gop.id để xóa đồng bộ.
  */
-export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null, pf = null }) {
+export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null, pf = null, quick = null }) {
   const me = currentProfile();
   const to = getProfiles().find((p) => p.id === toProfileId);
   if (!to || to.id === me.id) throw new Error('Chọn người nhận khác');
   if (!canTransfer(me, to)) throw new Error(CLOSED_MSG);
+  if (!featureOn(me, 'gop')) throw new Error('Mục này đang tắt tính năng Transfer');
   const err = fundsError(fromAccountId, amount);
   if (err) throw new Error(err);
   const mark = await pfMark(me, to, pf, isSpecialBook(me) ? -amount : amount);
@@ -483,7 +485,7 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   });
   return put('transactions', {
     ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
-    note: note || `Transfer cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat }, ...mark,
+    note: note || `Transfer cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat }, ...mark, ...(quick ? { quick } : {}),
   });
 }
 
@@ -501,7 +503,7 @@ export async function peerBalance(profileId, accountId) {
  * Get In tiền (ngược với Transfer): lấy tiền từ tài khoản của người khác về tài khoản của mình.
  * Sổ mình ghi khoản THU "Get In từ …", sổ người kia ghi khoản CHI "Chuyển Get In cho …". Người kia phải đủ số dư.
  */
-export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null, pf = null }) {
+export async function trich({ fromProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null, pf = null, quick = null }) {
   const me = currentProfile();
   const from = getProfiles().find((p) => p.id === fromProfileId);
   if (!from || from.id === me.id) throw new Error('Chọn nguồn Get In');
@@ -524,7 +526,7 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   });
   return put('transactions', {
     ...base, type: 'income', categoryId: sysCat('trich-in').id, accountId: toAccountId,
-    note: note || `Get In từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat }, ...mark,
+    note: note || `Get In từ ${bookLabel(from)}`, gop: { id: gid, mode: 'trich', dir: 'in', peer: from.id, peerName: bookLabel(from), flowCat }, ...mark, ...(quick ? { quick } : {}),
   });
 }
 
@@ -673,9 +675,20 @@ export const isCard = (p = currentProfile()) => p && p.kind === 'card';
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);
 /** Các mục ghi được Thu/Chi: Bank và Thấu chi của mọi User. */
-export const txBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank');
-/** Bank của User đặc biệt được Get In từ Secrecy; Thấu chi được Get In từ Bank/Thấu chi khác. */
-export const hasIncome = (b) => !!userOf(b)?.special && (b.kind || 'bank') === 'bank' && !b.overdraft;
+export const txBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && (featureOn(p, 'expense') || featureOn(p, 'income')));
+/** Tính năng giao dịch của Bank/Thấu chi: mặc định bật, tắt riêng trong Cài đặt của mục. */
+export const TX_FEATURES = ['expense', 'income', 'gop', 'trich'];
+export const featureOn = (b, f) => (b.kind || 'bank') !== 'bank' || b.features?.[f] !== false;
+export function setFeature(bookId, f, on) {
+  const b = getProfiles().find((x) => x.id === bookId);
+  saveProfile({ id: bookId, features: { ...(b.features || {}), [f]: on } });
+  emit();
+}
+/** Ẩn/hiện mục ở Tổng quan; mục ẩn không cộng vào các số tổng đang hiển thị. */
+export function setHomeHidden(bookId, hidden) {
+  saveProfile({ id: bookId, hideHome: !!hidden });
+  emit();
+}
 export const kindOfBook = (p) => p.kind || 'bank';
 /**
  * Đích Transfer / Get In theo loại mục đang mở:
@@ -685,7 +698,8 @@ export const kindOfBook = (p) => p.kind || 'bank';
  */
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
-  const allowed = mode === 'trich' ? (hasIncome(from) ? ['neo'] : from.overdraft ? ['bank'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
+  if (!featureOn(from, mode === 'trich' ? 'trich' : 'gop')) return [];
+  const allowed = mode === 'trich' ? (k === 'bank' ? ['bank', 'neo'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
   // Secrecy đang ẩn thì không hiện trong form; mẫu nhanh đã thiết lập gọi thẳng gop/trich nên vẫn chạy.
   const hide = !includeHidden && secrecyHidden();
   return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && !(hide && p.owner === SECRECY) && canTransfer(from, p));
@@ -1160,9 +1174,9 @@ export async function userAlerts(userId) {
 }
 
 /** Tổng tiền của một nhóm mục trong User: Ngân hàng/Tiết kiệm = số dư; Thẻ = tiền chưa thanh toán. */
-export async function kindTotal(userId, kind) {
+export async function kindTotal(userId, kind, { visibleOnly = false } = {}) {
   let total = 0;
-  for (const b of userBooks(userId).filter((x) => kindOfBook(x) === kind)) {
+  for (const b of userBooks(userId).filter((x) => kindOfBook(x) === kind && !(visibleOnly && x.hideHome))) {
     const s = await profileSummary(b);
     total += s.kind === 'card' ? s.unpaid : s.balance;
   }
@@ -1172,12 +1186,15 @@ export async function kindTotal(userId, kind) {
 // ---------- Màn hình Tổng quan chung: nút nhanh, thống kê, số liệu trong ngày của từng mục ----------
 export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
 export const STAT_MAX = 3;
+/** Giao dịch từ nút nhanh được hủy (Recall) trong 10 phút, hiện tối đa 5 dòng. */
+export const RECALL_MS = 10 * 60 * 1000;
+export const RECALL_LINES = 5;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
   if (k === 'card') return ['card'];
   if (k === 'saving') return ['gop'];
-  return hasIncome(b) || b.overdraft ? ['expense', 'income', 'gop', 'trich'] : ['expense', 'income', 'gop'];
+  return TX_FEATURES.filter((f) => featureOn(b, f));
 }
 /** Danh sách nút nhanh; dữ liệu kiểu cũ (mỗi loại 1 mẫu) được đọc thành danh sách. */
 export function quicksOf(st = state.settings) {
@@ -1194,20 +1211,20 @@ export function statsOf(st = state.settings) {
   return out;
 }
 
-/** Số liệu trong ngày của một mục (đọc trực tiếp từ sổ của mục đó). */
-export async function bookOverview(b) {
+/** Số liệu trong kỳ của một mục (đọc trực tiếp từ sổ của mục đó). */
+export async function bookOverview(b, range) {
   const { peer, accs } = await openPeerBook(b.id);
   const txs = await peer.getAll('transactions');
   const settings = { ...DEFAULT_SETTINGS };
   for (const r of await peer.getAll('settings')) settings[r.key] = r.value;
-  const today = todayISO();
+  const inRange = (d) => !!d && d >= range.start && d <= range.end;
   const active = accs.filter((a) => !a.archived).sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
   let balance = 0, income = 0, expense = 0;
   if (kindOfBook(b) === 'card') {
     for (const t of txs) {
       if (t.status !== 'done') balance += t.amountVnd;
-      if (t.date === today) expense += t.amountVnd;
-      if (t.paid?.date === today) income += t.amountVnd;
+      if (inRange(t.date)) expense += t.amountVnd;
+      if (inRange(t.paid?.date)) income += t.amountVnd;
     }
   } else {
     for (const a of active) {
@@ -1215,26 +1232,33 @@ export async function bookOverview(b) {
       for (const t of txs) balance += txEffect(t, a.id);
     }
     for (const t of txs) {
-      if (t.date !== today) continue;
+      if (!inRange(t.date)) continue;
       if (t.type === 'income') income += t.amountVnd;
       else if (t.type === 'expense') expense += t.amountVnd;
     }
   }
-  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings };
+  const now = Date.now();
+  const recent = txs.filter((t) => t.quick && t.status !== 'done' && now - (t.createdAt || 0) < RECALL_MS)
+    .sort((x, y) => y.createdAt - x.createdAt).slice(0, RECALL_LINES);
+  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent };
 }
 
 // ---------- User đặc biệt: Personal / Family ----------
 // Personal = pfBase + các giao dịch gắn nhãn personal trong Bank và Thấu chi của User.
 // Family = tổng số dư Bank + Thấu chi − Personal, nên tổng 2 phần luôn bằng số dư.
 export const PF_LABEL = { personal: 'Personal', family: 'Family' };
-const CLOSED_MSG = 'Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User (Thấu chi được Transfer thêm đến Secrecy)';
+const CLOSED_MSG = 'Không giao dịch được: Secrecy chỉ dành cho Bank của User đặc biệt; Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User';
 export const specialUser = () => getUsers().find((u) => u.special);
 export function isSpecialBook(b) { return !!b && kindOfBook(b) === 'bank' && !!userOf(b)?.special; }
 const closedBook = (b) => !!userOf(b)?.special && !(kindOfBook(b) === 'bank' && !b.overdraft);
 /** Chỉ Bank của User đặc biệt mới giao dịch được với User khác. */
 export function canTransfer(a, b) {
-  // Ngoại lệ: Thấu chi của User đặc biệt được Transfer đến ngân hàng trong Secrecy.
-  if (a.overdraft && kindOfBook(b) === 'neo') return true;
+  // Ngân hàng trong Secrecy chỉ giao dịch với Bank của User đặc biệt.
+  const neoA = kindOfBook(a) === 'neo', neoB = kindOfBook(b) === 'neo';
+  if (neoA || neoB) {
+    const other = neoA ? b : a;
+    return !!userOf(other)?.special && kindOfBook(other) === 'bank' && !other.overdraft;
+  }
   return a.owner === b.owner || (!closedBook(a) && !closedBook(b));
 }
 /** Cần chọn Personal/Family khi tiền đi vào/ra khỏi nhóm Bank + Thấu chi (giữa Bank và Thấu chi thì không). */
