@@ -1073,7 +1073,11 @@ async function saveStat(item, data) {
   await S.setSetting('stats', item ? list.map((x) => (x.id === item.id ? row : x)) : [...list, row]);
 }
 const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
-const overRange = () => getRange(ui.overPeriod || 'day', todayISO());
+// Last Month: cả tháng liền trước tháng hiện tại, tính như kỳ Tháng.
+const overRange = () => (ui.overPeriod === 'lastmonth'
+  ? getRange('month', addMonths(todayISO().slice(0, 8) + '01', -1))
+  : getRange(ui.overPeriod || 'day', todayISO()));
+const OVER_PERIODS = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['lastmonth', 'Last Month']];
 
 function statRow(t) {
   const sign = t.type === 'income' ? 1 : -1;
@@ -1384,7 +1388,12 @@ const OVER_TABS = [['bank', 'Account'], ['od', 'Thấu chi'], ['saving', 'Tiết
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', credit: '💳', wallet: '👛' };
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
 const overTabs = (userId) => OVER_TABS.filter(([tab]) => tab !== 'wallet' || tabBooks(userId, 'wallet').length);
-const overKindNow = () => (overTabs(S.currentUser().id).some(([tab]) => tab === ui.overKind) ? ui.overKind : 'bank');
+const overKindNow = () => {
+  const tabs = homeTabs(S.currentUser().id);
+  return tabs.some(([tab]) => tab === ui.overKind) ? ui.overKind : tabs[0]?.[0] || 'bank';
+};
+/** Thẻ ở Tổng quan: chỉ hiện thẻ đang có tài khoản. */
+const homeTabs = (userId) => overTabs(userId).filter(([tab]) => tabBooks(userId, tab).length);
 /** Các mục của một thẻ ở Tổng quan: Bank và Thấu chi tách riêng. */
 const tabBooks = (userId, tab) => S.userBooks(userId).filter((b) => {
   if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft;
@@ -1444,10 +1453,10 @@ function homeView() {
     <div style="display:none"><small class="chip-sub over-card" data-over-card></small></div>
   </div>
   <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div></div>
-  <div class="over-date"><small>📅 ${fmtDayHeader(todayISO())}</small>
-    <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-  <div class="seg tabs">${overTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
-  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? ['day', 'week', 'month'].map((p) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
+  <div class="over-date"><small>📅 ${ui.overPeriod === 'lastmonth' ? `Last Month · ${esc(overRange().label)}` : fmtDayHeader(todayISO())}</small>
+    <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${OVER_PERIODS.map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="seg tabs">${homeTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
+  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? OVER_PERIODS.map(([p]) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
   ${fab(kind)}`;
 }
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
@@ -1476,7 +1485,7 @@ function recentRows(list, b) {
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
     return `<div class="rc-row"><span class="rc-name">${QUICK_KINDS[txTypeKey(t)].icon} ${esc(txRowName(t))} <small>${esc(when)}</small></span>
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
-      ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}">↩ Recall</button>` : ''}</div>`;
+      ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}</div>`;
   }).join('');
   return `<div class="rc-box">
     <div class="rc-head"><small>Giao dịch gần đây</small><button type="button" class="link rc-toggle" data-act="recent-toggle" data-id="${esc(b.id)}">${b.hideRecent ? 'Hiện' : 'Ẩn'}</button></div>
@@ -1558,7 +1567,7 @@ async function fillOverview(root) {
       recallTimer = setTimeout(() => { if (current.route === 'home') refresh(); }, Math.max(1000, overExpiry - Date.now() + 500));
     }
     // Chuẩn bị sẵn các thẻ khác để lần đầu bấm sang là có ngay.
-    for (const [tab] of overTabs(u.id)) {
+    for (const [tab] of homeTabs(u.id)) {
       const k = `${u.id}:${tab}:${ui.overPeriod || 'day'}`;
       if (overCache.has(k)) continue;
       const other = await overTabHtml(u, tab);

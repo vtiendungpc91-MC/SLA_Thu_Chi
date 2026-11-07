@@ -950,3 +950,14 @@ body.noscroll .pin-head { position: relative; top: var(--lock-y, 0px); }
 .sheet-wrap.no-anim .sheet, .sheet-wrap.no-anim .sheet-bg { transition: none; }
 /* Giữ sẵn chỗ cho dòng số dư để form không nhảy khi đọc xong */
 #tr-bal, #qr-bal, #cp-bal, #cr-bal { min-height: 1.45em; }
+/* Nút nhanh: nền nhạt, giữ viền đậm */
+.quick-btn.q-expense { background: #feeced; }
+.quick-btn.q-income { background: #e8f7ee; }
+.quick-btn.q-gop, .quick-btn.q-card { background: #e6f7f5; }
+.quick-btn.q-trich { background: #f3edfc; }
+html.dark .quick-btn.q-expense { background: #3a161c; }
+html.dark .quick-btn.q-income { background: #12301f; }
+html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #102d29; }
+html.dark .quick-btn.q-trich { background: #281d3d; }
+/* Nút Recall chỉ có icon */
+.rc-btn { min-width: 32px; padding: 3px 8px; font-size: 15px; line-height: 1.2; }
