@@ -168,6 +168,52 @@ export function toast(msg, ms = 2400) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
+// ---------- Khóa màn hình phía sau khi đang mở bottom sheet ----------
+// Safari trên iPhone bỏ qua overflow:hidden của body, nên phải ghim body lại và nhớ vị trí cuộn.
+let pageLocked = false, lockedY = 0;
+function lockPage() {
+  if (pageLocked) return;
+  pageLocked = true;
+  lockedY = window.scrollY;
+  document.body.style.top = `-${lockedY}px`;
+  document.body.classList.add('noscroll');
+}
+function unlockPage() {
+  if (!pageLocked) return;
+  pageLocked = false;
+  document.body.classList.remove('noscroll');
+  document.body.style.top = '';
+  window.scrollTo(0, lockedY);
+}
+/** Vẽ lại màn hình phía sau: giữ vị trí nếu cùng màn hình, về đầu nếu đã chuyển màn hình. */
+export function restorePageScroll(sameView, y) {
+  if (pageLocked) { if (!sameView) lockedY = 0; return; }
+  window.scrollTo(0, sameView ? y : 0);
+}
+/** Vuốt trong sheet: chỉ cho vùng còn cuộn được chạy; hết chỗ cuộn hoặc vuốt vào vùng ngoài thì chặn, tránh cả trang bị kéo theo. */
+function guardSheetTouch(wrap) {
+  let lastX = 0, lastY = 0;
+  wrap.addEventListener('touchstart', (e) => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }, { passive: true });
+  wrap.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) return;
+    const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    if (Math.abs(dx) > Math.abs(dy)) return; // Vuốt ngang: dải nút cuộn ngang.
+    for (let el = e.target; el && el !== wrap; el = el.parentElement) {
+      if (!/(auto|scroll)/.test(getComputedStyle(el).overflowY) || el.scrollHeight <= el.clientHeight + 1) continue;
+      const atTop = el.scrollTop <= 0, atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      if ((dy > 0 && !atTop) || (dy < 0 && !atEnd) || dy === 0) return;
+    }
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  // Bàn phím iPhone đóng lại có thể để lệch trang, làm chỗ bấm không khớp chỗ hiển thị.
+  wrap.addEventListener('focusout', () => {
+    setTimeout(() => {
+      if (pageLocked && !document.activeElement?.matches?.('input, select, textarea')) window.scrollTo(0, 0);
+    }, 100);
+  });
+}
+
 /** Mở bottom sheet. onMount(sheetEl, close) để gắn sự kiện cho form. */
 /** headAction: HTML đặt ở góc phải thanh tiêu đề (vd: nút Lưu của form). */
 export function openSheet({ title, body, onMount, onClose, wide = false, headAction = '' }) {
@@ -183,7 +229,8 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
       <div class="sheet-body">${body}</div>
     </div>`;
   document.body.appendChild(wrap);
-  document.body.classList.add('noscroll');
+  lockPage();
+  guardSheetTouch(wrap);
   requestAnimationFrame(() => wrap.classList.add('open'));
   let closed = false;
   const close = () => {
@@ -192,7 +239,7 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
     wrap.classList.remove('open');
     setTimeout(() => {
       wrap.remove();
-      if (!document.querySelector('.sheet-wrap')) document.body.classList.remove('noscroll');
+      if (!document.querySelector('.sheet-wrap')) unlockPage();
     }, 220);
     onClose && onClose();
   };

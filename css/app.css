@@ -44,7 +44,8 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
-body.noscroll { overflow: hidden; }
+html { overscroll-behavior: none; }
+body.noscroll { overflow: hidden; position: fixed; left: 0; right: 0; width: 100%; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--primary); text-decoration: none; }
@@ -256,7 +257,7 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 .sheet-head h3 { flex: 1; text-align: center; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-head .sp { width: 38px; }
 .sheet-head .head-save { flex: 0 0 auto; padding: 8px 18px; border-radius: 999px; font-size: 15px; }
-.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 16px calc(20px + var(--safe-b)); }
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 6px 16px calc(20px + var(--safe-b)); }
 
 /* ---------- Form ---------- */
 .form { display: flex; flex-direction: column; gap: 12px; }

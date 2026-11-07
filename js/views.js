@@ -2,7 +2,7 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import {
-  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, restorePageScroll, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
@@ -3860,7 +3860,7 @@ export function render(route, sub) {
   main.innerHTML = v.html(sub);
   v.mount && v.mount(main);
   fillTopBar(main).catch((err) => console.warn(err));
-  window.scrollTo(0, sameView ? y : 0);
+  restorePageScroll(sameView, y);
   document.querySelectorAll('#tabbar a').forEach((a) => a.classList.toggle('on', a.dataset.tab === current.route));
 }
 
