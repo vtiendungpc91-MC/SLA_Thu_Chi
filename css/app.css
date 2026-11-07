@@ -882,3 +882,10 @@ select[data-acc]:disabled { opacity: 1; color: var(--text); -webkit-text-fill-co
 .books-compact .over-row { font-size: 12.5px; line-height: 1.25; }
 /* 5 thẻ ở Tổng quan */
 .seg.tabs > [data-act="over-tab"] { font-size: 12px; padding: 5px 1px; white-space: normal; line-height: 1.15; }
+/* Màn hình nút phải: bấm biểu tượng để sửa, bên phải chỉ còn nút xóa */
+.ptile.icon-edit .ptile-main { cursor: pointer; }
+.av-edit, .over-ic { position: relative; display: inline-flex; flex: 0 0 auto; cursor: pointer; }
+.av-edit > i, .over-ic > i { position: absolute; right: -3px; bottom: -3px; width: 15px; height: 15px; display: grid; place-items: center; font-style: normal; font-size: 8.5px; font-weight: 400; line-height: 1; border-radius: 50%; background: var(--card); box-shadow: 0 0 0 1px var(--line); }
+.over-ic { padding: 2px 5px 2px 0; }
+.books-compact .ptile.icon-edit .ptile-del { top: 50%; bottom: auto; transform: translateY(-50%); right: 8px; width: 28px; height: 28px; font-size: 13px; }
+.books-compact .over-main { padding-right: 10px; }

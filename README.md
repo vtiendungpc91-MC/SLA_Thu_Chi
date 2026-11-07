@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.8.1 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.9.0 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -12,7 +12,8 @@ Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server 
 User (tối đa 3)
 ├── Bank và Thấu chi (hiển thị 2 thẻ riêng, tổng tối đa 3)
 ├── Tiết kiệm (tối đa 2)
-└── Thẻ trả trước (tổng tối đa 3: Thẻ Tín Dụng và Ví điện tử, hiển thị 2 thẻ riêng)
+├── Thẻ tín dụng (tối đa 2)
+└── Ví điện tử (tối đa 2)
 Secrecy (ngoài các User): NEOBANK
 ```
 

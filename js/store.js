@@ -105,7 +105,7 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ trả trước (3, gồm Thẻ tín dụng và Ví điện tử).
+// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ tín dụng (2), Ví điện tử (2).
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
 export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
@@ -117,7 +117,7 @@ export const PROFILE_COLORS = [
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
-  card: { label: 'Thẻ trả trước', icon: '💳', max: 3 },
+  card: { label: 'Thẻ trả trước', icon: '💳', max: 2 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -329,8 +329,11 @@ export function saveProfile(p) {
   const list = getProfiles();
   if (!p.id) {
     const kind = BOOK_KINDS[p.kind || 'bank'];
-    const same = list.filter((b) => b.owner === p.owner && (b.kind || 'bank') === (p.kind || 'bank'));
-    if (p.owner && same.length >= kind.max) throw new Error(`Tối đa ${kind.max} mục ${kind.label}`);
+    // Thẻ tín dụng và Ví điện tử giới hạn riêng từng loại.
+    const isCreditCard = (b) => !!b.credit || b.cardType === 'credit';
+    const same = list.filter((b) => b.owner === p.owner && (b.kind || 'bank') === (p.kind || 'bank')
+      && (p.kind !== 'card' || isCreditCard(b) === isCreditCard(p)));
+    if (p.owner && same.length >= kind.max) throw new Error(`Tối đa ${kind.max} mục ${p.kind === 'card' ? CARD_TYPES[isCreditCard(p) ? 'credit' : 'wallet'] : kind.label}`);
     p.id = uid().replace(/-/g, '').slice(0, 12);
     p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
     list.push(p);

@@ -293,13 +293,16 @@ actions['book-lock'] = (el) => {
 actions['user-switch'] = (el) => switchToUser(el.dataset.id);
 
 /** Ô chọn (User / mục): trái = avatar + tên; phải = số liệu (điền sau) + trạng thái. */
-function tileHtml({ attr, id, color, av, name, on, sum, del }) {
-  return `<div class="ptile ${on ? 'on is-current' : ''}" style="--c:${esc(color)}">
-    <button type="button" class="ptile-main" data-${attr}="${esc(id)}">
-      <span class="ptile-left">${av}<b>${esc(name)}</b></span>
+function tileHtml({ attr, id, color, av, name, on, sum, del, iconEdit = false }) {
+  // iconEdit: bấm biểu tượng để sửa, bên phải chỉ còn nút xóa.
+  const left = iconEdit ? `<span class="av-edit" data-edit="${esc(id)}" role="button" aria-label="Sửa">${av}<i>✎</i></span>` : av;
+  const tag = iconEdit ? 'div' : 'button';
+  return `<div class="ptile ${iconEdit ? 'icon-edit' : ''} ${on ? 'on is-current' : ''}" style="--c:${esc(color)}">
+    <${tag} ${iconEdit ? 'role="button" tabindex="0"' : 'type="button"'} class="ptile-main" data-${attr}="${esc(id)}">
+      <span class="ptile-left">${left}<b>${esc(name)}</b></span>
       <span class="ptile-right">${sum}${on ? '<i class="ptile-on">✓ Đang dùng</i>' : '<i class="ptile-go">Xem ›</i>'}</span>
-    </button>
-    <button type="button" class="ptile-edit" data-edit="${esc(id)}" aria-label="Sửa">✎</button>
+    </${tag}>
+    ${iconEdit ? '' : `<button type="button" class="ptile-edit" data-edit="${esc(id)}" aria-label="Sửa">✎</button>`}
     ${del ? `<button type="button" class="ptile-del" data-del="${esc(id)}" aria-label="Xóa">🗑</button>` : ''}
   </div>`;
 }
@@ -420,25 +423,23 @@ actions.books = () => {
   openSheet({
     title: `Mục của ${u.name}`,
     body: `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(overColor(u))}">
-        <button type="button" class="over-main" data-over>
-          <b>${esc(overIcon(u))} ${esc(overName(u))}</b>
+        <div role="button" tabindex="0" class="over-main" data-over>
+          <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}</b>
           ${OVER_TABS.map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
-        </button>
-        <button type="button" class="ptile-edit" data-over-edit aria-label="Thiết lập">✎</button>
+        </div>
       </div>` + OVER_TABS.map(([tab, label]) => {
       const list = tabBooks(u.id, tab);
       const isMoney = tab === 'bank' || tab === 'od';
       const isCardTab = tab === 'credit' || tab === 'wallet';
-      const shared = isMoney ? tabBooks(u.id, 'bank').length + tabBooks(u.id, 'od').length
-        : isCardTab ? tabBooks(u.id, 'credit').length + tabBooks(u.id, 'wallet').length : list.length;
+      const shared = isMoney ? tabBooks(u.id, 'bank').length + tabBooks(u.id, 'od').length : list.length;
       const max = S.BOOK_KINDS[isMoney ? 'bank' : isCardTab ? 'card' : tab].max;
       const room = shared < max && !(u.special && isMoney);
       const pfLine = u.special && tab === 'od'
         ? '<div class="pf-line"><span class="pf-p">Personal <b data-pf-val="personal">…</b></span><span class="pf-f">Family <b data-pf-val="family">…</b></span></div>' : '';
-      return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${isMoney ? `(${list.length}) · Bank + Thấu chi: ${shared}/${max}` : isCardTab ? `(${list.length}) · Thẻ trả trước: ${shared}/${max}` : `(${list.length}/${max})`}</small></span></h4>
+      return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${isMoney ? `(${list.length}) · Bank + Thấu chi: ${shared}/${max}` : `(${list.length}/${max})`}</small></span></h4>
         <div class="tile-grid one-col">${list.map((b) => tileHtml({
           attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : ''), on: b.id === cur,
-          sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1 && !S.isSpecialBook(b),
+          sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1 && !S.isSpecialBook(b), iconEdit: true,
         })).join('')}
         ${pfLine}
         ${room ? `<button type="button" class="ptile-add block" data-add="${tab}">＋ ${label}</button>` : ''}</div>`;
@@ -457,8 +458,8 @@ actions.books = () => {
         else if (del) {
           const b = S.getProfiles().find((x) => x.id === del.dataset.del);
           if (b && await confirmDeleteProfile(b)) { close(); refresh(); setTimeout(() => actions.books(), 260); }
-        } else if (sw) { close(); await openBook(sw.dataset.switch); }
-        else if (ed) { close(); bookForm(S.getProfiles().find((b) => b.id === ed.dataset.edit)); }
+        } else if (ed) { close(); bookForm(S.getProfiles().find((b) => b.id === ed.dataset.edit)); }
+        else if (sw) { close(); await openBook(sw.dataset.switch); }
         else if (add) {
           close();
           const v = add.dataset.add;
