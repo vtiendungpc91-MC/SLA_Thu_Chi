@@ -105,7 +105,7 @@ export const emit = () => listeners.forEach((f) => f());
 const PROFILES_KEY = 'stc-profiles';
 const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
-// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ trả trước (2).
+// User (tối đa 3): các mục Ngân hàng (3, gồm Bank và Thấu chi), Tiết kiệm (2), Thẻ trả trước (3, gồm Thẻ tín dụng và Ví điện tử).
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
 export const MAX_USERS = 3;
 export const SECRECY = 'secrecy';
@@ -117,7 +117,7 @@ export const PROFILE_COLORS = [
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
-  card: { label: 'Thẻ trả trước', icon: '💳', max: 2 },
+  card: { label: 'Thẻ trả trước', icon: '💳', max: 3 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -433,7 +433,7 @@ export function fundsError(accountId, amountVnd, ignoreTx = null) {
   // Mục đang khóa thì không cho chuyển tiền đi (chi, transfer, trả nợ, chuyển khoản…).
   const locked = lockError(currentProfile().id);
   if (locked) return locked;
-  if (currentProfile().overdraft) return null; // Thấu chi được âm số dư; vượt hạn mức chỉ cảnh báo.
+  if (currentProfile().overdraft || currentProfile().credit) return null; // Thấu chi, Thẻ tín dụng được âm số dư.
   const have = available(accountId, ignoreTx);
   if (amountVnd <= have) return null;
   return `Số dư "${accById(accountId)?.name || 'tài khoản'}" không đủ: còn ${fmt(have)}, cần ${fmt(amountVnd)}`;
@@ -558,6 +558,41 @@ export async function setGopDate(tx, date) {
   await put('transactions', { ...tx, date });
 }
 
+/** Thẻ tín dụng luôn ≤ 0: báo lỗi nếu thay đổi làm số dư thành dương (trả/thu vượt số đang nợ). */
+export function creditError(delta, ignoreTx = null) {
+  if (!currentProfile().credit) return null;
+  const acc = activeAccounts()[0];
+  const base = available(acc.id, ignoreTx);
+  if (base + delta <= 0) return null;
+  return `Thẻ chỉ đang nợ ${fmt(Math.max(0, -base))}, không được vượt quá số nợ`;
+}
+
+/** Thanh toán Thẻ tín dụng (đang mở thẻ) một phần hoặc toàn bộ từ tài khoản của một mục khác. */
+export async function payCredit({ payerId, amount, fromAccountId, date, pf = null }) {
+  const card = currentProfile();
+  const payer = getProfiles().find((p) => p.id === payerId);
+  if (!card.credit || !payer) throw new Error('Chọn mục trả tiền');
+  if (!canTransfer(card, payer)) throw new Error(CLOSED_MSG);
+  const locked = lockError(payer.id);
+  if (locked) throw new Error(locked);
+  const err = creditError(amount);
+  if (err) throw new Error(err);
+  const { peer, cats } = await openPeerBook(payer.id);
+  const have = await peerBalance(payer.id, fromAccountId);
+  if (!payer.overdraft && amount > have) throw new Error(`Số dư của ${bookLabel(payer)} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
+  const mark = await pfMark(payer, card, pf, -amount);
+  const gid = uid();
+  const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
+  await peer.put('transactions', {
+    ...base, id: uid(), type: 'expense', categoryId: cats.find((c) => c.sys === 'gop-out').id, accountId: fromAccountId,
+    note: `Thanh toán ${bookLabel(card)}`, gop: { id: gid, mode: 'pay', dir: 'out', peer: card.id, peerName: bookLabel(card), flowCat: null }, updatedAt: Date.now(), ...mark,
+  });
+  return put('transactions', {
+    ...base, type: 'income', categoryId: sysCat('gop-in').id, accountId: activeAccounts()[0].id,
+    note: `Thanh toán từ ${bookLabel(payer)}`, gop: { id: gid, mode: 'pay', dir: 'in', peer: payer.id, peerName: bookLabel(payer), flowCat: null }, ...mark,
+  });
+}
+
 /** Xóa giao dịch tương ứng trong sổ của người kia (nếu người đó còn tồn tại). */
 async function deleteGopPeer(tx) {
   if (!tx.gop || !getProfiles().some((p) => p.id === tx.gop.peer)) return;
@@ -671,7 +706,7 @@ export async function deleteTx(tx) {
 // Thẻ trả trước là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
 // Mỗi khoản chi có trạng thái open/done; "Get In thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
 export const CARD_TYPES = { credit: 'Thẻ Tín Dụng', wallet: 'Ví điện tử' };
-export const isCard = (p = currentProfile()) => p && p.kind === 'card';
+export const isCard = (p = currentProfile()) => p && p.kind === 'card' && !p.credit;
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);
 /** Các mục ghi được Thu/Chi: Bank và Thấu chi của mọi User. */
@@ -921,7 +956,7 @@ export async function categoryNamesOf(bookIds) {
 export async function profileSummary(p) {
   const isCur = p.id === currentProfile().id;
   const txs = isCur ? state.transactions : await dbOf(p.id).getAll('transactions');
-  if (p.kind === 'card') {
+  if (p.kind === 'card' && !p.credit) {
     const open = txs.filter((t) => t.status !== 'done');
     return { kind: 'card', unpaid: open.reduce((s, t) => s + t.amountVnd, 0), count: open.length };
   }
@@ -932,6 +967,8 @@ export async function profileSummary(p) {
     for (const t of txs) b += txEffect(t, a.id);
     balance += b;
   }
+  // Thẻ tín dụng: số dư âm là tiền đang nợ, tính vào nhóm Thẻ.
+  if (p.credit) return { kind: 'card', credit: true, balance, unpaid: -balance, count: 0 };
   return { kind: 'user', balance };
 }
 
@@ -1187,7 +1224,7 @@ export const RECALL_LINES = 5;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
-  if (k === 'card') return ['card'];
+  if (k === 'card') return b.credit ? ['expense', 'income'] : ['card'];
   if (k === 'saving') return ['gop', 'trich'];
   return TX_FEATURES.filter((f) => featureOn(b, f));
 }
@@ -1215,7 +1252,7 @@ export async function bookOverview(b, range) {
   const inRange = (d) => !!d && d >= range.start && d <= range.end;
   const active = accs.filter((a) => !a.archived).sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
   let balance = 0, income = 0, expense = 0;
-  if (kindOfBook(b) === 'card') {
+  if (kindOfBook(b) === 'card' && !b.credit) {
     for (const t of txs) {
       if (t.status !== 'done') balance += t.amountVnd;
       if (inRange(t.date)) expense += t.amountVnd;
