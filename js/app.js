@@ -64,8 +64,12 @@ async function notifyAlerts() {
   const reg = await navigator.serviceWorker?.getRegistration();
   const sent = { ...(state.settings.notified || {}) };
   let changed = false;
-  for (const a of S.getAlerts()) {
-    if (sent[a.key]) continue;
+  // Nhắc nhở thuộc User, không thuộc mục: nhớ riêng để đổi mục không báo lại.
+  let remSent = {};
+  try { remSent = JSON.parse(localStorage.getItem('stc-rem-notified')) || {}; } catch {}
+  for (const a of [...S.getAlerts(), ...S.reminderAlerts(S.currentUser().id)]) {
+    const log = a.kind === 'reminder' ? remSent : sent;
+    if (log[a.key]) continue;
     const body = a.kind === 'budget'
       ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách`
       : a.kind === 'reminder' ? fmtDue(a.days)
@@ -74,11 +78,12 @@ async function notifyAlerts() {
     try {
       if (reg) await reg.showNotification(title, { body, tag: a.key, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: './#/home' } });
       else new Notification(title, { body, tag: a.key });
-      sent[a.key] = Date.now();
+      log[a.key] = Date.now();
       changed = true;
     } catch (err) { console.warn(err); }
   }
   if (changed) {
+    localStorage.setItem('stc-rem-notified', JSON.stringify(Object.fromEntries(Object.entries(remSent).sort((a, b) => b[1] - a[1]).slice(0, 100))));
     const keys = Object.entries(sent).sort((a, b) => b[1] - a[1]).slice(0, 300);
     await S.setSetting('notified', Object.fromEntries(keys), { silent: true });
   }

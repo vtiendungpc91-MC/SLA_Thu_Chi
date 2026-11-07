@@ -207,6 +207,30 @@ function fillPfVals(root) {
   if (els.length) S.pfBalances().then((b) => { if (b) els.forEach((el) => { el.textContent = fmt(b[el.dataset.pfVal]); }); });
 }
 
+// Dòng thông báo chạy ở Tổng quan: mỗi thông báo 5 giây, xoay vòng liên tục.
+const TICKER_MS = 5000;
+let tickerTimer = null, tickerIdx = 0;
+function tickerText(a) {
+  const when = a.kind === 'budget' ? `${Math.round(a.ratio * 100)}%` : fmtDue(a.days);
+  return `${NOTIF[a.kind].icon} ${when} · ${a.title}`;
+}
+function startTicker(el, alerts) {
+  if (!el?.isConnected) return;
+  clearInterval(tickerTimer);
+  el.hidden = !alerts.length;
+  if (!alerts.length) return;
+  const show = () => {
+    if (!el.isConnected) return clearInterval(tickerTimer);
+    tickerIdx %= alerts.length;
+    el.textContent = tickerText(alerts[tickerIdx]);
+    el.classList.remove('tick');
+    void el.offsetWidth; // Chạy lại hiệu ứng hiện dần.
+    el.classList.add('tick');
+  };
+  show();
+  if (alerts.length > 1) tickerTimer = setInterval(() => { tickerIdx++; show(); }, TICKER_MS);
+}
+
 /** Điền số thông báo và tổng tiền dưới 2 nút đầu trang (đọc nhiều mục nên làm sau khi vẽ). */
 async function fillTopBar(root) {
   fillPfVals(root);
@@ -217,6 +241,7 @@ async function fillTopBar(root) {
   const [alerts, sum] = await Promise.all([S.userAlerts(u.id), S.kindTotal(u.id, kind)]);
   count.hidden = !alerts.length;
   count.textContent = `🔔 ${alerts.length} thông báo`;
+  startTicker(root.querySelector('[data-over-ticker]'), alerts);
   total.innerHTML = (kind === 'card' ? '<small>Chưa TT</small> ' : '') + fmt(sum);
   // Số tiền rất lớn hoặc màn hình hẹp: thu nhỏ vừa đủ để không đè lên nút + giữa màn hình.
   if (onHome) {
@@ -229,7 +254,7 @@ async function fillTopBar(root) {
     debtEl.hidden = !credits.length;
     debtEl.textContent = `Nợ thẻ ${fmt(debt)}`;
     savingEl.textContent = `Tiết kiệm ${fmt(saving)}`;
-    cardEl.hidden = !tabBooks(u.id, 'wallet').length;
+    cardEl.parentElement.style.display = tabBooks(u.id, 'wallet').length ? '' : 'none';
     cardEl.textContent = `Ví điện tử ${fmt(wallet)}`;
   } else {
     const room = innerWidth / 2 - 44;
@@ -370,13 +395,13 @@ async function fillNotifications(sh) {
 
 /** Mở đúng mục rồi thực hiện thao tác của thông báo. */
 async function runNotif({ notif, book, id }) {
+  if (notif === 'reminder') { S.doneReminder(S.currentUser().id, id); return toast('Đã Done'); }
   await switchTo(book);
   if (notif === 'debt') {
     const d = state.debts.find((x) => x.id === id);
     if (d) debtPay(d);
   } else if (notif === 'pending') actions['pending-open']({ dataset: { id } });
   else if (notif === 'recurring') actions['rec-open']({ dataset: { id } });
-  else if (notif === 'reminder') { await S.doneReminder(id); toast('Đã Done'); }
   else if (notif === 'cardpay') { const due = S.cardDue(); if (due?.items.length) cardPaySheet(due.items); }
   else actions['budget-goto']();
 }
@@ -450,7 +475,7 @@ actions.books = () => {
         })).join('')}
         ${pfLine}
         ${room ? `<button type="button" class="ptile-add block" data-add="${tab}">＋ ${label}</button>` : ''}</div>`;
-    }).join('') + '</div>',
+    }).join('') + reminderSection(u) + '</div>',
     onMount(sh, close) {
       fillProfileSums(sh);
       fillPfVals(sh);
@@ -462,8 +487,9 @@ actions.books = () => {
       });
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
-        const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]');
-        if (e.target.closest('[data-over-edit]')) { close(); overNameForm(u); }
+        const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), rem = e.target.closest('[data-rem]');
+        if (rem) { close(); reminderForm(S.remindersOf(u.id).find((x) => x.id === rem.dataset.rem) || null); }
+        else if (e.target.closest('[data-over-edit]')) { close(); overNameForm(u); }
         else if (e.target.closest('[data-over]')) { close(); actions['book-close'](); }
         else if (del) {
           const b = S.getProfiles().find((x) => x.id === del.dataset.del);
@@ -1131,7 +1157,7 @@ actions['card-open'] = (el) => {
   });
 };
 
-function cardItemForm(item) {
+function cardItemForm(item, pick = null) {
   const f = item ? { ...item } : { amountVnd: 0, categoryId: state.settings.lastCat?.expense, date: todayISO(), note: '' };
   const cats = S.catsOf('expense').filter((c) => !/^(gop|trich)/.test(c.sys || ''));
   if (!cats.some((c) => c.id === f.categoryId)) f.categoryId = cats[0]?.id;
@@ -1140,6 +1166,7 @@ function cardItemForm(item) {
     title: item ? 'Sửa khoản chi' : 'Thêm khoản chi của thẻ',
     headAction: `<button type="submit" form="${ciFormId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${ciFormId}">
+      ${bookPick(pick)}
       ${amountLine({ dateId: 'ci-date', date: f.date, amtId: 'ci-amt', amount: f.amountVnd ? fmtNum(f.amountVnd) : '', editDate: !!item })}
       <div class="amt-tools">
         <select id="ci-cat" class="cat-select" aria-label="Danh mục">${cats.map((c) => `<option value="${c.id}" ${c.id === f.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>
@@ -1149,7 +1176,7 @@ function cardItemForm(item) {
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'ci-amt');
-
+      bindBookPick(sh, close, 'ci-amt', () => openAddForm(pick));
       if (!item) setTimeout(() => amt.focus(), 250);
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1372,16 +1399,17 @@ function homeView() {
     </div>
   </header>
   <div class="over-lines">
-    <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r" data-kind-total></small></div>
+    <div><button type="button" class="over-ticker" data-act="users" data-over-ticker hidden></button><small class="chip-sub over-r" data-kind-total></small></div>
     <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
-    <div><small class="chip-sub over-card" data-over-card></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
+    <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
+    <div style="display:none"><small class="chip-sub over-card" data-over-card></small></div>
   </div>
   <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div></div>
   <div class="over-date"><small>📅 ${fmtDayHeader(todayISO())}</small>
     <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="seg tabs">${overTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
   <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) || '<p class="muted small center">Đang tải…</p>'}</div>
-  ${fab()}`;
+  ${fab(kind)}`;
 }
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; refresh(); };
 
@@ -1493,7 +1521,9 @@ async function fillOverview(root) {
   } catch (err) { console.warn(err); }
 }
 
-const fab = () => `<button type="button" class="fab" data-act="add" aria-label="Thêm giao dịch">+</button>`;
+/** Thẻ của một mục, để nút + mang màu của thẻ đó. */
+const tabOfBook = (b) => (b.overdraft ? 'od' : b.kind === 'saving' ? 'saving' : b.kind !== 'card' ? 'bank' : b.credit || b.cardType === 'credit' ? 'credit' : 'wallet');
+const fab = (tab = tabOfBook(S.currentProfile())) => `<button type="button" class="fab" data-act="add" data-tab="${tab}" aria-label="Thêm giao dịch">+</button>`;
 
 // ================= Giao dịch =================
 function filteredTx() {
@@ -1717,7 +1747,7 @@ function bindDebtHint(sh, amt, getBook) {
   };
 }
 
-function openGopForm() {
+function openGopForm(pick = null) {
   const others = otherProfiles('gop');
   if (!others.length) {
     toast('Chưa có mục nào để transfer vào');
@@ -1729,6 +1759,7 @@ function openGopForm() {
     title: 'Transfer tiền cho người khác',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🤝 Transfer</button>`,
     body: `<form class="form" id="${formId}">
+      ${bookPick(pick)}
       <p class="muted small">Sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
       <div class="field"><span>Transfer cho</span>${userChips('gf-to', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản', `<select id="gf-from" data-acc>${accOptions(state.settings.lastAccount, true)}</select>`)}
@@ -1740,6 +1771,7 @@ function openGopForm() {
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'gf-amt');
+      bindBookPick(sh, close, 'gf-amt', () => (otherProfiles('gop').length ? openGopForm(pick) : openAddForm(pick)));
       const updBal = () => balHint($(sh, '#gf-bal'), {
         have: S.available($(sh, '#gf-from').value), need: Math.round(readMoney(amt.value) || 0), bookId: S.currentProfile().id,
       });
@@ -1831,7 +1863,7 @@ function gopDetail(tx) {
 actions.trich = () => openTrichForm();
 
 /** Get In: lấy tiền từ tài khoản của người khác về tài khoản của mình (ngược với Transfer). */
-function openTrichForm() {
+function openTrichForm(pick = null) {
   const others = otherProfiles('trich');
   if (!others.length) {
     toast('Chưa có mục nào để Get In');
@@ -1843,6 +1875,7 @@ function openTrichForm() {
     title: 'Get In',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🔄 Get In</button>`,
     body: `<form class="form" id="${formId}">
+      ${bookPick(pick)}
       <p class="muted small">Rút tiền từ mục khác về <b>${esc(S.bookLabel(me))}</b>: sổ nguồn ghi một khoản <b class="expense">chi</b>, sổ này ghi một khoản <b class="income">thu</b>. Nguồn phải đủ số dư (riêng Thấu chi được âm, vượt hạn mức sẽ cảnh báo).</p>
       <div class="field"><span>Get In từ</span>${userChips('tr-from', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc" data-acc><option>Đang tải…</option></select>`)}
@@ -1854,6 +1887,7 @@ function openTrichForm() {
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'tr-amt');
+      bindBookPick(sh, close, 'tr-amt', () => (otherProfiles('trich').length ? openTrichForm(pick) : openAddForm(pick)));
       let fromId = others[0].id;
       const pfc = bindPf(sh, null, S.pfNeeded(me.id, fromId));
       const debtH = bindDebtHint(sh, amt, () => me);
@@ -2018,12 +2052,12 @@ actions['tx-tag-go'] = (el) => {
 };
 
 // ================= Kế hoạch =================
-const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả nợ', recurring: 'Định kỳ', reminders: 'Nhắc nhở' };
+const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả nợ', recurring: 'Định kỳ' };
 
 function planView(sub) {
   if (sub && PLAN_TABS[sub]) ui.planTab = sub;
   const tab = ui.planTab;
-  const body = { budget: budgetTab, goals: goalsTab, debts: debtsTab, recurring: recurringTab, reminders: remindersTab }[tab]();
+  const body = { budget: budgetTab, goals: goalsTab, debts: debtsTab, recurring: recurringTab }[tab]();
   return `${topBar('🎯 Kế hoạch')}
   <div class="seg tabs">${Object.entries(PLAN_TABS).map(([k, v]) => `<a href="#/plan/${k}" class="${tab === k ? 'on' : ''}">${v}</a>`).join('')}</div>
   ${body}`;
@@ -2367,6 +2401,7 @@ function debtPay(d) {
     body: `<form class="form">
       <p class="muted">${esc(S.debtName(d))} · kỳ ${fmtDate(d.dueDate)}</p>
       ${amountField('dp-amt', d.amount, 'Số tiền đã trả')}
+      <p class="muted small">Đã điền sẵn số tiền thiết lập. Kỳ này có chênh lệch thì sửa lại, các kỳ sau vẫn theo số thiết lập.</p>
       ${pfField()}
       ${field('Trả từ tài khoản', `<select id="dp-acc" data-acc>${accOptions(d.accountId || state.settings.lastAccount, true)}</select>`)}
       ${datePick('dp-date', todayISO(), 'Ngày trả', 'disabled')}
@@ -2419,56 +2454,80 @@ function calendarSheet(filename, ics) {
 }
 
 // ----- Giao dịch định kỳ -----
-// ----- Nhắc nhở tự tạo -----
-function remindersTab() {
-  const today = todayISO();
-  const list = [...(state.settings.reminders || [])].sort((a, b) => (a.date < b.date ? -1 : 1));
-  return `
-  <p class="muted small">Đến ngày giờ đã chọn, nhắc nhở hiện trong <b>Notifications</b> của User. Muốn điện thoại báo chuông cả khi đóng app: mở nhắc nhở đã lưu, bấm <b>Thêm vào Lịch</b>.</p>
-  ${list.length ? `<div class="card list">${list.map((r) => `<div class="row quick-row">
-    <button type="button" class="grow-btn" data-act="rem-edit" data-id="${esc(r.id)}"><span class="ci">🔔</span>
-      <span class="grow"><b>${esc(r.title)}</b><small>${fmtDate(r.date)} · 🔔 ${r.time || S.ALERT_TIME} · ${fmtDue(diffDays(today, r.date))}${r.repeat === 'month' ? ' · hằng tháng' : ''}${r.note ? ' · ' + esc(r.note) : ''}</small></span></button>
-    <button type="button" class="btn small ghost" data-act="rem-done" data-id="${esc(r.id)}">Done</button></div>`).join('')}</div>` : empty('🔔', 'Chưa có nhắc nhở nào.')}
-  <button type="button" class="btn primary block" data-act="rem-edit">+ Tạo nhắc nhở</button>`;
+// ----- Nhắc nhở của User: tạo ở màn hình nút góc phải Tổng quan, tối đa 9 -----
+function reminderSub(r) {
+  const unit = S.REPEAT_UNITS[r.repeat];
+  return `${fmtDate(r.date)} · 🔔 ${r.time || S.ALERT_TIME}${r.remindDays ? ` · trước ${r.remindDays} ngày` : ''}${unit ? ` · lặp mỗi ${unit}${r.periodsLeft != null ? ` · còn ${r.periodsLeft} kì` : ''}` : ''}`;
+}
+function reminderSection(u) {
+  const list = [...S.remindersOf(u.id)].sort((a, b) => (a.date < b.date ? -1 : 1));
+  return `<h4 class="grp-h"><span>🔔 Nhắc nhở <small>(${list.length}/${S.REMINDER_MAX})</small></span></h4>
+    <div class="notif-list">${list.map((r) => `<button type="button" class="notif-row rem-row" data-rem="${esc(r.id)}"><span class="n-ic">🔔</span>
+      <span class="grow"><b>${esc(r.title)}</b><small>${esc(reminderSub(r))}</small></span>›</button>`).join('')}</div>
+    ${list.length < S.REMINDER_MAX ? '<button type="button" class="ptile-add block" data-rem="">＋ Nhắc nhở</button>' : ''}`;
 }
 
-actions['rem-done'] = async (el) => { await S.doneReminder(el.dataset.id); toast('Đã Done'); };
-actions['rem-edit'] = (el) => {
-  const r = (state.settings.reminders || []).find((x) => x.id === el.dataset.id);
-  const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', note: '', time: S.ALERT_TIME };
+function reminderForm(r) {
+  const u = S.currentUser();
+  const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', time: S.ALERT_TIME, periodsLeft: null };
+  const repeats = !!S.REPEAT_UNITS[f.repeat];
+  let unit = repeats ? f.repeat : 'month';
   const formId = 'rm-' + Date.now();
   openSheet({
     title: r ? 'Sửa nhắc nhở' : 'Tạo nhắc nhở',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    onClose() { setTimeout(() => actions.books(), 260); },
     body: `<form class="form" id="${formId}">
-      ${field('Nội dung', `<input id="rm-title" required maxlength="60" value="${esc(f.title)}" placeholder="vd: Đóng học phí, gia hạn bảo hiểm">`)}
-      ${datePick('rm-date', f.date, 'Ngày nhắc')}
-      <div class="two">${field('Nhắc trước (ngày)', `<input type="number" id="rm-before" min="0" max="30" value="${esc(f.remindDays || 0)}">`)}
-      ${alertTimeField('rm-time', f.time)}</div>
+      ${field('Tên nhắc nhở', `<input id="rm-title" required maxlength="60" value="${esc(f.title)}" placeholder="vd: Đóng học phí, gia hạn bảo hiểm">`)}
+      ${datePick('rm-date', f.date, 'Ngày đến hạn')}
+      <div class="two">${field('Giờ nhắc', `<input type="time" id="rm-time" value="${esc(f.time || S.ALERT_TIME)}">`)}
+      ${field('Nhắc trước (ngày)', `<input type="number" id="rm-before" min="0" max="30" value="${esc(f.remindDays || 0)}">`)}</div>
       <p class="muted small" id="rm-when"></p>
-      ${field('Lặp lại', `<select id="rm-rep"><option value="none" ${f.repeat !== 'month' ? 'selected' : ''}>Một lần</option><option value="month" ${f.repeat === 'month' ? 'selected' : ''}>Hằng tháng</option></select>`)}
-      ${field('Ghi chú (không bắt buộc)', `<input id="rm-note" value="${esc(f.note || '')}">`)}
+      <label class="check"><input type="checkbox" id="rm-rep" ${repeats ? 'checked' : ''}> Lặp lại</label>
+      <div class="rep-box" id="rm-rep-box" ${repeats ? '' : 'hidden'}>
+        <div class="field"><span>Lặp theo</span><div class="seg" id="rm-unit">${Object.entries(S.REPEAT_UNITS).map(([k, v]) => `<button type="button" data-u="${k}" class="${k === unit ? 'on' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
+        ${field('Số kì lặp', `<input type="number" id="rm-count" min="1" max="999" inputmode="numeric" value="${esc(f.periodsLeft ?? '')}" placeholder="Để trống: không giới hạn">`)}
+      </div>
       ${r ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa nhắc nhở</button><button type="button" class="btn ghost" data-ics>📅 Thêm vào Lịch</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
       bindAlertPreview(sh, { dateId: 'rm-date', remId: 'rm-before', timeId: 'rm-time', outId: 'rm-when', until: 'bạn bấm Done' });
-      $(sh, 'form').addEventListener('submit', async (e) => {
+      const rep = $(sh, '#rm-rep');
+      rep.addEventListener('change', () => { $(sh, '#rm-rep-box').hidden = !rep.checked; });
+      $(sh, '#rm-unit').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-u]');
+        if (!b) return;
+        unit = b.dataset.u;
+        sh.querySelectorAll('#rm-unit [data-u]').forEach((x) => x.classList.toggle('on', x === b));
+      });
+      $(sh, 'form').addEventListener('submit', (e) => {
         e.preventDefault();
         const title = $(sh, '#rm-title').value.trim();
         const date = $(sh, '#rm-date').value;
-        if (!title) return toast('Nhập nội dung');
-        if (!date) return toast('Chọn ngày nhắc');
-        await S.saveReminder({ ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: $(sh, '#rm-rep').value, note: $(sh, '#rm-note').value.trim() });
+        if (!title) return toast('Nhập tên nhắc nhở');
+        if (!date) return toast('Chọn ngày đến hạn');
+        const count = $(sh, '#rm-count').value.trim();
+        const periodsLeft = rep.checked && count ? Math.floor(Number(count)) : null;
+        if (periodsLeft != null && !(periodsLeft >= 1)) return toast('Số kì lặp phải từ 1 trở lên');
+        try {
+          S.saveReminder(u.id, { ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: rep.checked ? unit : 'none', periodsLeft });
+        } catch (err) { return toast(err.message); }
         close(); toast('Đã lưu nhắc nhở');
       });
-      $(sh, '[data-del]')?.addEventListener('click', async () => { await S.deleteReminder(r.id); close(); toast('Đã xóa'); });
-      $(sh, '[data-ics]')?.addEventListener('click', () => calendarSheet('nhac-nho.ics', buildAllDayICS([{
-        uid: 'rem-' + r.id, date: r.date, rrule: r.repeat === 'month' ? 'FREQ=MONTHLY' : null, remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME,
-        title: `🔔 ${r.title}`, description: r.note || '',
-      }])));
+      $(sh, '[data-del]')?.addEventListener('click', () => {
+        if (!confirm(`Xóa nhắc nhở "${r.title}"?`)) return;
+        S.deleteReminder(u.id, r.id); close(); toast('Đã xóa');
+      });
+      $(sh, '[data-ics]')?.addEventListener('click', () => {
+        const freq = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY' }[r.repeat];
+        calendarSheet('nhac-nho.ics', buildAllDayICS([{
+          uid: 'rem-' + r.id, date: r.date, rrule: freq ? `FREQ=${freq}${r.periodsLeft != null ? ';COUNT=' + r.periodsLeft : ''}` : null, remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME,
+          title: `🔔 ${r.title}`, description: r.note || '',
+        }]));
+      });
     },
   });
-};
+}
 
 function recurringTab() {
   const list = [...state.recurring].sort((a, b) => (b.active - a.active) || (a.nextDate < b.nextDate ? -1 : 1));
@@ -2554,7 +2613,7 @@ actions['pending-open'] = (el) => {
  * returnTo: hồ sơ cần quay về sau khi đóng form (khi đang ghi hộ vào sổ người khác).
  * catName: giữ danh mục theo tên khi chuyển sang sổ người khác (mỗi sổ có id danh mục riêng).
  */
-export function openTxForm({ tx = null, type = 'expense', preset = null, fromRecurring = null, repeat = 'none', returnTo = null, catName = null } = {}) {
+export function openTxForm({ tx = null, type = 'expense', preset = null, fromRecurring = null, repeat = 'none', returnTo = null, catName = null, pick = null } = {}) {
   const st = state.settings;
   const isEdit = !!tx;
   const f = tx ? JSON.parse(JSON.stringify(tx)) : {
@@ -2574,7 +2633,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
   ensureCat();
   // Chọn người dùng để ghi vào đúng sổ (chỉ khi thêm mới và có từ 2 người dùng).
   const origin = returnTo || S.currentProfile().id;
-  const showWho = !isEdit && !fromRecurring && S.txBooks().length > 1 && !S.currentProfile().credit;
+  const showWho = !pick && !isEdit && !fromRecurring && S.txBooks().length > 1 && !S.currentProfile().credit;
   let switching = false;
   const rate0 = f.rate || S.rateOf(f.currency);
   let splitRows = f.splits && f.splits.length ? f.splits.map((p) => ({ categoryId: p.categoryId, amount: fmtNum(p.amountVnd / rate0) })) : [];
@@ -2589,6 +2648,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     body: `<form class="form txf" id="${formId}" autocomplete="off">
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span>${userChips('tf-who', S.txBooks(), (p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>` : ''}
+      ${bookPick(pick, 'tf-who', 'data-who')}
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).filter(typeAllowed).map((t) => `<button type="button" data-v="${t}">${{ expense: '💸 ', income: '💰 ', transfer: '⇄ ' }[t] || ''}${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Transfer</button>' : ''}
@@ -2614,7 +2674,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     </form>`,
     onClose() {
       // Ghi hộ xong (hoặc hủy) → quay lại sổ đang xem trước đó.
-      if (!switching && origin !== S.currentProfile().id) S.switchProfile(origin);
+      if (!switching && !pick && origin !== S.currentProfile().id) S.switchProfile(origin);
     },
     onMount(sh, close) {
       const amtIn = $(sh, '#tf-amt'), hint = $(sh, '#tf-hint');
@@ -2633,7 +2693,9 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         switching = true;
         close();
         await S.switchProfile(b.dataset.who);
-        openTxForm({ type: keepType, preset: keep, returnTo: origin, catName: keepCat });
+        const now = S.currentProfile();
+        if (pick && (S.isCard() || (!S.featureOn(now, 'expense') && !S.featureOn(now, 'income')))) return openAddForm(pick);
+        openTxForm({ type: keepType, preset: keep, returnTo: origin, catName: keepCat, pick });
       });
       const curSel = $(sh, '#tf-cur');
       const curCode = () => (curSel ? curSel.value : 'VND');
@@ -2665,8 +2727,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
 
       // --- loại giao dịch ---
       const typeBtns = sh.querySelectorAll('#tf-type button[data-v]');
-      $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(); });
-      $(sh, '#tf-trich')?.addEventListener('click', () => { close(); openTrichForm(); });
+      $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(pick); });
+      $(sh, '#tf-trich')?.addEventListener('click', () => { close(); openTrichForm(pick); });
       const updType = () => {
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
         const tr = f.type === 'transfer';
@@ -2856,33 +2918,58 @@ function viewImage(src) {
 
 /** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Transfer/Get In); Tiết kiệm chỉ có Transfer/Get In. */
 actions.add = async (el) => {
+  let pick = null;
   if (current.route === 'home') {
     const kind = overKindNow();
     const books = tabBooks(S.currentUser().id, kind);
     if (!books.length) return toast('Chưa có mục nào. Bấm nút góc phải để tạo.');
     if (!books.some((b) => b.id === S.currentProfile().id)) await S.switchProfile(books[0].id);
-    if (S.isCard()) return cardItemForm(null);
+    pick = books;
   }
-  const cur = S.currentProfile();
-  if (transferOnly() || (!S.featureOn(cur, 'expense') && !S.featureOn(cur, 'income'))) return gopTrichChooser();
-  openTxForm({ type: el.dataset.type || 'expense', repeat: el.dataset.repeat || 'none' });
+  openAddForm(pick, { type: el.dataset.type, repeat: el.dataset.repeat });
 };
 
-function gopTrichChooser() {
+/** Mở form phù hợp với mục đang chọn. pick: các tài khoản cùng thẻ ở Tổng quan để chọn ngay trong form. */
+function openAddForm(pick, { type = 'expense', repeat = 'none' } = {}) {
+  const cur = S.currentProfile();
+  if (pick && S.isCard()) return cardItemForm(null, pick);
+  if (transferOnly() || (!S.featureOn(cur, 'expense') && !S.featureOn(cur, 'income'))) return gopTrichChooser(pick);
+  openTxForm({ type, repeat, pick });
+}
+
+/** Dòng chọn tài khoản giao dịch, chỉ hiện khi thẻ đó có từ 2 tài khoản. */
+const bookPick = (pick, id = '', attr = 'data-pick') => (pick?.length > 1 ? `<div class="who-pick book-pick" ${id ? `id="${id}"` : 'data-book-pick'}><span>Tài khoản giao dịch</span><div class="chips">${pick.map((p) =>
+  `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" ${attr}="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : '');
+/** Đổi tài khoản: mở lại form của tài khoản đó, giữ số tiền đang nhập. */
+function bindBookPick(sh, close, amtId, reopen) {
+  $(sh, '[data-book-pick]')?.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-pick]');
+    if (!b || b.dataset.pick === S.currentProfile().id) return;
+    const amount = amtId ? $(sh, '#' + amtId)?.value : '';
+    close();
+    await S.switchProfile(b.dataset.pick);
+    reopen();
+    const input = amount && [...document.querySelectorAll('.sheet')].pop()?.querySelector('#' + amtId);
+    if (input) { input.value = amount; input.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
+}
+
+function gopTrichChooser(pick = null) {
   const g = S.transferTargets('gop').length, t = S.transferTargets('trich').length;
   if (!g && !t) return toast('Mục này không có giao dịch nào đang bật hoặc chưa có mục để chuyển');
-  if (g && !t) return openGopForm();
+  if (g && !t) return openGopForm(pick);
   openSheet({
     title: 'Chọn thao tác',
-    body: `<div class="actions col">
+    body: `${bookPick(pick)}<div class="actions col">
       ${g ? '<button type="button" class="btn primary" data-x="gop">🤝 Transfer cho mục khác</button>' : ''}
       ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Get In</button>' : ''}</div>`,
     onMount(sh, close) {
+      bindBookPick(sh, close, '', () => gopTrichChooser(pick));
       sh.addEventListener('click', (e) => {
         const b = e.target.closest('[data-x]');
         if (!b) return;
         close();
-        (b.dataset.x === 'gop' ? openGopForm : openTrichForm)();
+        (b.dataset.x === 'gop' ? openGopForm : openTrichForm)(pick);
       });
     },
   });

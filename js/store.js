@@ -1180,11 +1180,6 @@ export function getAlerts() {
       out.push({ key: `budget:${b.id}:${st.range.start}:${level}`, kind: 'budget', id: b.id, days: 999, level, title: budgetName(b), amount: st.spent, limit: b.amount, ratio: st.ratio });
     }
   }
-  for (const r of state.settings.reminders || []) {
-    const days = diffDays(today, r.date);
-    const stage = alertStage(days, r.remindDays || 0, r.time);
-    if (stage) out.push({ key: `rem:${r.id}:${r.date}:${stage}`, kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date, time: r.time || ALERT_TIME });
-  }
   const due = cardDue();
   if (due?.items.length) {
     out.push({ key: `cardpay:${due.before}`, kind: 'cardpay', id: 'cardpay', days: diffDays(today, due.date), title: 'Trích trả nợ thẻ', count: due.items.length, before: due.before, amount: due.items.reduce((s, t) => s + t.amountVnd, 0), date: due.date, time: due.time });
@@ -1192,18 +1187,56 @@ export function getAlerts() {
   return out.sort((a, b) => a.days - b.days);
 }
 
-/** Nhắc nhở tự tạo ở Kế hoạch: lưu trong cài đặt của mục. */
-export const saveReminder = (r) => {
-  const list = state.settings.reminders || [];
+// ---------- Nhắc nhở của User: lưu trong hồ sơ User, tối đa 9 ----------
+export const REMINDER_MAX = 9;
+export const REPEAT_UNITS = { day: 'ngày', week: 'tuần', month: 'tháng' };
+export const remindersOf = (userId) => getUsers().find((u) => u.id === userId)?.reminders || [];
+const setReminders = (userId, list) => saveUsers(getUsers().map((u) => (u.id === userId ? { ...u, reminders: list } : u)));
+
+export function saveReminder(userId, r) {
+  const list = remindersOf(userId);
+  if (!r.id && list.length >= REMINDER_MAX) throw new Error(`Tối đa ${REMINDER_MAX} nhắc nhở`);
   const item = r.id ? r : { ...r, id: uid() };
-  return setSetting('reminders', list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item]);
-};
-export const deleteReminder = (id) => setSetting('reminders', (state.settings.reminders || []).filter((x) => x.id !== id));
-/** Xong: nhắc hằng tháng thì chuyển sang tháng sau, nhắc một lần thì bỏ. */
-export function doneReminder(id) {
-  const r = (state.settings.reminders || []).find((x) => x.id === id);
-  if (!r) return null;
-  return r.repeat === 'month' ? saveReminder({ ...r, date: addMonths(r.date, 1, Number(r.day) || undefined) }) : deleteReminder(id);
+  setReminders(userId, r.id ? list.map((x) => (x.id === r.id ? item : x)) : [...list, item]);
+  emit();
+  return item;
+}
+export function deleteReminder(userId, id) {
+  setReminders(userId, remindersOf(userId).filter((x) => x.id !== id));
+  emit();
+}
+/**
+ * Done: nhắc một lần thì bỏ. Nhắc lặp lại thì sang kỳ kế tiếp, các kỳ đã trôi qua tính là đã hết;
+ * periodsLeft là số kỳ còn lại kể cả kỳ đang nhắc (null = không giới hạn), dùng hết thì bỏ.
+ */
+export function doneReminder(userId, id) {
+  const r = remindersOf(userId).find((x) => x.id === id);
+  if (!r) return;
+  if (!REPEAT_UNITS[r.repeat]) return deleteReminder(userId, id);
+  const today = todayISO();
+  let date = r.date, left = r.periodsLeft ?? null;
+  do {
+    if (left != null && --left <= 0) return deleteReminder(userId, id);
+    date = nextDate(date, r.repeat, 1, Number(r.day) || undefined);
+  } while (date < today);
+  saveReminder(userId, { ...r, date, periodsLeft: left });
+}
+export function reminderAlerts(userId) {
+  const today = todayISO();
+  const out = [];
+  for (const r of remindersOf(userId)) {
+    const days = diffDays(today, r.date);
+    const stage = alertStage(days, r.remindDays || 0, r.time);
+    if (stage) out.push({ key: `rem:${r.id}:${r.date}:${stage}`, kind: 'reminder', id: r.id, days, title: r.title, note: r.note, amount: 0, date: r.date, time: r.time || ALERT_TIME, bookId: '', bookName: 'Nhắc nhở', bookIcon: '🔔' });
+  }
+  return out;
+}
+/** Nhắc nhở bản cũ nằm trong từng mục: chuyển lên User rồi mới xóa khỏi mục, không tính vào lần kiểm tra giới hạn. */
+async function adoptOldReminders(userId, bookId, old) {
+  const mine = remindersOf(userId);
+  setReminders(userId, [...mine, ...old.filter((r) => !mine.some((m) => m.id === r.id))]);
+  await dbOf(bookId).put('settings', { key: 'reminders', value: [] });
+  if (bookId === currentProfile().id) state.settings.reminders = [];
 }
 
 /**
@@ -1214,7 +1247,7 @@ export async function userAlerts(userId) {
   const out = [];
   const cur = currentProfile().id;
   for (const b of userBooks(userId)) {
-    let list;
+    let list, oldReminders = b.id === cur ? state.settings.reminders : null;
     if (b.id === cur) list = getAlerts();
     else {
       const peer = dbOf(b.id);
@@ -1225,9 +1258,12 @@ export async function userAlerts(userId) {
       for (const k of Object.keys(data)) saved[k] = state[k];
       Object.assign(state, data);
       try { list = getAlerts(); } finally { Object.assign(state, saved); }
+      oldReminders = data.settings.reminders;
     }
+    if (oldReminders?.length) await adoptOldReminders(userId, b.id, oldReminders);
     out.push(...list.map((a) => ({ ...a, bookId: b.id, bookName: b.name, bookIcon: b.icon })));
   }
+  out.push(...reminderAlerts(userId));
   return out.sort((a, b) => a.days - b.days);
 }
 

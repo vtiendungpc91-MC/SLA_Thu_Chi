@@ -898,3 +898,33 @@ html.dark .av-edit > i, html.dark .over-ic > i { background: var(--soft); color:
 .seg.tabs > [data-act="over-tab"][data-v="od"].on { background: #74c0fc; color: #0b2545; }
 .seg.tabs > [data-act="over-tab"][data-v="saving"].on { background: #2b8a3e; color: #fff; }
 .seg.tabs > [data-act="over-tab"][data-v="credit"].on { background: #e03131; color: #fff; }
+/* Nút + mang màu của thẻ đang chọn */
+.fab[data-tab="bank"], .fab[data-tab="wallet"] { background: #e8590c; box-shadow: 0 6px 18px rgba(232, 89, 12, .45); }
+.fab[data-tab="od"] { background: #74c0fc; color: #0b2545; box-shadow: 0 6px 18px rgba(116, 192, 252, .55); }
+.fab[data-tab="saving"] { background: #2b8a3e; box-shadow: 0 6px 18px rgba(43, 138, 62, .45); }
+.fab[data-tab="credit"] { background: #e03131; box-shadow: 0 6px 18px rgba(224, 49, 49, .45); }
+
+/* Nút nhanh nổi hơn */
+.qk-btn { font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.quick-btn.q-expense { background: #fbc4c7; color: #9f1d23; border-color: #ee8a8f; }
+.quick-btn.q-income { background: #aee8c4; color: #0d5a36; border-color: #62c98f; }
+.quick-btn.q-gop, .quick-btn.q-card { background: #a8e6df; color: #065a51; border-color: #58c4b7; }
+.quick-btn.q-trich { background: #d8c5f5; color: #4f2492; border-color: #ab8be0; }
+html.dark .quick-btn.q-expense { background: #6b1d28; color: #ffc2c5; border-color: #a33a46; }
+html.dark .quick-btn.q-income { background: #17563a; color: #a6f5cc; border-color: #2c8a5f; }
+html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #14544d; color: #a2eee3; border-color: #2a8a7e; }
+html.dark .quick-btn.q-trich { background: #4a2f78; color: #e0cefa; border-color: #7652b3; }
+
+/* Dòng thông báo chạy ở Tổng quan */
+.over-ticker { flex: 1 1 0; min-width: 0; padding: 0; border: 0; background: none; text-align: left; font-size: 11.5px; font-weight: 700; color: #e8590c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.over-ticker[hidden] { display: none; }
+.over-ticker.tick { animation: ticker-in .35s ease; }
+@keyframes ticker-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.over-lines .over-r { flex: 0 0 auto; }
+
+/* Nhắc nhở */
+.rem-row { text-align: left; color: inherit; }
+.rep-box { display: flex; flex-direction: column; gap: 10px; }
+.rep-box[hidden] { display: none; }
+.book-pick { padding: 6px 0; background: none; }
+.sheet-body > .book-pick { margin-bottom: 8px; }
