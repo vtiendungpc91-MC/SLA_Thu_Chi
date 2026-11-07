@@ -684,11 +684,6 @@ export function setFeature(bookId, f, on) {
   saveProfile({ id: bookId, features: { ...(b.features || {}), [f]: on } });
   emit();
 }
-/** Ẩn/hiện mục ở Tổng quan; mục ẩn không cộng vào các số tổng đang hiển thị. */
-export function setHomeHidden(bookId, hidden) {
-  saveProfile({ id: bookId, hideHome: !!hidden });
-  emit();
-}
 export const kindOfBook = (p) => p.kind || 'bank';
 /**
  * Đích Transfer / Get In theo loại mục đang mở:
@@ -699,7 +694,7 @@ export const kindOfBook = (p) => p.kind || 'bank';
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
   if (!featureOn(from, mode === 'trich' ? 'trich' : 'gop')) return [];
-  const allowed = mode === 'trich' ? (k === 'bank' ? ['bank', 'neo'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
+  const allowed = mode === 'trich' ? (k === 'bank' ? ['bank', 'neo'] : k === 'saving' ? ['bank'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
   // Secrecy đang ẩn thì không hiện trong form; mẫu nhanh đã thiết lập gọi thẳng gop/trich nên vẫn chạy.
   const hide = !includeHidden && secrecyHidden();
   return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && !(hide && p.owner === SECRECY) && canTransfer(from, p));
@@ -1174,9 +1169,9 @@ export async function userAlerts(userId) {
 }
 
 /** Tổng tiền của một nhóm mục trong User: Ngân hàng/Tiết kiệm = số dư; Thẻ = tiền chưa thanh toán. */
-export async function kindTotal(userId, kind, { visibleOnly = false } = {}) {
+export async function kindTotal(userId, kind) {
   let total = 0;
-  for (const b of userBooks(userId).filter((x) => kindOfBook(x) === kind && !(visibleOnly && x.hideHome))) {
+  for (const b of userBooks(userId).filter((x) => kindOfBook(x) === kind)) {
     const s = await profileSummary(b);
     total += s.kind === 'card' ? s.unpaid : s.balance;
   }
@@ -1186,14 +1181,14 @@ export async function kindTotal(userId, kind, { visibleOnly = false } = {}) {
 // ---------- Màn hình Tổng quan chung: nút nhanh, thống kê, số liệu trong ngày của từng mục ----------
 export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
 export const STAT_MAX = 3;
-/** Giao dịch từ nút nhanh được hủy (Recall) trong 10 phút, hiện tối đa 5 dòng. */
+/** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 10 phút được hủy (Recall). */
 export const RECALL_MS = 10 * 60 * 1000;
 export const RECALL_LINES = 5;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
   if (k === 'card') return ['card'];
-  if (k === 'saving') return ['gop'];
+  if (k === 'saving') return ['gop', 'trich'];
   return TX_FEATURES.filter((f) => featureOn(b, f));
 }
 /** Danh sách nút nhanh; dữ liệu kiểu cũ (mỗi loại 1 mẫu) được đọc thành danh sách. */
@@ -1213,7 +1208,7 @@ export function statsOf(st = state.settings) {
 
 /** Số liệu trong kỳ của một mục (đọc trực tiếp từ sổ của mục đó). */
 export async function bookOverview(b, range) {
-  const { peer, accs } = await openPeerBook(b.id);
+  const { peer, accs, cats } = await openPeerBook(b.id);
   const txs = await peer.getAll('transactions');
   const settings = { ...DEFAULT_SETTINGS };
   for (const r of await peer.getAll('settings')) settings[r.key] = r.value;
@@ -1237,9 +1232,8 @@ export async function bookOverview(b, range) {
       else if (t.type === 'expense') expense += t.amountVnd;
     }
   }
-  const now = Date.now();
-  const recent = txs.filter((t) => t.quick && t.status !== 'done' && now - (t.createdAt || 0) < RECALL_MS)
-    .sort((x, y) => y.createdAt - x.createdAt).slice(0, RECALL_LINES);
+  const recent = [...txs].sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : (y.createdAt || 0) - (x.createdAt || 0)))
+    .slice(0, RECALL_LINES).map((t) => ({ ...t, catName: cats.find((c) => c.id === t.categoryId)?.name || '' }));
   return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent };
 }
 
