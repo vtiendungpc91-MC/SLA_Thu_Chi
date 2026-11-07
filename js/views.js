@@ -1315,7 +1315,7 @@ function creditPaySheet() {
 const overName = (u) => u.overName || 'Tổng quan';
 const overIcon = (u) => u.overIcon || '📊';
 const overColor = (u) => u.overColor || u.color;
-const OVER_TABS = [['bank', 'Bank'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['credit', 'Thẻ tín dụng'], ['wallet', 'Ví điện tử']];
+const OVER_TABS = [['bank', 'Bank Account'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['credit', 'Thẻ tín dụng'], ['wallet', 'Ví điện tử']];
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', credit: '💳', wallet: '👛' };
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
 const overTabs = (userId) => OVER_TABS.filter(([tab]) => tab !== 'wallet' || tabBooks(userId, 'wallet').length);
@@ -2974,11 +2974,29 @@ actions['quick-run'] = async (el) => {
       const curId = S.currentProfile().id;
       const pfc = bindPf(sh, q.pf || null, k !== 'card' && S.pfNeeded(curId, peer ? peer.id : null));
       const debtH = bindDebtHint(sh, amt, () => (k === 'gop' ? peer : k === 'trich' ? S.currentProfile() : null));
+      // Số dư của tài khoản bị trừ tiền: mục này (Chi, Transfer) hoặc mục nguồn (Get In).
+      let sourceHave = null;
       const upd = () => {
-        if (outgoing) balHint($(sh, '#qr-bal'), { have: S.available(acc.id), need: Math.round(readMoney(amt.value) || 0), bookId: S.currentProfile().id });
+        const el = $(sh, '#qr-bal'), need = Math.round(readMoney(amt.value) || 0);
+        if (outgoing) return balHint(el, { have: S.available(acc.id), need, bookId: S.currentProfile().id });
+        if (k !== 'trich' || sourceHave == null) return;
+        // Secrecy đang ẩn: không lộ số dư, chỉ báo khi không đủ tiền.
+        if (peer.owner === S.SECRECY && S.secrecyHidden()) {
+          el.textContent = need > sourceHave ? '⚠️ Số dư không đủ' : '';
+          el.className = 'hint' + (need > sourceHave ? ' warn-red' : '');
+          return;
+        }
+        balHint(el, { have: sourceHave, need, bookId: peer.id, who: ' của ' + S.bookLabel(peer) });
       };
       amt.addEventListener('input', upd);
       upd();
+      if (k === 'trich') {
+        S.peerAccounts(peer.id).then(async (accs) => {
+          const from = q.peerAccountId || accs[0]?.id;
+          sourceHave = await S.peerBalance(peer.id, from);
+          upd();
+        });
+      }
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = Math.round(readMoney(amt.value));
