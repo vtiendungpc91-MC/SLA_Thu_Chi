@@ -476,8 +476,13 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   if (!to || to.id === me.id) throw new Error('Chọn người nhận khác');
   if (!canTransfer(me, to)) throw new Error(CLOSED_MSG);
   if (!featureOn(me, 'gop')) throw new Error('Mục này đang tắt tính năng Transfer');
+  if (!transferTargets('gop', me, { includeHidden: true }).some((p) => p.id === to.id)) throw new Error('Mục này không Transfer được đến mục đã chọn');
   const err = fundsError(fromAccountId, amount);
   if (err) throw new Error(err);
+  if (to.credit) {
+    const debt = Math.max(0, -(await peerBalance(to.id, toAccountId)));
+    if (amount > debt) throw new Error(`${bookLabel(to)} chỉ đang nợ ${fmt(debt)}, không được chuyển vượt số nợ`);
+  }
   const mark = await pfMark(me, to, pf, isSpecialBook(me) ? -amount : amount);
   const gid = uid();
   const base = { amount, currency: 'VND', rate: 1, amountVnd: amount, date, tags: [], splits: null, photoIds: [], createdAt: Date.now() };
@@ -515,6 +520,8 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const { peer, cats, accs } = await openPeerBook(from.id);
   const locked = lockError(from.id);
   if (locked) throw new Error(locked);
+  const overDebt = creditError(amount);
+  if (overDebt) throw new Error(overDebt);
   const have = await peerBalance(from.id, fromAccountId);
   if (!from.overdraft && amount > have) {
     const acc = accs.find((a) => a.id === fromAccountId);
@@ -734,10 +741,13 @@ export const kindOfBook = (p) => p.kind || 'bank';
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
   if (!featureOn(from, mode === 'trich' ? 'trich' : 'gop')) return [];
-  const allowed = mode === 'trich' ? (k === 'bank' ? ['bank', 'neo'] : k === 'saving' ? ['bank'] : []) : k === 'bank' ? ['bank', 'saving', 'neo'] : k === 'saving' ? ['bank'] : [];
+  // Thẻ tín dụng: nhận Transfer từ Bank/Thấu chi và Get In từ Bank/Thấu chi; không chuyển tiền ra, không bị Get In.
+  const allowed = mode === 'trich'
+    ? (k === 'bank' ? ['bank', 'neo'] : k === 'saving' || from.credit ? ['bank'] : [])
+    : k === 'bank' ? ['bank', 'saving', 'neo', 'card'] : k === 'saving' ? ['bank'] : [];
   // Secrecy đang ẩn thì không hiện trong form; mẫu nhanh đã thiết lập gọi thẳng gop/trich nên vẫn chạy.
   const hide = !includeHidden && secrecyHidden();
-  return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && !(hide && p.owner === SECRECY) && canTransfer(from, p));
+  return getProfiles().filter((p) => p.id !== from.id && allowed.includes(kindOfBook(p)) && (kindOfBook(p) !== 'card' || p.credit) && !(hide && p.owner === SECRECY) && canTransfer(from, p));
 }
 
 // ---------- Secrecy: NEOBANK & Cash Outflow ----------
@@ -1230,7 +1240,7 @@ export const RECALL_LINES = 5;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
-  if (k === 'card') return b.credit ? ['expense', 'income'] : ['card'];
+  if (k === 'card') return b.credit ? ['expense', 'income', 'trich'] : ['card'];
   if (k === 'saving') return ['gop', 'trich'];
   return TX_FEATURES.filter((f) => featureOn(b, f));
 }

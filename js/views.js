@@ -1679,6 +1679,37 @@ async function confirmOverdraft(args) {
   return !msgs.length || confirm(`⚠️ ${msgs.join('\n')}\n\nVẫn tiếp tục?`);
 }
 
+/** Dòng cho biết Thẻ tín dụng đang nợ bao nhiêu khi Transfer vào hoặc Get In; cảnh báo nếu nhập vượt số nợ. */
+const debtHintEl = '<em class="hint debt-hint" data-debt hidden></em>';
+function bindDebtHint(sh, amt, getBook) {
+  const el = $(sh, '[data-debt]');
+  let debt = null, book = null;
+  const need = () => Math.round(readMoney(amt.value) || 0);
+  const paint = () => {
+    el.hidden = debt == null;
+    if (debt == null) return;
+    const over = need() > debt;
+    el.textContent = debt > 0 ? `💳 ${book.name} đang nợ ${fmt(debt)}${over ? ' — ⚠️ vượt số nợ' : ''}` : `💳 ${book.name} không còn nợ`;
+    el.className = 'hint debt-hint' + (over || debt <= 0 ? ' warn-red' : '');
+  };
+  const load = async () => {
+    book = getBook();
+    debt = null;
+    if (book?.credit) {
+      const acc = (await S.peerAccounts(book.id))[0];
+      debt = Math.max(0, -(await S.peerBalance(book.id, acc.id)));
+    }
+    paint();
+  };
+  amt.addEventListener('input', paint);
+  load();
+  return {
+    load,
+    /** Trả về thông báo nếu số tiền vượt số nợ. */
+    error: () => (debt != null && need() > debt ? `${book.name} chỉ đang nợ ${fmt(debt)}, không được chuyển vượt số nợ` : null),
+  };
+}
+
 function openGopForm() {
   const others = otherProfiles('gop');
   if (!others.length) {
@@ -1695,7 +1726,7 @@ function openGopForm() {
       <div class="field"><span>Transfer cho</span>${userChips('gf-to', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản', `<select id="gf-from" data-acc>${accOptions(state.settings.lastAccount, true)}</select>`)}
       <em class="hint" id="gf-bal"></em>
-      ${amountLine({ dateId: 'gf-date', date: todayISO(), amtId: 'gf-amt', after: pfField() })}
+      ${amountLine({ dateId: 'gf-date', date: todayISO(), amtId: 'gf-amt', after: debtHintEl + pfField() })}
       ${flowCatField('gf-fcat')}
       ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc" data-acc><option>Đang tải…</option></select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Transfer tiền chợ tháng 11">`)}
@@ -1710,6 +1741,7 @@ function openGopForm() {
       updBal();
       let toId = others[0].id;
       const pfc = bindPf(sh, null, S.pfNeeded(me.id, toId));
+      const debtH = bindDebtHint(sh, amt, () => others.find((x) => x.id === toId));
       const loadPeer = async () => {
         const p = others.find((x) => x.id === toId);
         $(sh, '#gf-to-name').textContent = S.bookLabel(p);
@@ -1724,6 +1756,7 @@ function openGopForm() {
         toId = b.dataset.to;
         sh.querySelectorAll('[data-to]').forEach((x) => x.classList.toggle('on', x === b));
         pfc.setNeeded(S.pfNeeded(me.id, toId));
+        debtH.load();
         loadPeer();
       });
       loadPeer();
@@ -1734,6 +1767,7 @@ function openGopForm() {
         const toAccountId = $(sh, '#gf-toacc').value;
         if (!toAccountId) return toast('Chọn tài khoản nhận');
         if (!checkFunds($(sh, '#gf-from').value, v)) return;
+        if (debtH.error()) return toast('⛔ ' + debtH.error(), 4500);
         const to = others.find((x) => x.id === toId);
         if (!await confirmOverdraft({ fromId: me.id, fromAccountId: $(sh, '#gf-from').value, toId, toAccountId, amount: v })) return;
         try {
@@ -1806,7 +1840,7 @@ function openTrichForm() {
       <div class="field"><span>Get In từ</span>${userChips('tr-from', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc" data-acc><option>Đang tải…</option></select>`)}
       <em class="hint" id="tr-bal"></em>
-      ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt', after: pfField() })}
+      ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt', after: debtHintEl + pfField() })}
       ${flowCatField('tr-fcat')}
       ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to" data-acc>${accOptions(state.settings.lastAccount)}</select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Get In tháng 11">`)}
@@ -1815,6 +1849,7 @@ function openTrichForm() {
       const amt = bindMoney(sh, 'tr-amt');
       let fromId = others[0].id;
       const pfc = bindPf(sh, null, S.pfNeeded(me.id, fromId));
+      const debtH = bindDebtHint(sh, amt, () => me);
       const balances = new Map();
       const updBal = () => {
         const have = balances.get($(sh, '#tr-facc').value);
@@ -1858,6 +1893,7 @@ function openTrichForm() {
         if (!(v > 0)) return toast('Nhập số tiền Get In');
         const fromAccountId = $(sh, '#tr-facc').value;
         if (!balances.has(fromAccountId)) return toast('Chọn tài khoản nguồn');
+        if (debtH.error()) return toast('⛔ ' + debtH.error(), 4500);
         const from = others.find((x) => x.id === fromId);
         if (!await confirmOverdraft({ fromId, fromAccountId, toId: me.id, toAccountId: $(sh, '#tr-to').value, amount: v })) return;
         try {
@@ -2921,7 +2957,7 @@ actions['quick-run'] = async (el) => {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">OK</button>`,
     body: `<form class="form" id="${formId}">
       <p class="quick-info">${esc(quickDesc(k, q))}${k !== 'card' ? `<br><small>${outgoing ? 'Từ' : 'Vào'} tài khoản: ${esc(acc.name)}</small>` : ''}</p>
-      ${amountLine({ dateId: 'qr-date', date: todayISO(), amtId: 'qr-amt', big: true, after: pfField() })}
+      ${amountLine({ dateId: 'qr-date', date: todayISO(), amtId: 'qr-amt', big: true, after: debtHintEl + pfField() })}
       <em class="hint" id="qr-bal"></em>
     </form>`,
     onMount(sh, close) {
@@ -2929,6 +2965,7 @@ actions['quick-run'] = async (el) => {
       setTimeout(() => amt.focus(), 250);
       const curId = S.currentProfile().id;
       const pfc = bindPf(sh, q.pf || null, k !== 'card' && S.pfNeeded(curId, peer ? peer.id : null));
+      const debtH = bindDebtHint(sh, amt, () => (k === 'gop' ? peer : k === 'trich' ? S.currentProfile() : null));
       const upd = () => {
         if (outgoing) balHint($(sh, '#qr-bal'), { have: S.available(acc.id), need: Math.round(readMoney(amt.value) || 0), bookId: S.currentProfile().id });
       };
@@ -2938,6 +2975,7 @@ actions['quick-run'] = async (el) => {
         e.preventDefault();
         const v = Math.round(readMoney(amt.value));
         if (!(v > 0)) return toast('Nhập số tiền');
+        if (debtH.error()) return toast('⛔ ' + debtH.error(), 4500);
         const pf = pfc.value();
         const date = $(sh, '#qr-date').value || todayISO();
         const base = { amount: v, currency: 'VND', rate: 1, amountVnd: v, date, tags: [], splits: null, photoIds: [], createdAt: Date.now(), quick: { id: q.id, name: q.name, type: k } };

@@ -889,3 +889,6 @@ select[data-acc]:disabled { opacity: 1; color: var(--text); -webkit-text-fill-co
 .over-ic { padding: 2px 5px 2px 0; }
 .books-compact .ptile.icon-edit .ptile-del { top: 50%; bottom: auto; transform: translateY(-50%); right: 8px; width: 28px; height: 28px; font-size: 13px; }
 .books-compact .over-main { padding-right: 10px; }
+/* Dòng số nợ của Thẻ tín dụng khi Transfer vào hoặc Get In */
+.debt-hint { display: block; font-weight: 600; margin-top: -6px; }
+.debt-hint[hidden] { display: none; }
