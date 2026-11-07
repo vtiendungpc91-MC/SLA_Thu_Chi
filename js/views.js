@@ -202,9 +202,38 @@ function topBar(sub = '', right = '') {
   <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div>${right}</div>`;
 }
 
+// Các số phải đọc bất đồng bộ: hiện ngay giá trị lần trước rồi cập nhật, để không bị trống rồi hiện lại (chớp).
+const fillCache = new Map();
+const showCached = (el, key) => { const v = fillCache.get(key); if (v != null) el.innerHTML = v; };
+const setCached = (el, key, html) => { fillCache.set(key, html); if (el.innerHTML !== html) el.innerHTML = html; };
+
 function fillPfVals(root) {
   const els = root.querySelectorAll('[data-pf-val]');
-  if (els.length) S.pfBalances().then((b) => { if (b) els.forEach((el) => { el.textContent = fmt(b[el.dataset.pfVal]); }); });
+  if (!els.length) return;
+  const key = (el) => `pf:${el.dataset.pfVal}`;
+  els.forEach((el) => showCached(el, key(el)));
+  S.pfBalances().then((b) => { if (b) els.forEach((el) => setCached(el, key(el), fmt(b[el.dataset.pfVal]))); });
+}
+
+// Phần đầu màn hình: nhớ nội dung đã điền theo User và loại mục, vẽ lại thì dán ngay.
+const TOP_FIELDS = '[data-kind-total],[data-notif-count],[data-over-ticker],[data-over-saving],[data-over-debt],[data-over-card],[data-pf-top]';
+const topCache = new Map();
+const topKey = () => `${S.currentUser().id}|${current.route === 'home' ? 'home' : S.kindOfBook(S.currentProfile())}`;
+function saveTop(root) {
+  if (!root.isConnected) return;
+  topCache.set(topKey(), [...root.querySelectorAll(TOP_FIELDS)].map((el) => ({ html: el.innerHTML, hidden: el.hidden, style: el.style.cssText, row: el.parentElement.style.display })));
+}
+function restoreTop(root) {
+  const saved = topCache.get(topKey());
+  if (!saved) return;
+  root.querySelectorAll(TOP_FIELDS).forEach((el, i) => {
+    const s = saved[i];
+    if (!s) return;
+    el.innerHTML = s.html;
+    el.hidden = s.hidden;
+    el.style.cssText = s.style;
+    el.parentElement.style.display = s.row;
+  });
 }
 
 // Dòng thông báo chạy ở Tổng quan: mỗi thông báo 5 giây, xoay vòng liên tục.
@@ -222,7 +251,9 @@ function startTicker(el, alerts) {
   const show = () => {
     if (!el.isConnected) return clearInterval(tickerTimer);
     tickerIdx %= alerts.length;
-    el.textContent = tickerText(alerts[tickerIdx]);
+    const text = tickerText(alerts[tickerIdx]);
+    if (el.textContent === text) return; // Vẽ lại mà vẫn thông báo đó thì không chạy lại hiệu ứng.
+    el.textContent = text;
     el.classList.remove('tick');
     void el.offsetWidth; // Chạy lại hiệu ứng hiện dần.
     el.classList.add('tick');
@@ -248,7 +279,7 @@ async function fillTopBar(root) {
     const [saving, wallet] = await Promise.all([S.kindTotal(u.id, 'saving'), tabTotal(u.id, 'wallet')]);
     const savingEl = root.querySelector('[data-over-saving]'), cardEl = root.querySelector('[data-over-card]');
     const debtEl = root.querySelector('[data-over-debt]');
-    if (!savingEl || !cardEl || !debtEl) return; // Đã rời Tổng quan trong lúc đọc dữ liệu.
+    if (!savingEl || !cardEl || !debtEl || !root.contains(total)) return; // Đã rời Tổng quan trong lúc đọc dữ liệu.
     const credits = tabBooks(u.id, 'credit');
     const debt = -(await tabTotal(u.id, 'credit'));
     debtEl.hidden = !credits.length;
@@ -267,6 +298,7 @@ async function fillTopBar(root) {
       el.textContent = `${S.PF_LABEL[el.dataset.pfTop]} ${fmt(b[el.dataset.pfTop])}`;
     });
   }
+  if (root.contains(total)) saveTop(root);
 }
 
 function resetViewState() {
@@ -337,16 +369,18 @@ function tileHtml({ attr, id, color, av, name, on, sum, del, iconEdit = false })
 
 /** Điền số liệu vào ô: [data-psum] = một mục; [data-usum] = tổng các mục của một User. */
 async function fillProfileSums(root) {
+  root.querySelectorAll('[data-psum]').forEach((el) => showCached(el, 'p:' + el.dataset.psum));
+  root.querySelectorAll('[data-usum]').forEach((el) => showCached(el, 'u:' + el.dataset.usum));
   for (const el of root.querySelectorAll('[data-psum]')) {
     const p = S.getProfiles().find((x) => x.id === el.dataset.psum);
     if (!p) continue;
     try {
       const s = await S.profileSummary(p);
-      el.innerHTML = s.credit
+      setCached(el, 'p:' + p.id, s.credit
         ? `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.limit ? `Hạn mức ${fmtShort(p.limit)}` : S.CARD_TYPES.credit} · ${s.balance < 0 ? 'đang nợ' : 'hết nợ'}</small>`
         : s.kind === 'card'
         ? `<b class="${s.unpaid ? 'expense' : 'income'}">${fmt(s.unpaid)}</b><small>${p.cardType ? S.CARD_TYPES[p.cardType] + ' · ' : ''}${s.count ? `${s.count} khoản chưa TT` : 'Đã thanh toán hết'}</small>`
-        : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.overdraft ? `Thấu chi · hạn mức ${fmtShort(p.limit)}` : 'Số dư'}</small>`;
+        : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.overdraft ? `Thấu chi · hạn mức ${fmtShort(p.limit)}` : 'Số dư'}</small>`);
     } catch { el.textContent = ''; }
   }
   for (const el of root.querySelectorAll('[data-usum]')) {
@@ -357,8 +391,8 @@ async function fillProfileSums(root) {
         const s = await S.profileSummary(b);
         if (s.kind === 'card') unpaid += s.unpaid; else balance += s.balance;
       }
-      el.innerHTML = `<b class="${balance < 0 ? 'expense' : ''}">${fmt(balance)}</b><small>Tổng số dư · ${books.length} mục</small>`
-        + (unpaid ? `<small class="expense">Thẻ chưa TT: ${fmt(unpaid)}</small>` : '');
+      setCached(el, 'u:' + el.dataset.usum, `<b class="${balance < 0 ? 'expense' : ''}">${fmt(balance)}</b><small>Tổng số dư · ${books.length} mục</small>`
+        + (unpaid ? `<small class="expense">Thẻ chưa TT: ${fmt(unpaid)}</small>` : ''));
     } catch { el.textContent = ''; }
   }
 }
@@ -387,10 +421,13 @@ function notifRow(a) {
 }
 
 async function fillNotifications(sh) {
+  const key = 'n:' + S.currentUser().id;
+  const n = sh.querySelector('[data-notif-n]'), list = sh.querySelector('[data-notif-list]');
+  showCached(n, key + ':n'); showCached(list, key);
   const alerts = await S.userAlerts(S.currentUser().id);
-  sh.querySelector('[data-notif-n]').textContent = `(${alerts.length})`;
-  sh.querySelector('[data-notif-list]').innerHTML = alerts.length
-    ? alerts.map(notifRow).join('') : '<p class="muted small center">Không có thông báo nào.</p>';
+  setCached(n, key + ':n', `(${alerts.length})`);
+  setCached(list, key, alerts.length
+    ? alerts.map(notifRow).join('') : '<p class="muted small center">Không có thông báo nào.</p>');
 }
 
 /** Mở đúng mục rồi thực hiện thao tác của thông báo. */
@@ -420,7 +457,7 @@ actions.users = () => {
       })).join('')}
       ${users.length < S.MAX_USERS ? '<button type="button" class="ptile-add block" data-add>＋ User</button>' : ''}</div>
       <h4 class="grp-h">🔔 Notifications của ${esc(cur.name)} <small data-notif-n></small></h4>
-      <div class="notif-list" data-notif-list><p class="muted small center">Đang tải…</p></div>
+      <div class="notif-list" data-notif-list></div>
       <div class="quick-save"><button type="button" class="btn primary" data-quick-save>💾 Save</button><small class="muted" data-save-status>${esc(saveStatusText())}</small></div>`,
     onMount(sh, close) {
       sh.querySelector('[data-settings]').addEventListener('click', () => { close(); location.hash = '#/settings'; });
@@ -433,7 +470,7 @@ actions.users = () => {
         if (nt) { close(); await runNotif(nt.dataset); }
         else if (del) {
           const u = S.getUsers().find((x) => x.id === del.dataset.del);
-          if (u && await confirmDeleteUser(u)) { close(); refresh(); setTimeout(() => actions.users(), 260); }
+          if (u && await confirmDeleteUser(u)) { refresh(); close(); actions.users(); }
         } else if (sw) { close(); await switchToUser(sw.dataset.switch); }
         else if (ed) { close(); userForm(S.getUsers().find((u) => u.id === ed.dataset.edit)); }
         else if (add) { close(); userForm(null); }
@@ -483,7 +520,9 @@ actions.books = () => {
         e.currentTarget.textContent = toggleTheme() ? '☀️' : '🌙';
       });
       sh.querySelectorAll('[data-over-sum]').forEach(async (el) => {
-        el.textContent = fmt(await tabTotal(u.id, el.dataset.overSum));
+        const key = `o:${u.id}:${el.dataset.overSum}`;
+        showCached(el, key);
+        setCached(el, key, fmt(await tabTotal(u.id, el.dataset.overSum)));
       });
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
@@ -493,7 +532,7 @@ actions.books = () => {
         else if (e.target.closest('[data-over]')) { close(); actions['book-close'](); }
         else if (del) {
           const b = S.getProfiles().find((x) => x.id === del.dataset.del);
-          if (b && await confirmDeleteProfile(b)) { close(); refresh(); setTimeout(() => actions.books(), 260); }
+          if (b && await confirmDeleteProfile(b)) { refresh(); close(); actions.books(); }
         } else if (ed) { close(); bookForm(S.getProfiles().find((b) => b.id === ed.dataset.edit)); }
         else if (sw) { close(); await openBook(sw.dataset.switch); }
         else if (add) {
@@ -1208,7 +1247,7 @@ function cardPaySheet(items) {
     body: `<form class="form">
       <div class="note-box">${items.length > 1 ? `${items.length} khoản chưa thanh toán` : esc(cardLabel(items[0]))}<br><b class="expense big-amt">${fmt(total)}</b></div>
       <div class="field"><span>Người trả</span>${userChips('cp-who', users, (p) => `<button type="button" class="chip ${p.id === users[0].id ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
-      ${field('Từ tài khoản', `<select id="cp-acc" data-acc><option>Đang tải…</option></select>`)}
+      ${field('Từ tài khoản', `<select id="cp-acc" data-acc><option></option></select>`)}
       <em class="hint" id="cp-bal"></em>
       ${pfField()}
       ${datePick('cp-date', todayISO(), 'Ngày thanh toán', 'disabled')}
@@ -1290,7 +1329,7 @@ function creditPaySheet() {
     body: `<form class="form" id="${formId}">
       <div class="note-box">${esc(S.bookLabel(card))} · đang nợ<br><b class="expense big-amt">${fmt(debt)}</b></div>
       <div class="field"><span>Trả từ</span>${userChips('cr-who', users, (p) => `<button type="button" class="chip ${p.id === users[0].id ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
-      ${field('Từ tài khoản', '<select id="cr-acc" data-acc><option>Đang tải…</option></select>')}
+      ${field('Từ tài khoản', '<select id="cr-acc" data-acc><option></option></select>')}
       <em class="hint" id="cr-bal"></em>
       ${amountLine({ dateId: 'cr-date', date: todayISO(), amtId: 'cr-amt', amount: fmtNum(debt), label: 'Ngày', after: pfField() })}
       <button type="button" class="btn ghost small" data-full>Trả toàn bộ ${fmt(debt)}</button>
@@ -1408,10 +1447,10 @@ function homeView() {
   <div class="over-date"><small>📅 ${fmtDayHeader(todayISO())}</small>
     <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="seg tabs">${overTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
-  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) || '<p class="muted small center">Đang tải…</p>'}</div>
+  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? ['day', 'week', 'month'].map((p) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
   ${fab(kind)}`;
 }
-actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; refresh(); };
+actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
 
 /** Nút nhanh: chia đều, mỗi dòng tối đa 3 nút, tối đa 2 dòng. */
 function quickRows(list, bookId) {
@@ -1505,20 +1544,35 @@ async function fillOverview(root) {
   overExpiry = Infinity;
   const u = S.currentUser();
   const kind = overKindNow();
-  const books = tabBooks(u.id, kind);
+  const key = `${u.id}:${kind}:${ui.overPeriod || 'day'}`;
+  const painted = box.innerHTML;
   try {
-    let html = '';
-    for (const b of books) html += await overCard(b);
-    if (!books.length) html = empty('🗂️', 'Chưa có mục nào. Bấm nút góc phải để tạo.');
+    const html = await overTabHtml(u, kind);
     if (token !== overToken || !box.isConnected) return;
-    box.innerHTML = html;
-    overCache.set(`${u.id}:${kind}:${ui.overPeriod || 'day'}`, html);
+    // Vẫn đúng nội dung đang hiện thì không đụng vào, tránh vẽ lại vô ích.
+    if (overCache.get(key) !== html || !painted) box.innerHTML = html;
+    overCache.set(key, html);
     // Dòng Recall tự biến mất đúng lúc hết 10 phút.
     clearTimeout(recallTimer);
     if (overExpiry !== Infinity) {
       recallTimer = setTimeout(() => { if (current.route === 'home') refresh(); }, Math.max(1000, overExpiry - Date.now() + 500));
     }
+    // Chuẩn bị sẵn các thẻ khác để lần đầu bấm sang là có ngay.
+    for (const [tab] of overTabs(u.id)) {
+      const k = `${u.id}:${tab}:${ui.overPeriod || 'day'}`;
+      if (overCache.has(k)) continue;
+      const other = await overTabHtml(u, tab);
+      if (token !== overToken) return;
+      overCache.set(k, other);
+    }
   } catch (err) { console.warn(err); }
+}
+async function overTabHtml(u, tab) {
+  const books = tabBooks(u.id, tab);
+  if (!books.length) return empty('🗂️', 'Chưa có mục nào. Bấm nút góc phải để tạo.');
+  let html = '';
+  for (const b of books) html += await overCard(b);
+  return html;
 }
 
 /** Thẻ của một mục, để nút + mang màu của thẻ đó. */
@@ -1766,7 +1820,7 @@ function openGopForm(pick = null) {
       <em class="hint" id="gf-bal"></em>
       ${amountLine({ dateId: 'gf-date', date: todayISO(), amtId: 'gf-amt', after: debtHintEl + pfField() })}
       ${flowCatField('gf-fcat')}
-      ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc" data-acc><option>Đang tải…</option></select>`)}
+      ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc" data-acc><option></option></select>`)}
       ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Transfer tiền chợ tháng 11">`)}
     </form>`,
     onMount(sh, close) {
@@ -1878,7 +1932,7 @@ function openTrichForm(pick = null) {
       ${bookPick(pick)}
       <p class="muted small">Rút tiền từ mục khác về <b>${esc(S.bookLabel(me))}</b>: sổ nguồn ghi một khoản <b class="expense">chi</b>, sổ này ghi một khoản <b class="income">thu</b>. Nguồn phải đủ số dư (riêng Thấu chi được âm, vượt hạn mức sẽ cảnh báo).</p>
       <div class="field"><span>Get In từ</span>${userChips('tr-from', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
-      ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc" data-acc><option>Đang tải…</option></select>`)}
+      ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc" data-acc><option></option></select>`)}
       <em class="hint" id="tr-bal"></em>
       ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt', after: debtHintEl + pfField() })}
       ${flowCatField('tr-fcat')}
@@ -2476,7 +2530,7 @@ function reminderForm(r) {
   openSheet({
     title: r ? 'Sửa nhắc nhở' : 'Tạo nhắc nhở',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
-    onClose() { setTimeout(() => actions.books(), 260); },
+    onClose() { actions.books(); },
     body: `<form class="form" id="${formId}">
       ${field('Tên nhắc nhở', `<input id="rm-title" required maxlength="60" value="${esc(f.title)}" placeholder="vd: Đóng học phí, gia hạn bảo hiểm">`)}
       ${datePick('rm-date', f.date, 'Ngày đến hạn')}
@@ -2690,9 +2744,11 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         };
         const keepCat = S.catById(f.categoryId)?.name || null;
         const keepType = f.type;
+        if (pickBusy) return;
         switching = true;
+        pickBusy = true;
+        try { await S.switchProfile(b.dataset.who); } finally { pickBusy = false; }
         close();
-        await S.switchProfile(b.dataset.who);
         const now = S.currentProfile();
         if (pick && (S.isCard() || (!S.featureOn(now, 'expense') && !S.featureOn(now, 'income')))) return openAddForm(pick);
         openTxForm({ type: keepType, preset: keep, returnTo: origin, catName: keepCat, pick });
@@ -2940,14 +2996,16 @@ function openAddForm(pick, { type = 'expense', repeat = 'none' } = {}) {
 /** Dòng chọn tài khoản giao dịch, chỉ hiện khi thẻ đó có từ 2 tài khoản. */
 const bookPick = (pick, id = '', attr = 'data-pick') => (pick?.length > 1 ? `<div class="who-pick book-pick" ${id ? `id="${id}"` : 'data-book-pick'}><span>Tài khoản giao dịch</span><div class="chips">${pick.map((p) =>
   `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" ${attr}="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : '');
+let pickBusy = false;
 /** Đổi tài khoản: mở lại form của tài khoản đó, giữ số tiền đang nhập. */
 function bindBookPick(sh, close, amtId, reopen) {
   $(sh, '[data-book-pick]')?.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-pick]');
-    if (!b || b.dataset.pick === S.currentProfile().id) return;
+    if (!b || pickBusy || b.dataset.pick === S.currentProfile().id) return;
     const amount = amtId ? $(sh, '#' + amtId)?.value : '';
+    pickBusy = true;
+    try { await S.switchProfile(b.dataset.pick); } finally { pickBusy = false; }
     close();
-    await S.switchProfile(b.dataset.pick);
     reopen();
     const input = amount && [...document.querySelectorAll('.sheet')].pop()?.querySelector('#' + amtId);
     if (input) { input.value = amount; input.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -3172,7 +3230,7 @@ actions['quick-edit'] = (el) => {
     body: `<form class="form" id="${formId}">
       ${field('Tên nút (tối đa 12 ký tự)', `<input id="qe-name" required maxlength="12" value="${esc(q.name || '')}" placeholder="vd: Ăn trưa">`)}
       ${isPeer ? `${field(k === 'gop' ? 'Transfer cho' : 'Get In từ', `<select id="qe-peer">${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + p.name)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
-        ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản nguồn', '<select id="qe-pacc" data-acc><option>Đang tải…</option></select>')}
+        ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản nguồn', '<select id="qe-pacc" data-acc><option></option></select>')}
         ${flowCatField('qe-fcat', q.flowCat || '')}`
         : field('Danh mục', `<select id="qe-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === q.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
       ${pfField()}
@@ -3832,6 +3890,42 @@ const VIEWS = {
 
 let current = { route: 'home', sub: null };
 
+// Phần đầu đứng yên khi cuộn, tính đến hết phần tử đánh dấu của từng màn hình.
+const PIN_END = { home: '.seg.tabs', tx: '.period > .seg', reports: '.period > .seg', plan: '.seg.tabs' };
+function splitPinned(box, route) {
+  const moveUntil = (stop) => {
+    const out = [];
+    while (box.firstChild && box.firstChild !== stop) { out.push(box.firstChild); box.firstChild.remove(); }
+    return out;
+  };
+  // Cài đặt của mục: giữ đến ngay trên tiêu đề nhóm đầu tiên (Tính năng giao dịch).
+  if (route === 'bookset') {
+    const first = box.querySelector(':scope > .sec-h');
+    return first ? moveUntil(first) : null;
+  }
+  const end = PIN_END[route] && box.querySelector(PIN_END[route]);
+  if (!end) return null;
+  if (end.parentElement === box) return moveUntil(end.nextSibling);
+  // Dòng Ngày/Tuần/Tháng nằm đầu thanh kỳ: đưa riêng dòng đó lên, phần chọn ngày cuộn theo nội dung.
+  const nodes = moveUntil(end.parentElement);
+  end.classList.add('period-seg');
+  nodes.push(end);
+  return nodes;
+}
+/** Thay nội dung màn hình; khung phần đầu được giữ lại giữa các lần vẽ để không chớp trên iPhone. */
+function paintMain(main, html, route) {
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  const pinned = splitPinned(box, route);
+  let head = main.querySelector(':scope > .pin-head');
+  if (pinned) {
+    if (!head) { head = document.createElement('div'); head.className = 'pin-head'; main.prepend(head); }
+    head.replaceChildren(...pinned);
+  } else if (head) { head.remove(); head = null; }
+  [...main.childNodes].forEach((n) => { if (n !== head) n.remove(); });
+  main.append(...box.childNodes);
+}
+
 /** Mục bị ẩn theo cài đặt của người dùng hiện tại. */
 const hiddenTabs = () => {
   const s = state.settings;
@@ -3857,7 +3951,8 @@ export function render(route, sub) {
   const v = VIEWS[current.route];
   const main = document.getElementById('main');
   const y = window.scrollY;
-  main.innerHTML = v.html(sub);
+  paintMain(main, v.html(sub), current.route);
+  restoreTop(main);
   v.mount && v.mount(main);
   fillTopBar(main).catch((err) => console.warn(err));
   restorePageScroll(sameView, y);

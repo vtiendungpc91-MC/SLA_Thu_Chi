@@ -933,3 +933,20 @@ html.dark .over-ticker { color: #7aa7ff; }
 /* Cặp icon tiền ra / tiền vào trong bộ chọn icon của nút nhanh */
 .ip-pairs { display: grid; grid-template-columns: auto repeat(5, 1fr); gap: 4px 6px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 .ip-pairs > span { font-size: 12px; font-weight: 700; color: var(--muted); }
+/* Phần đầu màn hình đứng yên khi cuộn */
+.pin-head {
+  position: sticky; top: 0; z-index: 10; background: var(--bg);
+  margin: calc(-1 * (var(--safe-t) + 12px)) -14px 10px; padding: calc(var(--safe-t) + 12px) 14px 8px;
+  box-shadow: 0 1px 0 var(--line);
+}
+.pin-head > :last-child { margin-bottom: 0; }
+.pin-head .period-seg > .on { background: #e8590c; color: #fff; box-shadow: none; }
+/* Đang mở màn hình nhỏ, trang bị ghim: giữ phần đầu ở đúng chỗ cũ */
+body.noscroll .pin-head { position: relative; top: var(--lock-y, 0px); }
+/* Màn hình quá thấp (xoay ngang): không giữ để còn chỗ xem nội dung */
+@media (max-height: 480px) { .pin-head { position: static; } }
+
+/* Thay sheet tức thì, không trượt */
+.sheet-wrap.no-anim .sheet, .sheet-wrap.no-anim .sheet-bg { transition: none; }
+/* Giữ sẵn chỗ cho dòng số dư để form không nhảy khi đọc xong */
+#tr-bal, #qr-bal, #cp-bal, #cr-bal { min-height: 1.45em; }

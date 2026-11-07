@@ -171,11 +171,16 @@ export function toast(msg, ms = 2400) {
 // ---------- Khóa màn hình phía sau khi đang mở bottom sheet ----------
 // Safari trên iPhone bỏ qua overflow:hidden của body, nên phải ghim body lại và nhớ vị trí cuộn.
 let pageLocked = false, lockedY = 0;
+// --lock-y giữ phần đầu cố định của màn hình đứng đúng chỗ trong lúc trang bị ghim.
+function setLockedTop(y) {
+  document.body.style.top = `-${y}px`;
+  document.body.style.setProperty('--lock-y', `${y}px`);
+}
 function lockPage() {
   if (pageLocked) return;
   pageLocked = true;
   lockedY = window.scrollY;
-  document.body.style.top = `-${lockedY}px`;
+  setLockedTop(lockedY);
   document.body.classList.add('noscroll');
 }
 function unlockPage() {
@@ -183,11 +188,15 @@ function unlockPage() {
   pageLocked = false;
   document.body.classList.remove('noscroll');
   document.body.style.top = '';
+  document.body.style.removeProperty('--lock-y');
   window.scrollTo(0, lockedY);
 }
 /** Vẽ lại màn hình phía sau: giữ vị trí nếu cùng màn hình, về đầu nếu đã chuyển màn hình. */
 export function restorePageScroll(sameView, y) {
-  if (pageLocked) { if (!sameView) lockedY = 0; return; }
+  if (pageLocked) {
+    if (!sameView) { lockedY = 0; setLockedTop(0); }
+    return;
+  }
   window.scrollTo(0, sameView ? y : 0);
 }
 /** Vuốt trong sheet: chỉ cho vùng còn cuộn được chạy; hết chỗ cuộn hoặc vuốt vào vùng ngoài thì chặn, tránh cả trang bị kéo theo. */
@@ -214,6 +223,9 @@ function guardSheetTouch(wrap) {
   });
 }
 
+// Sheet vừa đóng trong cùng lượt xử lý: sheet mở ngay sau đó thay thế tức thì, không trượt xuống rồi trượt lên.
+let justClosed = null;
+
 /** Mở bottom sheet. onMount(sheetEl, close) để gắn sự kiện cho form. */
 /** headAction: HTML đặt ở góc phải thanh tiêu đề (vd: nút Lưu của form). */
 export function openSheet({ title, body, onMount, onClose, wide = false, headAction = '' }) {
@@ -231,12 +243,21 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
   document.body.appendChild(wrap);
   lockPage();
   guardSheetTouch(wrap);
-  requestAnimationFrame(() => wrap.classList.add('open'));
+  if (justClosed) {
+    justClosed.remove();
+    justClosed = null;
+    wrap.classList.add('no-anim', 'open');
+    requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.remove('no-anim')));
+  } else {
+    requestAnimationFrame(() => wrap.classList.add('open'));
+  }
   let closed = false;
   const close = () => {
     if (closed) return;
     closed = true;
     wrap.classList.remove('open');
+    justClosed = wrap;
+    queueMicrotask(() => { if (justClosed === wrap) justClosed = null; });
     setTimeout(() => {
       wrap.remove();
       if (!document.querySelector('.sheet-wrap')) unlockPage();
