@@ -149,6 +149,16 @@ document.addEventListener('click', (e) => {
   inp.focus();
 });
 
+// ---------- Chế độ sáng / tối ----------
+export const isDark = () => document.documentElement.classList.contains('dark');
+export function toggleTheme() {
+  const dark = !isDark();
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('theme-color').content = dark ? '#0d1117' : '#1f6feb';
+  localStorage.setItem('stc-theme', dark ? 'dark' : 'light');
+  return dark;
+}
+
 let toastTimer;
 export function toast(msg, ms = 2400) {
   const el = document.getElementById('toast');

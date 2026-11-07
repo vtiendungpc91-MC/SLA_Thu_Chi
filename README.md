@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.11.1 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.12.0 (07/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -79,7 +79,7 @@ Mở `http://localhost:8080` bằng Chrome hoặc Edge. Bấm F12, chọn biểu
 index.html            khung trang + thanh tab
 manifest.webmanifest  thông tin cài đặt PWA
 sw.js                 service worker: cache để chạy offline, chứa VERSION
-css/app.css           giao diện (tự đổi sáng/tối theo máy)
+css/app.css           giao diện (sáng/tối: nút 🌙 ở màn hình nút góc phải; chưa chọn thì theo máy)
 js/app.js             khởi động, điều hướng, thông báo
 js/views.js           các màn hình và form
 js/store.js           nghiệp vụ: số dư, Transfer/Get In, Personal/Family, thông báo, sao lưu

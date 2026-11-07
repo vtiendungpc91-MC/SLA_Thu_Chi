@@ -2,7 +2,7 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import {
-  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
@@ -425,6 +425,7 @@ actions.books = () => {
   const mine = S.userBooks(u.id);
   openSheet({
     title: `Mục của ${u.name}`,
+    headAction: `<button type="button" class="icon-btn theme-btn" data-theme aria-label="Chuyển sáng/tối">${isDark() ? '☀️' : '🌙'}</button>`,
     body: `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(overColor(u))}">
         <div role="button" tabindex="0" class="over-main" data-over>
           <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}</b>
@@ -437,9 +438,13 @@ actions.books = () => {
       const shared = isMoney ? tabBooks(u.id, 'bank').length + tabBooks(u.id, 'od').length : list.length;
       const max = S.BOOK_KINDS[isMoney ? 'bank' : isCardTab ? 'card' : tab].max;
       const room = shared < max && !(u.special && isMoney) && tab !== 'wallet';
+      // Nhóm trống mà hết chỗ tạo thêm thì không cần hiện.
+      if (!list.length && !room) return '';
+      // Bank và Thấu chi dùng chung giới hạn: mỗi nhóm hiện số còn được phép của riêng nó.
+      const count = (u.special && isMoney) || tab === 'wallet' ? `(${list.length})` : `(${list.length}/${max - (shared - list.length)})`;
       const pfLine = u.special && tab === 'od'
         ? '<div class="pf-line"><span class="pf-p">Personal <b data-pf-val="personal">…</b></span><span class="pf-f">Family <b data-pf-val="family">…</b></span></div>' : '';
-      return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${isMoney ? `(${list.length}) · Bank + Thấu chi: ${shared}/${max}` : `(${list.length}/${max})`}</small></span></h4>
+      return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${count}</small></span></h4>
         <div class="tile-grid one-col">${list.map((b) => tileHtml({
           attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : ''), on: b.id === cur,
           sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1 && !S.isSpecialBook(b), iconEdit: true,
@@ -450,6 +455,9 @@ actions.books = () => {
     onMount(sh, close) {
       fillProfileSums(sh);
       fillPfVals(sh);
+      $(sh, '[data-theme]').addEventListener('click', (e) => {
+        e.currentTarget.textContent = toggleTheme() ? '☀️' : '🌙';
+      });
       sh.querySelectorAll('[data-over-sum]').forEach(async (el) => {
         el.textContent = fmt(await tabTotal(u.id, el.dataset.overSum));
       });

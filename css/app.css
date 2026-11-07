@@ -16,10 +16,9 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .04);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
-  color-scheme: light dark;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+html.dark {
     --bg: #0d1117;
     --card: #161b22;
     --text: #e6edf3;
@@ -35,7 +34,6 @@
     --over-soft: #3b1219;
     --shadow: none;
   }
-}
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Chạm nhanh liên tiếp không phóng to màn hình (iOS double-tap zoom) */
@@ -342,7 +340,7 @@ details.card summary { cursor: pointer; font-weight: 600; padding: 2px; }
 /* Tổng số dư ở Tổng quan: to hơn 150%, đỏ đậm */
 .hero-bal { align-items: center; }
 .hero-bal b { font-size: 150%; font-weight: 800; color: #000; font-variant-numeric: tabular-nums; }
-@media (prefers-color-scheme: dark) { .hero-bal b { color: #fff; } }
+html.dark .hero-bal b { color: #fff; }
 .hero-bal b.income { color: var(--income); }
 .hero > .hero-net:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
@@ -578,12 +576,10 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .quick-btn.q-income { background: #e3f5ea; color: #18794e; }
 .quick-btn.q-gop, .quick-btn.q-card { background: #e6f6f4; color: #0b7a6e; }
 .quick-btn.q-trich { background: #f0e9fb; color: #6e3fb0; }
-@media (prefers-color-scheme: dark) {
-  .quick-btn.q-expense { background: #3b1219; color: #ff8a8f; }
-  .quick-btn.q-income { background: #113222; color: #4ee39b; }
-  .quick-btn.q-gop, .quick-btn.q-card { background: #0f2e2b; color: #4fd1c1; }
-  .quick-btn.q-trich { background: #2a1d40; color: #c4a5f2; }
-}
+html.dark .quick-btn.q-expense { background: #3b1219; color: #ff8a8f; }
+html.dark .quick-btn.q-income { background: #113222; color: #4ee39b; }
+html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #0f2e2b; color: #4fd1c1; }
+html.dark .quick-btn.q-trich { background: #2a1d40; color: #c4a5f2; }
 .quick-row { gap: 8px; }
 .quick-row .grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 0; }
 .quick-info { text-align: center; margin: 0; font-weight: 600; }
@@ -593,7 +589,7 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 .invest-row .grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 0; }
 .settle-btn { flex: 0 0 auto; background: #e3f5ea; color: #18794e; border: 1px solid #b7e4c7; white-space: nowrap; }
 .settle-tag { flex: 0 0 auto; background: none; border: 0; font-size: 11px; line-height: 1.3; color: var(--income); text-align: center; padding: 2px; }
-@media (prefers-color-scheme: dark) { .settle-btn { background: #113222; color: #4ee39b; border-color: #1f5a3c; } }
+html.dark .settle-btn { background: #113222; color: #4ee39b; border-color: #1f5a3c; }
 .settle-btn { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 18px; display: inline-grid; place-items: center; }
 
 /* Dòng "đang dùng / đang mở": nền cam nhạt */
@@ -601,9 +597,7 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
   background: #fff4e6 !important; border-color: #ffb870 !important;
 }
 .row.is-current { box-shadow: inset 3px 0 0 #ff9f43; }
-@media (prefers-color-scheme: dark) {
-  .is-current, .ptile.on.is-current, .row.user-pick.is-current, .row.book-row.is-current { background: #3a2a17 !important; border-color: #a8692a !important; }
-}
+html.dark .is-current, html.dark .ptile.on.is-current, html.dark .row.user-pick.is-current, html.dark .row.book-row.is-current { background: #3a2a17 !important; border-color: #a8692a !important; }
 
 /* Các nút nhanh nằm chung 1 dòng, chia đều theo số nút đang hiện */
 .quick-btns { display: flex; gap: 6px; margin-top: 10px; }
@@ -614,7 +608,7 @@ body.privacy .main, body.privacy .sheet-wrap { filter: blur(18px); }
 /* Thanh dưới: mục đang chọn có nền xanh lá nhạt */
 .tabbar a { border-radius: 14px; margin: 0 3px; padding: 4px 0; transition: background .15s; }
 .tabbar a.on { background: #e3f5ea; color: #18794e; }
-@media (prefers-color-scheme: dark) { .tabbar a.on { background: #113222; color: #4ee39b; } }
+html.dark .tabbar a.on { background: #113222; color: #4ee39b; }
 /* Thiết lập nguồn mục Đầu tư: danh sách tích chọn danh mục */
 .check-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 8px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .check-list .check { font-size: 13.5px; }
@@ -648,7 +642,8 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 #tf-type .seg-gop { background: color-mix(in srgb, #12a594 16%, var(--card)); color: #0b7a6e; }
 #tf-type .seg-trich { background: color-mix(in srgb, #8e4ec6 16%, var(--card)); color: #6e3fb0; }
 #tf-type .seg-gop:active, #tf-type .seg-trich:active { box-shadow: inset 0 0 0 2px currentColor; }
-@media (prefers-color-scheme: dark) { #tf-type .seg-gop { color: #4fd1c1; } #tf-type .seg-trich { color: #c4a5f2; } }
+html.dark #tf-type .seg-gop { color: #4fd1c1; }
+html.dark #tf-type .seg-trich { color: #c4a5f2; }
 #tf-type button { font-size: 13px; }
 .cat-close { width: 38px; height: 38px; font-size: 17px; }
 #tf-type button { font-size: 12.5px; padding: 8px 2px; white-space: nowrap; letter-spacing: -.2px; }
@@ -787,7 +782,7 @@ body.no-tabbar .main { padding-bottom: calc(24px + var(--safe-b)); }
 .over-lines > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 16px; }
 .over-lines .over-r { margin-left: auto; padding: 0; font-weight: 700; font-size: 11.5px; }
 .over-lines small[data-kind-total] { font-size: 15.4px; font-weight: 800; color: #000; letter-spacing: -.2px; }
-@media (prefers-color-scheme: dark) { .over-lines small[data-kind-total] { color: #fff; } }
+html.dark .over-lines small[data-kind-total] { color: #fff; }
 .over-lines small.pf-p { color: var(--income); }
 .over-lines small.pf-f { color: #2563eb; }
 .over-lines .over-saving { padding: 0; font-size: 11.5px; font-weight: 700; color: var(--income); }
@@ -892,3 +887,10 @@ select[data-acc]:disabled { opacity: 1; color: var(--text); -webkit-text-fill-co
 /* Dòng số nợ của Thẻ tín dụng khi Transfer vào hoặc Get In */
 .debt-hint { display: block; font-weight: 600; margin-top: -6px; }
 .debt-hint[hidden] { display: none; }
+/* Chế độ tối */
+html.dark { color-scheme: dark; }
+html.dark .pf-f, html.dark .topbar small.pf-f, html.dark .over-lines small.pf-f { color: #7aa7ff; }
+html.dark .qk-legend, html.dark .rc-head small { color: var(--muted); }
+html.dark .over-pay { background: var(--soft); }
+html.dark .av-edit > i, html.dark .over-ic > i { background: var(--soft); color: var(--text); }
+.theme-btn { font-size: 18px; }
