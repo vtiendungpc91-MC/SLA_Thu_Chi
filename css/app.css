@@ -1081,3 +1081,35 @@ html.dark .tx-ic.in, html.dark .icon-chip.tint-in { background: #1d3d27; }
 .fab[data-tab="prepaid"] { background: #e5dbff; color: #432874; box-shadow: 0 6px 18px rgba(151, 117, 250, .35); }
 body[data-tab="prepaid"] { --kc: #e5dbff; --kc-ink: #9775fa; --kc-on: #432874; }
 html.dark body[data-tab="prepaid"] { --kc-ink: #d0bfff; }
+/* Bank / Ví: nút ẩn/hiện danh sách, sát lề phải */
+.grp-card-h .ptile-del { margin-left: auto; }
+.grp-toggle { margin-left: auto; flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 16px; line-height: 1; transition: transform .18s ease; }
+.grp-card-h .ptile-del + .grp-toggle { margin-left: 6px; }
+.grp-card.collapsed .grp-toggle { transform: rotate(-90deg); }
+.grp-card.collapsed > .tile-grid, .grp-card.collapsed > .grp-adds { display: none; }
+.grp-card.collapsed .grp-card-h { margin-bottom: 0; }
+/* Thêm mục / xóa Bank */
+.grp-adds .grp-add { width: 100%; padding: 8px 10px; font-size: 13.5px; }
+.card.list .row[disabled] { opacity: .45; }
+/* Tên nút nhanh: không cắt "…" (JS thu nhỏ chữ cho vừa), quá hẹp thì 2 dòng */
+.qk-btn .qk-name { text-overflow: clip; }
+.qk-btn .qk-name.wrap { white-space: normal; overflow-wrap: anywhere; line-height: 1.1; overflow: visible; }
+.qk-btn { padding-left: 22px; padding-right: 22px; }
+@media (max-width: 380px) { .qk-btn { padding-left: 19px; padding-right: 19px; } }
+/* Nút nhanh: icon trong lề trái, tên căn giữa phần còn lại (rộng hơn để đủ 12 ký tự) */
+.qk-btn { padding-left: 27px; padding-right: 5px; }
+.qk-btn .qk-ic { left: 6px; }
+.qk-btn .qk-name { flex: 1 1 auto; }
+@media (max-width: 380px) { .qk-btn { padding-left: 24px; padding-right: 3px; } .qk-btn .qk-ic { left: 4px; } }
+/* Dòng logo Bank: Chi từ → Nhận vào */
+.bank-route { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.bank-route:empty { display: none; }
+.br-side { display: flex; align-items: center; gap: 7px; flex: 1 1 0; min-width: 0; }
+.br-ic { flex: 0 0 auto; display: inline-grid; place-items: center; min-width: 34px; height: 34px; border-radius: 10px; background: var(--soft); font-size: 20px; }
+.br-ic .bank-badge.ib { font-size: 10px; min-width: 34px; height: 34px; border-radius: 10px; }
+.br-ic.sm { min-width: 24px; height: 24px; font-size: 15px; border-radius: 7px; vertical-align: middle; }
+.br-ic.sm .bank-badge.ib { min-width: 26px; height: 22px; font-size: 8.5px; }
+.br-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.br-txt small { font-size: 11px; color: var(--muted); }
+.br-txt b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-arrow { flex: 0 0 auto; color: var(--muted); font-weight: 700; }

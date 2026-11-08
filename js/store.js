@@ -329,9 +329,20 @@ export function saveGroup(g) {
   emit();
   return g;
 }
-export function deleteGroup(id) {
-  if (groupBooks(id).length) throw new Error('Còn mục bên trong, hãy xóa hết mục trước');
-  saveGroups(getGroups().filter((g) => g.id !== id));
+/** Thu gọn / mở danh sách của Bank/Ví trong màn hình nút góc phải (chỉ là hiển thị, không vẽ lại trang). */
+export function setGroupCollapsed(id, collapsed) {
+  saveGroups(getGroups().map((g) => (g.id === id ? { ...g, collapsed: !!collapsed } : g)));
+}
+/** Xóa Bank/Ví cùng mọi mục bên trong (và dữ liệu của các mục đó). User phải còn ít nhất 1 mục ở nhóm khác. */
+export async function deleteGroup(id) {
+  const g = getGroups().find((x) => x.id === id);
+  if (!g) return;
+  const inside = groupBooks(id);
+  if (inside.length && !userBooks(g.owner).some((b) => b.group !== id)) throw new Error('Mỗi User cần ít nhất 1 mục. Hãy tạo mục ở Bank/Ví khác trước khi xóa nhóm này');
+  if (inside.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchProfile(userBooks(g.owner).find((b) => b.group !== id).id);
+  saveProfiles(getProfiles().filter((b) => b.group !== id));
+  saveGroups(getGroups().filter((x) => x.id !== id));
+  for (const b of inside) await dropProfile(b.id);
   emit();
 }
 /** Icon mặc định của Bank theo tên ngân hàng: huy hiệu nếu khớp, không thì 🏦. */
@@ -1465,7 +1476,8 @@ export async function kindTotal(userId, kind) {
 export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
 /** Bank (không gồm Thấu chi) của User đặc biệt: 12 nút nhanh (4 dòng × 3 nút ở Tổng quan). */
 export const QUICK_MAX_SPECIAL = 12;
-export const quickMax = (b) => (isSpecialBook(b) && !b.overdraft ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
+/** Account đã bật giao dịch với NEOBANK (Secrecy): 12 nút nhanh (4 dòng × 3 ở Tổng quan). */
+export const quickMax = (b) => (kindOfBook(b) === 'bank' && !b.overdraft && b.neoOk ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
 export const STAT_MAX = 3;
 /** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 10 phút được hủy (Recall). */
 export const RECALL_MS = 10 * 60 * 1000;
