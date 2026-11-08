@@ -117,6 +117,7 @@ export function showLock() {
       document.removeEventListener('keydown', onKey);
       unlocking = null;
       resolve();
+      document.dispatchEvent(new Event('stc-unlocked'));
     };
 
     async function press(k) {

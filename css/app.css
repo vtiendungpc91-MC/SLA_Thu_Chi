@@ -1046,3 +1046,21 @@ html.dark body[data-tab="credit"] { --kc-ink: #ffa8a8; }
 
 /* Khoản định kỳ: dòng ghi rõ tiền ra / vào */
 .rec-route { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: 14px; line-height: 1.55; }
+/* Huy hiệu ngân hàng (màu đặc trưng + tên viết tắt) */
+.bank-badge { display: inline-grid; place-items: center; min-width: 34px; height: 24px; padding: 0 5px; border-radius: 7px; background: var(--bb); color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: -.2px; line-height: 1; font-variant-numeric: normal; }
+.ci .bank-badge { min-width: 30px; height: 30px; border-radius: 9px; font-size: 10px; padding: 0 3px; }
+.bank-logos { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 6px; max-height: 190px; overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.logo-pick { display: grid; place-items: center; height: 40px; border: 2px solid transparent; border-radius: 10px; background: none; padding: 0; }
+.logo-pick.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
+.logo-emoji { font-size: 20px; }
+#af-emoji-row[hidden] { display: none; }
+/* Huy hiệu ngân hàng dùng làm icon ở mọi nơi (cỡ theo chữ xung quanh) */
+.bank-badge.ib { min-width: 2.9em; height: 1.9em; padding: 0 .3em; font-size: max(8.5px, .48em); border-radius: .45em; vertical-align: middle; }
+.icon-chip .bank-badge.ib { font-size: 10px; }
+/* Cặp icon tiền ra / vào chưa rõ màu: nền đỏ nhạt / xanh lá nhạt */
+.tx-ic { display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; border-radius: .45em; line-height: 1; }
+.tx-ic.out, .icon-chip.tint-out { background: #ffe3e3; }
+.tx-ic.in, .icon-chip.tint-in { background: #d3f9d8; }
+html.dark .tx-ic.out, html.dark .icon-chip.tint-out { background: #4a1f24; }
+html.dark .tx-ic.in, html.dark .icon-chip.tint-in { background: #1d3d27; }
+.icon-chip.tint-out.on, .icon-chip.tint-in.on { outline: 2px solid var(--primary); }

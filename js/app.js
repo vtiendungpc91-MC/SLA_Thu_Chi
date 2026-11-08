@@ -2,7 +2,8 @@
 import * as S from './store.js';
 import { state } from './store.js';
 import { actions, render, refresh, openTxForm } from './views.js';
-import { toast, syncDatePick } from './ui.js';
+import { toast, syncDatePick, applyTimeTheme } from './ui.js';
+import { startBankBadges } from './icons.js';
 import { lockConfig, showLock, initAutoLock } from './lock.js';
 import { fmt, fmtDue } from './utils.js';
 
@@ -112,6 +113,9 @@ function registerSW() {
 
 async function start() {
   registerSW();
+  startBankBadges();
+  // Mở khóa (kể cả khi tự khóa lúc quay lại app) cũng tính là đăng nhập: chọn lại sáng/tối theo giờ.
+  document.addEventListener('stc-unlocked', applyTimeTheme);
   initAutoLock();
   // Khóa trước khi vẽ dữ liệu để không lộ số liệu.
   if (lockConfig().enabled) await showLock();

@@ -26,6 +26,8 @@ const RAW = `
 
 /** 5 cặp icon tương phản tiền ra / tiền vào, hiện ở đầu bộ chọn icon của nút nhanh. */
 export const MONEY_PAIRS = [['⬆️', '⬇️'], ['↗️', '↙️'], ['📤', '📥'], ['🔴', '🟢'], ['🛫', '🛬']];
+/** Icon trong cặp tiền ra/vào chưa tự thể hiện màu: cần thêm nền đỏ / xanh nhạt khi hiển thị. */
+export const PAIR_TINT = new Set(MONEY_PAIRS.flat().filter((i) => i !== '🔴' && i !== '🟢'));
 
 export const ICONS = RAW.split(/[|\n]/).map((s) => s.trim()).filter(Boolean).map((s) => {
   const i = s.indexOf(' ');
@@ -43,9 +45,10 @@ export function searchIcons(q) {
 
 /** HTML bộ chọn icon: ô tìm kiếm + lưới icon. id dùng làm tiền tố. */
 export function iconPickerHtml(id, selected, { pairs = null } = {}) {
-  const pairBtn = (icon) => `<button type="button" class="chip icon-chip ${icon === selected ? 'on' : ''}" data-icon="${icon}">${icon}</button>`;
+  // Cặp icon chưa rõ màu: Ra nền đỏ nhạt, Vào nền xanh lá nhạt (cặp 🔴🟢 đã rõ màu thì giữ nguyên).
+  const pairBtn = (icon, dir) => `<button type="button" class="chip icon-chip ${PAIR_TINT.has(icon) ? 'tint-' + dir : ''} ${icon === selected ? 'on' : ''}" data-icon="${icon}">${icon}</button>`;
   return `<div class="icon-picker" id="${id}">
-    ${pairs ? `<div class="ip-pairs"><span>Ra</span>${pairs.map((p) => pairBtn(p[0])).join('')}<span>Vào</span>${pairs.map((p) => pairBtn(p[1])).join('')}</div>` : ''}
+    ${pairs ? `<div class="ip-pairs"><span>Ra</span>${pairs.map((p) => pairBtn(p[0], 'out')).join('')}<span>Vào</span>${pairs.map((p) => pairBtn(p[1], 'in')).join('')}</div>` : ''}
     <input type="search" class="ip-q" placeholder="🔍 Tìm biểu tượng: tiền, ăn, xe, nhà, mèo…" autocomplete="off">
     <div class="ip-grid">${gridHtml(ICONS, selected)}</div>
   </div>`;
@@ -64,4 +67,66 @@ export function bindIconPicker(root, onPick, getSelected) {
     root.querySelectorAll('[data-icon]').forEach((x) => x.classList.toggle('on', x.dataset.icon === b.dataset.icon));
     onPick(b.dataset.icon);
   });
+}
+
+// ---------- Huy hiệu ngân hàng dùng làm icon ----------
+// Icon lưu dạng "🏦" + ký tự ẩn U+2063 + mã (vd VCB). Chỗ hiện HTML tự đổi thành huy hiệu màu;
+// chỗ chỉ có chữ (ô chọn, tiêu đề) hiện "🏦VCB" nên vẫn đọc được.
+export const BANK_LOGOS = [
+  ['VCB', 'Vietcombank', '#00703c'], ['VTB', 'VietinBank', '#005993'], ['BIDV', 'BIDV', '#00665e'], ['AGR', 'Agribank', '#ae1c3f'],
+  ['TCB', 'Techcombank', '#e2231a'], ['MB', 'MB Bank', '#141ed2'], ['ACB', 'ACB', '#1a5ea8'], ['VPB', 'VPBank', '#00a651'],
+  ['TPB', 'TPBank', '#5e2e86'], ['STB', 'Sacombank', '#0067b1'], ['HDB', 'HDBank', '#e30613'], ['VIB', 'VIB', '#f7941d'],
+  ['SHB', 'SHB', '#f37021'], ['SEAB', 'SeABank', '#d71920'], ['OCB', 'OCB', '#008c45'], ['MSB', 'MSB', '#e4003a'],
+  ['LPB', 'LPBank', '#f29200'], ['EIB', 'Eximbank', '#0b5ca8'], ['NAB', 'Nam A Bank', '#e2231a'], ['BAB', 'Bac A Bank', '#c8102e'],
+  ['ABB', 'ABBANK', '#00843d'], ['PVCB', 'PVcomBank', '#004a93'], ['KLB', 'KienlongBank', '#0d6b3a'], ['NCB', 'NCB', '#003da5'],
+  ['VAB', 'VietABank', '#00529c'], ['BVB', 'BaoViet Bank', '#0063a6'], ['SGB', 'Saigonbank', '#0b3f8a'], ['PGB', 'PG Bank', '#00529b'],
+  ['SHBVN', 'Shinhan Bank', '#0046ff'], ['HSBC', 'HSBC', '#db0011'], ['SC', 'Standard Chartered', '#0473ea'], ['UOB', 'UOB', '#005eb8'],
+  ['CAKE', 'Cake by VPBank', '#ff4f9a'], ['TIMO', 'Timo', '#4b2c82'], ['MOMO', 'MoMo', '#a50064'], ['ZALO', 'ZaloPay', '#0068ff'],
+  ['VTM', 'Viettel Money', '#ee0033'],
+].map(([code, name, bg]) => ({ code, name, bg }));
+export const BANK_SEP = '\u2063';
+export const bankIcon = (code) => '🏦' + BANK_SEP + code;
+const bankOf = (code) => BANK_LOGOS.find((l) => l.code === code);
+ICONS.push(...BANK_LOGOS.map((l) => ({ icon: bankIcon(l.code), kw: `logo ngan hang bank ${plain(l.name)} ${l.code.toLowerCase()}` })));
+
+const TOKEN_RE = /🏦\u2063([A-Z]{2,6})/g;
+const SKIP = 'option, select, textarea, input, script, style, title';
+function convertText(node) {
+  const text = node.data;
+  if (!text.includes(BANK_SEP) || node.parentElement?.closest(SKIP)) return;
+  const frag = document.createDocumentFragment();
+  let last = 0;
+  for (const m of text.matchAll(TOKEN_RE)) {
+    const l = bankOf(m[1]);
+    if (!l) continue;
+    if (m.index > last) frag.append(text.slice(last, m.index));
+    const s = document.createElement('span');
+    s.className = 'bank-badge ib';
+    s.style.setProperty('--bb', l.bg);
+    s.title = l.name;
+    s.textContent = l.code;
+    frag.append(s);
+    last = m.index + m[0].length;
+  }
+  if (!last) return;
+  if (last < text.length) frag.append(text.slice(last));
+  node.replaceWith(frag);
+}
+function convertIn(root) {
+  if (root.nodeType === 3) return convertText(root);
+  if (root.nodeType !== 1 || !root.textContent.includes(BANK_SEP)) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (walker.currentNode.data.includes(BANK_SEP)) nodes.push(walker.currentNode);
+  nodes.forEach(convertText);
+}
+/** Theo dõi trang: icon ngân hàng xuất hiện ở đâu thì vẽ thành huy hiệu ở đó. */
+export function startBankBadges() {
+  convertIn(document.body);
+  new MutationObserver((list) => {
+    for (const m of list) {
+      if (m.type === 'characterData') convertText(m.target);
+      else m.addedNodes.forEach(convertIn);
+    }
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
 }

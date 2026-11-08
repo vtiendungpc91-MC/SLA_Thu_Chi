@@ -7,10 +7,10 @@
   <meta name="description" content="Quản lý thu chi cá nhân, chạy offline">
   <meta name="theme-color" id="theme-color" content="#1f6feb">
   <script>
-    // Áp chế độ sáng/tối trước khi vẽ để không bị nháy màn hình.
+    // Áp chế độ sáng/tối trước khi vẽ để không bị nháy màn hình: 7:00–20:00 sáng, 20:00–7:00 tối.
     try {
-      var t = localStorage.getItem('stc-theme');
-      if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      var h = new Date().getHours();
+      if (h >= 20 || h < 7) {
         document.documentElement.classList.add('dark');
         document.getElementById('theme-color').content = '#0d1117';
       }

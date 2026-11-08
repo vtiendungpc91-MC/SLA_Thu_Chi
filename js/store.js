@@ -124,7 +124,8 @@ export const BOOK_KINDS = {
 export const OVERDRAFT_MAX = 2;
 /** Số mục tối đa của Bank hoặc Thấu chi: tính riêng từng loại, User đặc biệt mỗi loại 1. */
 export function moneyBookMax(userId, overdraft) {
-  if (getUsers().find((u) => u.id === userId)?.special) return 1;
+  // User đặc biệt: 1 Thấu chi; Account gồm 1 Account gốc (Personal/Family) + 2 Account thường.
+  if (getUsers().find((u) => u.id === userId)?.special) return overdraft ? 1 : 3;
   return overdraft ? OVERDRAFT_MAX : BOOK_KINDS.bank.max;
 }
 export const ownerType = (u) => (u && u.type === 'category' ? 'category' : 'user');
@@ -344,6 +345,8 @@ export function saveProfile(p) {
     const max = isMoney && p.owner ? moneyBookMax(p.owner, p.overdraft) : kind.max;
     const label = isMoney ? (p.overdraft ? 'Thấu chi' : 'Account') : p.kind === 'card' ? CARD_TYPES[isCreditCard(p) ? 'credit' : 'wallet'] : kind.label;
     if (p.owner && same.length >= max) throw new Error(`Tối đa ${max} mục ${label}`);
+    // Account thêm sau của User đặc biệt là Account thường: không Personal/Family, không giao dịch với Secrecy.
+    if (isMoney && !p.overdraft && getUsers().find((u) => u.id === p.owner)?.special && same.some((b) => !b.plain)) p.plain = true;
     p.id = uid().replace(/-/g, '').slice(0, 12);
     p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
     list.push(p);
@@ -1369,7 +1372,7 @@ export async function kindTotal(userId, kind) {
 export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
 /** Bank (không gồm Thấu chi) của User đặc biệt: 12 nút nhanh (4 dòng × 3 nút ở Tổng quan). */
 export const QUICK_MAX_SPECIAL = 12;
-export const quickMax = (b) => (kindOfBook(b) === 'bank' && !b.overdraft && userOf(b)?.special ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
+export const quickMax = (b) => (isSpecialBook(b) && !b.overdraft ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
 export const STAT_MAX = 3;
 /** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 10 phút được hủy (Recall). */
 export const RECALL_MS = 10 * 60 * 1000;
@@ -1433,7 +1436,7 @@ export async function bookOverview(b, range) {
 export const PF_LABEL = { personal: 'Personal', family: 'Family' };
 const CLOSED_MSG = 'Không giao dịch được: Secrecy chỉ dành cho Account của User đặc biệt; Thấu chi, Tiết kiệm, Thẻ của User đặc biệt chỉ giao dịch trong cùng User';
 export const specialUser = () => getUsers().find((u) => u.special);
-export function isSpecialBook(b) { return !!b && kindOfBook(b) === 'bank' && !!userOf(b)?.special; }
+export function isSpecialBook(b) { return !!b && kindOfBook(b) === 'bank' && !b.plain && !!userOf(b)?.special; }
 const closedBook = (b) => !!userOf(b)?.special && !(kindOfBook(b) === 'bank' && !b.overdraft);
 /** Chỉ Bank của User đặc biệt mới giao dịch được với User khác. */
 export function canTransfer(a, b) {
@@ -1441,7 +1444,7 @@ export function canTransfer(a, b) {
   const neoA = kindOfBook(a) === 'neo', neoB = kindOfBook(b) === 'neo';
   if (neoA || neoB) {
     const other = neoA ? b : a;
-    return !!userOf(other)?.special && kindOfBook(other) === 'bank' && !other.overdraft;
+    return isSpecialBook(other) && !other.overdraft;
   }
   return a.owner === b.owner || (!closedBook(a) && !closedBook(b));
 }
@@ -1456,10 +1459,13 @@ export async function pfBalances(userId = specialUser()?.id) {
   const u = getUsers().find((x) => x.id === userId);
   if (!u?.special) return null;
   let personal = Number(u.pfBase) || 0;
-  for (const b of userBooks(u.id).filter((x) => kindOfBook(x) === 'bank')) {
+  // Chỉ cặp Account + Thấu chi gốc; Account thường thêm sau không thuộc Personal/Family.
+  const core = userBooks(u.id).filter(isSpecialBook);
+  let total = 0;
+  for (const b of core) {
     for (const t of await dbOf(b.id).getAll('transactions')) if (t.pf === 'personal') personal += pfDelta(t);
+    total += (await profileSummary(b)).balance;
   }
-  const total = await kindTotal(u.id, 'bank');
   return { personal, family: total - personal, total };
 }
 
@@ -1495,7 +1501,7 @@ export function pfRemoveError(tx) {
 /** Thiết lập lần đầu hoặc Reset: đặt số dư Bank, Thấu chi, hạn mức và phần Personal. */
 export async function setupSpecial(userId, { bank, limit, overdraft, personal }) {
   const u = getUsers().find((x) => x.id === userId);
-  const books = userBooks(userId).filter((x) => kindOfBook(x) === 'bank');
+  const books = userBooks(userId).filter(isSpecialBook);
   const bankBook = books.find((x) => !x.overdraft);
   let od = books.find((x) => x.overdraft);
   if (od) saveProfile({ id: od.id, limit });

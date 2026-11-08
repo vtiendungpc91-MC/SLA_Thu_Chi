@@ -4,13 +4,13 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.19.0 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.21.0 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
 ```
 User (tối đa 3)
-├── Account (tối đa 3; User đặc biệt 1)
+├── Account (tối đa 3; User đặc biệt: 1 Account gốc + 2 Account thường)
 ├── Thấu chi (tối đa 2; User đặc biệt 1)
 ├── Tiết kiệm (tối đa 2)
 └── Thẻ tín dụng (tối đa 5)
@@ -27,7 +27,7 @@ Màn hình chính là **Tổng quan** của User: 4 thẻ Account, Thấu chi, T
 | **Transfer** | Chuyển tiền giữa các mục, ghi ở cả 2 sổ. Xóa một bên thì bên kia xóa theo, sửa ngày áp dụng cả 2 bên. Có danh mục riêng, chọn được biểu tượng |
 | **Get In** | Account, Thấu chi, Tiết kiệm rút từ Account/Thấu chi khác; mục của User đặc biệt theo quy tắc riêng bên dưới. Chỉ Account của User đặc biệt giao dịch được với ngân hàng trong Secrecy (không hiện nếu Secrecy đang ẩn). Các khoản Withdraw cũ vẫn giữ trong lịch sử |
 | **Quyền của từng mục** | Cài đặt riêng của Account, Thấu chi: bật/tắt Thu, Chi, Transfer, Get In. Account, Thấu chi, Tiết kiệm: công tắc cho phép trừ tiền khỏi tài khoản. Tiết kiệm có Transfer và Get In |
-| **Account** | Sổ thu/chi có 1 tài khoản ngân hàng và số dư |
+| **Account** | Sổ thu/chi có 1 tài khoản ngân hàng và số dư. Biểu tượng chọn từ huy hiệu ngân hàng Việt Nam (màu đặc trưng + tên viết tắt, tự chọn theo tên ngân hàng) hoặc emoji; tên gợi nhớ để trống thì dùng tên ngân hàng. Ô chọn tài khoản khi tạo giao dịch hiện kèm số tài khoản |
 | **Thấu chi** | Nhập hạn mức và số dư lúc tạo, sau đó không sửa được (xóa rồi tạo lại). Thu/Chi và Transfer như Account, được âm số dư, vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức thì cảnh báo, không chặn |
 | **Tiết kiệm** | Chỉ Transfer và Get In với Account/Thấu chi |
 | **Thẻ Tín Dụng** | Tạo mới nhập hạn mức âm tối đa và số nợ hiện tại; Chi vượt hạn mức bị chặn. Có Thu/Chi, luôn hiện số âm, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Account. Nhận Transfer từ Account/Thấu chi và Get In từ Account/Thấu chi, không chuyển tiền ra và không bị Get In; form hiện số đang nợ, không cho thu hoặc trả vượt số nợ. Tổng quan hiện tổng nợ thẻ |
@@ -42,7 +42,7 @@ Màn hình chính là **Tổng quan** của User: 4 thẻ Account, Thấu chi, T
 | **Phần đầu cố định** | Khi cuộn, phần đầu đứng yên: Tổng quan đến dòng thẻ Account, Thấu chi…; Giao dịch và Báo cáo đến dòng Ngày/Tuần/Tháng; Kế hoạch đến dòng thẻ Ngân sách, Mục tiêu…; Cài đặt của mục đến ngay trên nhóm đầu tiên; Cài đặt chung đến hết danh sách chọn User |
 | **Giao dịch** | Lọc theo kỳ, loại và nhiều danh mục đã có trong lịch sử; tìm kiếm; xuất CSV |
 | **Báo cáo** | Theo ngày, tháng, quý, năm hoặc khoảng tự chọn; biểu đồ theo thời gian và danh mục |
-| **Giao diện** | Mỗi loại tài khoản một màu (Account cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ) ở tab, nút +, viền thẻ tài khoản, tiêu đề và nút Đóng. Số tiền thẳng cột. Phần đầu thu gọn khi cuộn. Nút 👁 che số dư (thu, chi, giao dịch, chênh lệch vẫn hiện). Chế độ sáng/tối |
+| **Giao diện** | Mỗi loại tài khoản một màu (Account cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ) ở tab, nút +, viền thẻ tài khoản, tiêu đề và nút Đóng. Số tiền thẳng cột. Phần đầu thu gọn khi cuộn. Nút 👁 che số dư (thu, chi, giao dịch, chênh lệch vẫn hiện). Mỗi lần mở app hoặc mở khóa: 7:00–20:00 chế độ sáng, 20:00–7:00 chế độ tối (nút 🌙 vẫn đổi được trong lúc dùng). Mọi bộ chọn icon có thêm huy hiệu ngân hàng. Cặp icon tiền ra/vào chưa rõ màu có nền đỏ nhạt (Chi, Transfer) / xanh lá nhạt (Thu, Get In) |
 | **Tìm kiếm chung** | Nút 🔎 ở Tổng quan: tìm theo ghi chú, danh mục, tên tài khoản, tag hoặc số tiền trong mọi tài khoản của User; bấm kết quả mở đúng ngày của giao dịch |
 | **Báo cáo thêm** | Biểu đồ tổng tài sản của User 12 tháng (Account + Thấu chi + Tiết kiệm − nợ thẻ). Nút 🖼️ tạo ảnh tóm tắt thu chi của kỳ đang xem để chia sẻ hoặc lưu |
 | **Nhắc sao lưu** | Quá 7 ngày chưa sao lưu (hoặc chưa sao lưu lần nào) thì hiện trong Notifications và dòng thông báo ở Tổng quan |
@@ -87,7 +87,7 @@ Mở `http://localhost:8080` bằng Chrome hoặc Edge. Bấm F12, chọn biểu
 index.html            khung trang + thanh tab
 manifest.webmanifest  thông tin cài đặt PWA
 sw.js                 service worker: cache để chạy offline, chứa VERSION
-css/app.css           giao diện (sáng/tối: nút 🌙 ở màn hình nút góc phải; chưa chọn thì theo máy)
+css/app.css           giao diện (sáng/tối theo giờ khi mở app; nút 🌙 ở màn hình nút góc phải)
 js/app.js             khởi động, điều hướng, thông báo
 js/views.js           các màn hình và form
 js/store.js           nghiệp vụ: số dư, Transfer/Get In, Personal/Family, thông báo, sao lưu

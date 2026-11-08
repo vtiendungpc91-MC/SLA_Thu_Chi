@@ -151,6 +151,15 @@ document.addEventListener('click', (e) => {
 
 // ---------- Chế độ sáng / tối ----------
 export const isDark = () => document.documentElement.classList.contains('dark');
+function setTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('theme-color').content = dark ? '#0d1117' : '#1f6feb';
+}
+/** Mỗi lần mở app / mở khóa: 7:00–20:00 chế độ sáng, 20:00–7:00 chế độ tối (giờ trên máy). Nút 🌙 vẫn đổi được trong lúc dùng. */
+export function applyTimeTheme() {
+  const h = new Date().getHours();
+  setTheme(h >= 20 || h < 7);
+}
 export function toggleTheme() {
   const dark = !isDark();
   document.documentElement.classList.toggle('dark', dark);

@@ -11,7 +11,7 @@ import {
   fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN, isMasked, setMasked, fmtPlain, fmtBal, fmtBalShort,
 } from './utils.js';
 import { donut, bars, lineChart } from './charts.js';
-import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, plain } from './icons.js';
+import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, PAIR_TINT, BANK_LOGOS, plain } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
 import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile, encryptBackup, decryptBackup, isEncryptedBackup, BACKUP_PIN_RE } from './autosave.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay, bioEnabled, bioAvailable, enableBio, disableBio } from './lock.js';
@@ -25,6 +25,26 @@ const catIcon = (c) => `<span class="ci" style="--c:${esc((c || UNKNOWN_CAT).col
 const accName = (id) => S.accById(id)?.name || '—';
 const TYPE_LABEL = { expense: 'Chi', income: 'Thu', transfer: 'Chuyển khoản' };
 const PAY_METHODS = ['Chuyển khoản qua app ngân hàng', 'Withdraw nợ tự động', 'Nộp tiền mặt tại quầy', 'Ví điện tử (MoMo, ZaloPay...)', 'Khác'];
+// Huy hiệu ngân hàng (màu đặc trưng + tên viết tắt) để chọn làm biểu tượng tài khoản. Không dùng ảnh logo chính thức.
+const bankLogo = (code) => BANK_LOGOS.find((l) => l.code === code) || null;
+/** Icon của loại giao dịch; icon trong cặp tiền ra/vào chưa rõ màu thì có nền đỏ nhạt (Chi, Transfer) / xanh lá nhạt (Thu, Get In). */
+const OUT_KINDS = new Set(['expense', 'gop', 'card']);
+const kIcon = (k) => {
+  const ic = QUICK_KINDS[k].icon;
+  return PAIR_TINT.has(ic) ? `<span class="tx-ic ${OUT_KINDS.has(k) ? 'out' : 'in'}">${esc(ic)}</span>` : esc(ic);
+};
+const logoForBank = (bank) => {
+  const k = String(bank || '').toLowerCase().replace(/\s+/g, '');
+  if (!k) return null;
+  return BANK_LOGOS.find((l) => l.name.toLowerCase().replace(/\s+/g, '') === k)
+    || BANK_LOGOS.find((l) => k.includes(l.name.toLowerCase().replace(/\s+/g, '')) || l.code.toLowerCase() === k) || null;
+};
+const badgeHtml = (l, cls = '') => `<span class="bank-badge ${cls}" style="--bb:${l.bg}">${esc(l.code)}</span>`;
+/** Biểu tượng tài khoản: huy hiệu ngân hàng nếu đã chọn, không thì emoji. */
+const accIconHtml = (a) => (bankLogo(a.logo) ? badgeHtml(bankLogo(a.logo)) : esc(a.icon || '🏦'));
+/** Tên tài khoản kèm số tài khoản (nếu có), dùng trong các ô chọn khi tạo giao dịch. */
+const accTitle = (a) => a.name + (a.number ? ` · STK ${a.number}` : '');
+const accLabel = (a) => `${a.icon || '🏦'} ${accTitle(a)}`;
 const BANKS = ['Vietcombank', 'VietinBank', 'BIDV', 'Agribank', 'Techcombank', 'MB Bank', 'ACB', 'VPBank', 'TPBank', 'Sacombank',
   'HDBank', 'VIB', 'SHB', 'SeABank', 'OCB', 'MSB', 'LPBank', 'Eximbank', 'Nam A Bank', 'Bac A Bank', 'ABBANK', 'Shinhan Bank',
   'HSBC', 'Standard Chartered', 'UOB', 'Cake by VPBank', 'Timo', 'FE Credit', 'Home Credit', 'HD Saison', 'Mcredit', 'Mirae Asset'];
@@ -97,7 +117,7 @@ function accOptions(selected, withBalance = false) {
   const list = S.activeAccounts();
   const cur = S.accById(selected);
   if (cur && cur.archived) list.push(cur);
-  return list.map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}${withBalance ? ' — ' + fmtBal(S.accountBalance(a)) : ''}</option>`).join('');
+  return list.map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(accLabel(a))}${withBalance ? ' — ' + fmtBal(S.accountBalance(a)) : ''}</option>`).join('');
 }
 
 /** Dòng phụ mô tả tài khoản ngân hàng: ngân hàng · STK · chủ TK. */
@@ -507,7 +527,8 @@ actions.books = () => {
       const isCardTab = tab === 'credit' || tab === 'wallet';
       const max = isMoney ? S.moneyBookMax(u.id, tab === 'od') : S.BOOK_KINDS[isCardTab ? 'card' : tab].max;
       // Bank và Thấu chi của User đặc biệt tạo sẵn lúc thiết lập, không thêm tay.
-      const room = list.length < max && !(u.special && isMoney) && tab !== 'wallet';
+      // User đặc biệt: Thấu chi cố định 1; Account được thêm 2 cái thường ngoài Account gốc.
+      const room = list.length < max && !(u.special && tab === 'od') && tab !== 'wallet';
       // Nhóm trống mà hết chỗ tạo thêm thì không cần hiện.
       if (!list.length && !room) return '';
       const count = tab === 'wallet' ? `(${list.length})` : `(${list.length}/${max})`;
@@ -1284,7 +1305,7 @@ function cardPaySheet(items) {
         const accs = banks.length ? banks : all;
         balances.clear();
         for (const a of accs) balances.set(a.id, await S.peerBalance(whoId, a.id));
-        $(sh, '#cp-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmtBal(balances.get(a.id))}</option>`).join('');
+        $(sh, '#cp-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))} — ${fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
       $(sh, '#cp-who').addEventListener('click', (e) => {
@@ -1362,7 +1383,7 @@ function creditPaySheet() {
         const accs = await S.peerAccounts(whoId);
         balances.clear();
         for (const a of accs) balances.set(a.id, await S.peerBalance(whoId, a.id));
-        $(sh, '#cr-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmtBal(balances.get(a.id))}</option>`).join('');
+        $(sh, '#cr-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))} — ${fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
       $(sh, '#cr-who').addEventListener('click', (e) => {
@@ -1482,10 +1503,10 @@ function quickRows(list, bookId) {
     rows.push(list.slice(start, start + size));
     start += size;
   }
-  const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${QUICK_KINDS[q.type].icon}</span><span class="qk-name">${esc(q.name)}</span></button>`;
+  const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span></button>`;
   const row = (arr) => (arr.length ? `<div class="qk-row">${arr.map(btn).join('')}</div>` : '');
   const types = [...new Set(list.map((q) => q.type))];
-  return `<div class="qk-legend">${types.map((t) => `<span>${QUICK_KINDS[t].icon} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
+  return `<div class="qk-legend">${types.map((t) => `<span>${kIcon(t)} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
     ${rows.map(row).join('')}`;
 }
 
@@ -1500,7 +1521,7 @@ function recentRows(list, b) {
   const rows = list.map((t) => {
     const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
-    return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${QUICK_KINDS[txTypeKey(t)].icon} ${esc(txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
+    return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
       ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}</div>`;
   }).join('');
@@ -1867,7 +1888,7 @@ function openGopForm(pick = null) {
         const all = await S.peerAccounts(toId);
         const banks = all.filter((a) => a.kind !== 'cash');
         const accs = banks.length ? banks : all;
-        $(sh, '#gf-toacc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)}</option>`).join('');
+        $(sh, '#gf-toacc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))}</option>`).join('');
       };
       $(sh, '#gf-to').addEventListener('click', (e) => {
         const b = e.target.closest('[data-to]');
@@ -1994,7 +2015,7 @@ function openTrichForm(pick = null) {
         balances.clear();
         for (const a of accs) balances.set(a.id, await S.peerBalance(fromId, a.id));
         const hideBal = others.find((x) => x.id === fromId)?.owner === S.SECRECY && S.secrecyHidden();
-        $(sh, '#tr-facc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)}${hideBal ? '' : ' — ' + fmtBal(balances.get(a.id))}</option>`).join('');
+        $(sh, '#tr-facc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))}${hideBal ? '' : ' — ' + fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
       $(sh, '#tr-from').addEventListener('click', (e) => {
@@ -2679,7 +2700,7 @@ function recurringTab() {
     const t = r.template;
     const cat = S.catById(t.categoryId);
     return `<button type="button" class="row ${r.active ? '' : 'off'}" data-act="rec-open" data-id="${r.id}">
-      ${t.flow ? `<span class="ci">${QUICK_KINDS[t.flow].icon}</span>` : t.type === 'transfer' ? '<span class="ci">⇄</span>' : catIcon(cat)}
+      ${t.flow ? `<span class="ci">${kIcon(t.flow)}</span>` : t.type === 'transfer' ? '<span class="ci">⇄</span>' : catIcon(cat)}
       <span class="grow"><b>${esc(S.recurringTitle(r))}</b>
       <small>${FREQ_LABEL[r.freq]}${r.interval > 1 ? ` (mỗi ${r.interval})` : ''} · ${r.active ? 'kỳ tới ' + fmtDate(r.nextDate) + (r.time && !r.autoAdd ? ' ' + r.time : '') : 'đã tắt'} · ${r.autoAdd ? '⚡ tự động' : '🔔 chờ xác nhận'}</small></span>
       <span class="amt ${t.type}">${fmtCur(t.amount, t.currency)}</span></button>`;
@@ -2702,7 +2723,7 @@ function recKinds() {
 }
 /** Câu ghi rõ tiền ra từ đâu, vào đâu. */
 function recRoute(kind, me, myAcc, peer, peerAccName) {
-  const mine = `<b>${esc(S.bookLabel(me))}</b>${myAcc ? ` · ${esc(myAcc.name)}` : ''}`;
+  const mine = `<b>${esc(S.bookLabel(me))}</b>${myAcc ? ` · ${esc(accTitle(myAcc))}` : ''}`;
   const other = peer ? `<b>${esc(S.bookLabel(peer))}</b>${peerAccName ? ` · ${esc(peerAccName)}` : ''}` : '<i>chưa chọn</i>';
   return {
     expense: `💸 Tiền <b class="expense">ra</b> từ ${mine}`,
@@ -2729,7 +2750,7 @@ function recurringForm(r) {
     title: r ? 'Sửa khoản định kỳ' : 'Thêm khoản định kỳ',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
-      <div class="seg" id="rc-kind">${kinds.map((k) => `<button type="button" data-k="${k}">${QUICK_KINDS[k].icon} ${QUICK_KINDS[k].label}</button>`).join('')}</div>
+      <div class="seg" id="rc-kind">${kinds.map((k) => `<button type="button" data-k="${k}">${kIcon(k)} ${QUICK_KINDS[k].label}</button>`).join('')}</div>
       <p class="rec-route" id="rc-route"></p>
       ${amountField('rc-amt', t.amount || 0, 'Số tiền mỗi kỳ')}
       <div id="rc-cat-wrap">${field('Danh mục', '<select id="rc-cat" class="cat-select"></select>')}</div>
@@ -2776,7 +2797,7 @@ function recurringForm(r) {
         const p = curPeer();
         if (!p) { paccSel.innerHTML = '<option></option>'; return paint(); }
         const accs = await S.peerAccounts(p.id);
-        paccSel.innerHTML = accs.map((a) => `<option value="${a.id}" data-name="${esc(a.name)}" ${a.id === t.peerAccountId ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}</option>`).join('');
+        paccSel.innerHTML = accs.map((a) => `<option value="${a.id}" data-name="${esc(accTitle(a))}" ${a.id === t.peerAccountId ? 'selected' : ''}>${esc(accLabel(a))}</option>`).join('');
         paint();
       };
       const fillKind = () => {
@@ -2852,7 +2873,7 @@ async function recurringConfirm(r) {
     title: '🔁 Xác nhận khoản định kỳ',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">✅ Xác nhận</button>`,
     body: `<form class="form" id="${formId}">
-      <p class="rec-route">${recRoute(kind, me, myAcc, peer, peerAcc?.name)}</p>
+      <p class="rec-route">${recRoute(kind, me, myAcc, peer, peerAcc && accTitle(peerAcc))}</p>
       <p class="muted small">${QUICK_KINDS[kind].icon} ${esc(S.recurringTitle(r))} · kỳ ${fmtDate(r.nextDate)} · ${FREQ_LABEL[r.freq]}</p>
       ${amountField('rcc-amt', t.amount, 'Số tiền kỳ này')}
       <em class="hint" id="rcc-bal"></em>
@@ -3344,7 +3365,7 @@ const QUICK_KINDS = {
 const TX_ICON_ROWS = ['expense', 'income', 'gop', 'trich'];
 function txIconSettingsHtml() {
   return `${sectionTitle('Icon giao dịch')}
-  <section class="card list">${TX_ICON_ROWS.map((t) => `<button type="button" class="row" data-act="tx-icon" data-t="${t}"><span class="ci">${esc(S.txIcons()[t])}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span><span>✎</span></button>`).join('')}</section>
+  <section class="card list">${TX_ICON_ROWS.map((t) => `<button type="button" class="row" data-act="tx-icon" data-t="${t}"><span class="ci">${kIcon(t)}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span><span>✎</span></button>`).join('')}</section>
   <p class="muted small">Icon này hiển thị trên các nút nhanh của mọi mục. Tên chức năng không đổi được.</p>`;
 }
 actions['tx-icon'] = (el) => {
@@ -3405,7 +3426,7 @@ actions['quick-run'] = async (el) => {
     title: `${QUICK_KINDS[k].icon} ${q.name}`,
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">OK</button>`,
     body: `<form class="form" id="${formId}">
-      <p class="quick-info">${esc(quickDesc(k, q))}${k !== 'card' ? `<br><small>${outgoing ? 'Từ' : 'Vào'} tài khoản: ${esc(acc.name)}</small>` : ''}</p>
+      <p class="quick-info">${esc(quickDesc(k, q))}${k !== 'card' ? `<br><small>${outgoing ? 'Từ' : 'Vào'} tài khoản: ${esc(accTitle(acc))}</small>` : ''}</p>
       ${amountLine({ dateId: 'qr-date', date: todayISO(), amtId: 'qr-amt', big: true, after: debtHintEl + pfField() })}
       <em class="hint" id="qr-bal"></em>
     </form>`,
@@ -3485,7 +3506,7 @@ function quickSettingsHtml() {
   const open = state.settings.quickListOpen !== false;
   return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${list.length}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
   ${open ? `<section class="card list">${list.map((q) => `<div class="row quick-row">
-      <button type="button" class="grow-btn" data-act="quick-edit" data-id="${esc(q.id)}"><span class="ci">${QUICK_KINDS[q.type].icon}</span>
+      <button type="button" class="grow-btn" data-act="quick-edit" data-id="${esc(q.id)}"><span class="ci">${kIcon(q.type)}</span>
         <span class="grow"><b>${esc(q.name)}</b><small>${QUICK_KINDS[q.type].label} · ${esc(quickDesc(q.type, q))}</small></span><span>✎</span></button>
       <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-quick-show="${esc(q.id)}" ${q.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
     ${list.length < max ? '<button type="button" class="row add-row" data-act="quick-new"><span class="ci">＋</span><span class="grow"><b>Tạo nút nhanh</b></span></button>' : ''}
@@ -3499,7 +3520,7 @@ actions['quick-new'] = () => {
   if (types.length === 1) return actions['quick-edit']({ dataset: { type: types[0] } });
   openSheet({
     title: 'Tạo nút nhanh',
-    body: `<div class="card list">${types.map((t) => `<button type="button" class="row" data-new="${t}"><span class="ci">${QUICK_KINDS[t].icon}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span>›</button>`).join('')}</div>`,
+    body: `<div class="card list">${types.map((t) => `<button type="button" class="row" data-new="${t}"><span class="ci">${kIcon(t)}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span>›</button>`).join('')}</div>`,
     onMount(sh, close) {
       sh.addEventListener('click', (e) => {
         const x = e.target.closest('[data-new]');
@@ -3540,7 +3561,7 @@ actions['quick-edit'] = (el) => {
         const sel = $(sh, '#qe-pacc');
         if (!sel) return;
         const accs = await S.peerAccounts($(sh, '#qe-peer').value);
-        sel.innerHTML = accs.map((a) => `<option value="${a.id}" ${a.id === q.peerAccountId ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}</option>`).join('');
+        sel.innerHTML = accs.map((a) => `<option value="${a.id}" ${a.id === q.peerAccountId ? 'selected' : ''}>${esc(accLabel(a))}</option>`).join('');
       };
       const curId = S.currentProfile().id;
       const pfNeed = () => k !== 'card' && S.pfNeeded(curId, isPeer ? $(sh, '#qe-peer').value : null);
@@ -3724,7 +3745,7 @@ actions['card-remind-save'] = async () => {
 function txPermHtml(p) {
   if (p.credit) return '';
   const features = S.kindOfBook(p) === 'bank' ? `${sectionTitle('Tính năng giao dịch')}
-  <section class="card form">${S.TX_FEATURES.map((f) => `<div class="row-between"><span>${QUICK_KINDS[f].icon} ${QUICK_KINDS[f].label}</span>
+  <section class="card form">${S.TX_FEATURES.map((f) => `<div class="row-between"><span>${kIcon(f)} ${QUICK_KINDS[f].label}</span>
       <label class="switch"><input type="checkbox" data-feature="${f}" ${S.featureOn(p, f) ? 'checked' : ''}><i></i></label></div>`).join('')}
     <p class="muted small">Tắt thì mục này không tạo được giao dịch loại đó, nút nhanh cùng loại cũng ẩn. Giao dịch đã có vẫn giữ.</p>
   </section>` : '';
@@ -3769,7 +3790,7 @@ function bookSettingsView() {
     ${sectionTitle('Tài khoản ngân hàng')}
     <section class="card list">${S.activeAccounts().map((a) => {
       const b = S.accountBalance(a);
-      return `<button type="button" class="row" data-act="acc-edit" data-id="${a.id}"><span class="ci" style="--c:#3e63dd">${esc(a.icon)}</span><span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}</small></span><span class="amt ${b < 0 ? 'expense' : ''}">${fmtBal(b)}</span></button>`;
+      return `<button type="button" class="row" data-act="acc-edit" data-id="${a.id}"><span class="ci" style="--c:#3e63dd">${accIconHtml(a)}</span><span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}</small></span><span class="amt ${b < 0 ? 'expense' : ''}">${fmtBal(b)}</span></button>`;
     }).join('')}
     ${canAddAccount() ? `<button type="button" class="row add-row" data-act="acc-edit"><span class="ci">＋</span><span class="grow"><b>Thêm tài khoản ngân hàng</b></span></button>` : ''}</section>
 
@@ -4101,8 +4122,11 @@ function accountForm(a) {
         ${a && f.number ? '<button type="button" class="btn ghost small" data-copy style="align-self:end">📋 Chép STK</button>' : ''}
       </div>
       ${field('Chủ tài khoản', `<input id="af-holder" autocomplete="off" style="text-transform:uppercase" value="${esc(f.holder || '')}" placeholder="vd: NGUYEN VAN A">`)}
-      <div class="two">${field('Biểu tượng', `<input id="af-icon" maxlength="4" class="emoji" value="${esc(f.icon)}">`)}
-      ${field('Tên gợi nhớ (không bắt buộc)', `<input id="af-name" value="${esc(a ? f.name : '')}" placeholder="vd: TK lương, TK chi tiêu">`, 'style="flex:3"')}</div>
+      <div class="field"><span>Biểu tượng <small class="muted" id="af-logo-now"></small></span>
+        <div class="bank-logos" id="af-logos">${BANK_LOGOS.map((l) => `<button type="button" class="logo-pick" data-logo="${l.code}" title="${esc(l.name)}">${badgeHtml(l)}</button>`).join('')}
+          <button type="button" class="logo-pick" data-logo="" title="Dùng emoji"><span class="logo-emoji">${esc(f.logo ? '🏦' : f.icon || '🏦')}</span></button></div>
+        <div class="two" id="af-emoji-row" style="margin-top:6px">${field('Emoji (khi không chọn huy hiệu)', `<input id="af-icon" maxlength="4" class="emoji" value="${esc(f.icon || '🏦')}">`)}</div></div>
+      ${field('Tên gợi nhớ (không bắt buộc)', `<input id="af-name" value="${esc(a && !f.autoName ? f.name : '')}" placeholder="Để trống thì dùng tên ngân hàng">`)}
       ${od ? `<div class="kv"><span>Số dư hiện tại</span><b>${fmt(curBal)}</b></div><p class="muted small">Không sửa được số dư ở đây. Muốn đổi: ${S.isSpecialBook(S.currentProfile()) ? 'dùng Reset trong Cài đặt' : 'xóa mục này rồi tạo lại'}.</p>`
         : amountField('af-bal', curBal, a ? 'Số dư hiện tại (sửa nếu lệch với app ngân hàng)' : 'Số dư hiện tại')}
       <div class="actions">${a && !od ? `<button type="button" class="btn danger" data-del>${used ? (a.archived ? 'Hiện lại' : 'Ẩn tài khoản') : 'Xóa'}</button>` : ''}<button class="btn primary">Lưu</button></div>
@@ -4110,6 +4134,21 @@ function accountForm(a) {
     onMount(sh, close) {
       const bal = od ? null : bindMoney(sh, 'af-bal');
       if (!a && bal) bal.value = '';
+      // Huy hiệu: tự chọn theo tên ngân hàng cho đến khi người dùng tự chọn.
+      let logo = f.logo || null, picked = !!f.logo || (a && !f.logo && f.icon !== '🏦');
+      const paintLogo = () => {
+        sh.querySelectorAll('#af-logos [data-logo]').forEach((b) => b.classList.toggle('on', (b.dataset.logo || null) === logo));
+        $(sh, '#af-logo-now').textContent = logo ? '· ' + bankLogo(logo).name : '· emoji';
+        $(sh, '#af-emoji-row').hidden = !!logo;
+      };
+      $(sh, '#af-logos').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-logo]');
+        if (!b) return;
+        logo = b.dataset.logo || null; picked = true; paintLogo();
+      });
+      $(sh, '#af-bank').addEventListener('input', () => { if (!picked) { logo = logoForBank($(sh, '#af-bank').value)?.code || null; paintLogo(); } });
+      if (!a && !logo) logo = logoForBank(f.bank)?.code || null;
+      paintLogo();
       $(sh, '[data-copy]')?.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText(f.number.replace(/\s/g, '')); toast('Đã chép số tài khoản'); } catch { toast('Không sao chép được'); }
       });
@@ -4121,12 +4160,14 @@ function accountForm(a) {
         const v = od ? curBal : bal.value.trim() ? readMoney(bal.value) : 0;
         if (!Number.isFinite(v) || (v < 0 && !od)) return toast('Số dư phải là số không âm');
         const digits = number.replace(/\s/g, '');
-        const name = $(sh, '#af-name').value.trim() || (digits ? `${bank} ••${digits.slice(-4)}` : bank);
+        // Tên gợi nhớ để trống: dùng tên ngân hàng (số tài khoản đã hiện riêng ngay sau tên).
+        const typed = $(sh, '#af-name').value.trim();
+        const name = typed || bank;
         // Số dư = ban đầu + các giao dịch → chỉnh "ban đầu" để số dư hiện tại khớp số nhập.
         const initial = Math.round((Number(f.initial) || 0) + (v - curBal));
         await S.put('accounts', {
           ...f, kind: 'bank', bank, number, holder: $(sh, '#af-holder').value.trim().toUpperCase(),
-          name, icon: $(sh, '#af-icon').value.trim() || '🏦', initial,
+          name, autoName: !typed, logo, icon: logo ? '🏦' : $(sh, '#af-icon').value.trim() || '🏦', initial,
         });
         close(); toast('Đã lưu tài khoản');
       });
