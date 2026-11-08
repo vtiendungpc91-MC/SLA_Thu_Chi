@@ -961,3 +961,11 @@ html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #102d29; }
 html.dark .quick-btn.q-trich { background: #281d3d; }
 /* Nút Recall chỉ có icon */
 .rc-btn { min-width: 32px; padding: 3px 8px; font-size: 15px; line-height: 1.2; }
+/* Khối thông báo ở Tổng quan: dưới dòng Nợ thẻ, trải hết bề ngang, tối đa 2 dòng */
+.over-lines > .over-ticker-box { display: flex; flex-direction: column; align-items: stretch; gap: 1px; margin-top: 2px; }
+.over-lines > .over-ticker-box[hidden], .over-ticker-box > .over-ticker[hidden] { display: none; }
+.over-ticker-box > .over-ticker { flex: none; width: 100%; display: block; }
+.over-ticker-box.tick { animation: ticker-in .35s ease; }
+.over-ticker.tick { animation: none; }
+/* Dòng không còn gì hiện (User thường không có Personal/Family): bỏ để không hở trên khối thông báo */
+.over-lines > div:not(.over-ticker-box):not(:has(> :not([hidden]))) { display: none; }

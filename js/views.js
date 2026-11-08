@@ -12,7 +12,7 @@ import {
 import { donut, bars } from './charts.js';
 import { iconPickerHtml, bindIconPicker, MONEY_PAIRS } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
-import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile } from './autosave.js';
+import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile, encryptBackup, decryptBackup, isEncryptedBackup, BACKUP_PIN_RE } from './autosave.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay } from './lock.js';
 
 export const actions = {};
@@ -236,8 +236,9 @@ function restoreTop(root) {
   });
 }
 
-// Dòng thông báo chạy ở Tổng quan: mỗi thông báo 5 giây, xoay vòng liên tục.
+// Khối thông báo ở Tổng quan (dưới dòng Nợ thẻ): hiện 2 thông báo, mỗi dòng 1 cái, 5 giây đổi sang 2 cái kế tiếp, xoay vòng.
 const TICKER_MS = 5000;
+const TICKER_LINES = 2;
 let tickerTimer = null, tickerIdx = 0;
 function tickerText(a) {
   const when = a.kind === 'budget' ? `${Math.round(a.ratio * 100)}%` : fmtDue(a.days);
@@ -248,18 +249,20 @@ function startTicker(el, alerts) {
   clearInterval(tickerTimer);
   el.hidden = !alerts.length;
   if (!alerts.length) return;
+  const lines = [...el.children];
+  const count = Math.min(TICKER_LINES, alerts.length);
   const show = () => {
     if (!el.isConnected) return clearInterval(tickerTimer);
     tickerIdx %= alerts.length;
-    const text = tickerText(alerts[tickerIdx]);
-    if (el.textContent === text) return; // Vẽ lại mà vẫn thông báo đó thì không chạy lại hiệu ứng.
-    el.textContent = text;
+    const texts = lines.map((_, i) => (i < count ? tickerText(alerts[(tickerIdx + i) % alerts.length]) : ''));
+    if (lines.every((line, i) => line.textContent === texts[i])) return; // Vẽ lại mà vẫn các thông báo đó thì không chạy lại hiệu ứng.
+    lines.forEach((line, i) => { line.textContent = texts[i]; line.hidden = !texts[i]; });
     el.classList.remove('tick');
     void el.offsetWidth; // Chạy lại hiệu ứng hiện dần.
     el.classList.add('tick');
   };
   show();
-  if (alerts.length > 1) tickerTimer = setInterval(() => { tickerIdx++; show(); }, TICKER_MS);
+  if (alerts.length > TICKER_LINES) tickerTimer = setInterval(() => { tickerIdx += TICKER_LINES; show(); }, TICKER_MS);
 }
 
 /** Điền số thông báo và tổng tiền dưới 2 nút đầu trang (đọc nhiều mục nên làm sau khi vẽ). */
@@ -285,7 +288,7 @@ async function fillTopBar(root) {
     debtEl.hidden = !credits.length;
     debtEl.textContent = `Nợ thẻ ${fmt(debt)}`;
     savingEl.textContent = `Tiết kiệm ${fmt(saving)}`;
-    cardEl.parentElement.style.display = tabBooks(u.id, 'wallet').length ? '' : 'none';
+    cardEl.hidden = !tabBooks(u.id, 'wallet').length;
     cardEl.textContent = `Ví điện tử ${fmt(wallet)}`;
   } else {
     const room = innerWidth / 2 - 44;
@@ -1447,10 +1450,10 @@ function homeView() {
     </div>
   </header>
   <div class="over-lines">
-    <div><button type="button" class="over-ticker" data-act="users" data-over-ticker hidden></button><small class="chip-sub over-r" data-kind-total></small></div>
-    <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
-    <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
-    <div style="display:none"><small class="chip-sub over-card" data-over-card></small></div>
+    <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r" data-kind-total></small></div>
+    <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
+    <div><small class="chip-sub over-card" data-over-card hidden></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
+    <div class="over-ticker-box" data-over-ticker hidden>${'<button type="button" class="over-ticker" data-act="users" hidden></button>'.repeat(TICKER_LINES)}</div>
   </div>
   <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div></div>
   <div class="over-date"><small>📅 ${ui.overPeriod === 'lastmonth' ? `Last Month · ${esc(overRange().label)}` : fmtDayHeader(todayISO())}</small>
@@ -3374,7 +3377,7 @@ function settingsView() {
       <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
-  <p class="muted small">Chọn User để xem các mục của người đó ở phần bên dưới.</p>
+  <p class="muted small pin-end">Chọn User để xem các mục của người đó ở phần bên dưới.</p>
 
   ${sectionTitle(`Các mục của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
   ${[settingsUser()].map((u) => `
@@ -3415,9 +3418,8 @@ function settingsView() {
 
   ${sectionTitle('Sao lưu & dữ liệu')}
   <section class="card list">
-    <button type="button" class="row" data-act="backup-pick"><span class="ci">📁</span><span class="grow"><b>Nơi lưu file sao lưu tự động</b><small data-save-status>${esc(saveStatusText())}</small></span>›</button>
-    <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Mọi người dùng + thẻ trả trước · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
-    <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Thay thế toàn bộ người dùng, thẻ và giao dịch</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
+    <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Có mật khẩu 4 số · mọi người dùng + thẻ trả trước · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
+    <label class="row"><span class="ci">♻️</span><span class="grow"><b>Khôi phục từ bản sao lưu</b><small>Cần mật khẩu của file · thay thế toàn bộ người dùng, thẻ và giao dịch</small></span>›<input type="file" accept=".json,application/json" data-act-change="restore" hidden></label>
     <button type="button" class="row" data-act="export-csv-all"><span class="ci">📄</span><span class="grow"><b>Xuất Excel (CSV) toàn bộ giao dịch</b></span>›</button>
     <button type="button" class="row danger" data-act="wipe"><span class="ci">🗑️</span><span class="grow"><b>Xóa toàn bộ dữ liệu của ${esc(S.bookLabel(S.currentProfile()))}</b><small>Sổ của người khác giữ nguyên</small></span></button>
   </section>
@@ -3617,10 +3619,15 @@ async function mountSettings(root) {
     if (!file) return;
     let data;
     try { data = JSON.parse(await file.text()); } catch { return toast('File không đọc được (không phải JSON)', 4000); }
+    const locked = isEncryptedBackup(data);
+    if (locked) {
+      data = await askRestorePin(data);
+      if (!data) return;
+    }
     const msg = data && data.all
       ? `Khôi phục sẽ THAY THẾ TOÀN BỘ người dùng, thẻ trả trước và giao dịch trên máy này bằng bản sao lưu ngày ${fmtDate(String(data.exportedAt || '').slice(0, 10))} (${(data.profiles || []).length} người dùng/thẻ). Tiếp tục?`
       : `Đây là bản sao lưu kiểu cũ (một sổ). Khôi phục sẽ THAY THẾ dữ liệu trong sổ của "${S.bookLabel(S.currentProfile())}". Tiếp tục?`;
-    if (!confirm(msg)) return;
+    if (!confirm(msg + (locked ? '' : '\n\n(File này không có mật khẩu, tạo từ bản cũ.)'))) return;
     try {
       ui.period = null;
       ui.reportPeriod = null;
@@ -3646,50 +3653,119 @@ const saveStatusText = () => {
 const showSaveStatus = (root) => root.querySelectorAll('[data-save-status]').forEach((el) => { el.textContent = saveStatusText(); });
 const fail = (err) => { if (err.name !== 'AbortError') toast('⛔ Không lưu được: ' + err.message, 4500); };
 
-/** iPhone/Android: chuẩn bị xong mới hiện nút, vì iOS chỉ mở bảng Chia sẻ ngay sau một lần chạm. */
-async function shareBackupSheet(root) {
-  const file = new File([await backupJson()], AUTO_FILE_NAME, { type: 'application/json' });
+// ----- Mật khẩu file sao lưu (4 số): bắt buộc khi lưu, cần đúng mới khôi phục được -----
+const backupPinField = (id, label) => field(label, `<input id="${id}" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]*" class="pin-input">`);
+
+/** Bước 1: nhập mật khẩu 2 lần, mã hóa xong mới sang bước lưu. */
+function askBackupPin(next) {
+  const formId = 'bp-' + Date.now();
+  openSheet({
+    title: '🔐 Mật khẩu file sao lưu',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Tiếp</button>`,
+    body: `<form class="form" id="${formId}">
+      <p class="muted small">Đặt mật khẩu <b>4 chữ số</b> cho file này. Khi khôi phục, trên máy này hay máy khác, phải nhập đúng mật khẩu mới mở được.</p>
+      ${backupPinField('bp-1', 'Mật khẩu (4 số)')}
+      ${backupPinField('bp-2', 'Nhập lại mật khẩu')}
+      <p class="muted small">⚠️ Quên mật khẩu thì <b>không mở được file</b>, không có cách lấy lại. Mật khẩu 4 số chỉ chống người khác mở file một cách thông thường, vẫn nên giữ file ở nơi riêng tư.</p>
+    </form>`,
+    onMount(sh, close) {
+      setTimeout(() => $(sh, '#bp-1').focus(), 250);
+      let busy = false;
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (busy) return;
+        const a = $(sh, '#bp-1').value, b = $(sh, '#bp-2').value;
+        if (!BACKUP_PIN_RE.test(a)) return toast('Mật khẩu phải đúng 4 chữ số');
+        if (a !== b) return toast('2 lần nhập mật khẩu không khớp');
+        busy = true;
+        const btn = sh.closest('.sheet-wrap').querySelector('.head-save');
+        btn.textContent = 'Đang mã hóa…';
+        try {
+          const text = await encryptBackup(await backupJson(), a);
+          close();
+          next(text);
+        } catch (err) { busy = false; btn.textContent = 'Tiếp'; toast('⛔ Không tạo được file: ' + err.message, 4500); }
+      });
+    },
+  });
+}
+
+/** Bước 2: file đã mã hóa sẵn, bấm nút để lưu (iOS chỉ mở bảng Chia sẻ ngay sau một lần chạm). */
+function saveBackupSheet({ text, name, auto, root }) {
   openSheet({
     title: '💾 Lưu file sao lưu',
-    body: `<p>Điện thoại không cho app tự ghi vào file. Bấm nút dưới, chọn <b>Lưu vào Tệp</b>, chọn thư mục rồi bấm <b>Thay thế</b> nếu đã có file ${AUTO_FILE_NAME}.</p>
+    body: `<p>🔐 File đã được khóa bằng mật khẩu.</p>
+      <p>${auto && canPickFile() ? `Bấm nút dưới để ghi vào file sao lưu (${AUTO_FILE_NAME}).` : `Bấm nút dưới, chọn <b>Lưu vào Tệp</b>, chọn thư mục${auto ? ` rồi bấm <b>Thay thế</b> nếu đã có file ${AUTO_FILE_NAME}` : ''}.`}</p>
       <div class="actions"><button type="button" class="btn primary" data-go>📤 Lưu file</button></div>`,
     onMount(sh, close) {
       $(sh, '[data-go]').addEventListener('click', async () => {
         try {
-          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: AUTO_FILE_NAME });
-          else download(AUTO_FILE_NAME, file);
-          markSaved(AUTO_FILE_NAME);
-          showSaveStatus(root);
-          close(); toast('💾 Đã gửi file sao lưu');
+          let saved = name;
+          if (auto && canPickFile()) saved = await saveToPickedFile(text) || await pickBackupFile(text);
+          else {
+            const file = new File([text], name, { type: 'application/json' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name });
+            else download(name, file);
+          }
+          if (auto) { if (!canPickFile()) markSaved(name); showSaveStatus(root); }
+          await S.setSetting('lastBackup', todayISO());
+          close(); toast('💾 Đã lưu file sao lưu ' + saved);
         } catch (err) { fail(err); }
       });
     },
   });
 }
 
-actions['backup-pick'] = async (el) => {
-  const root = el.closest('#main') || document;
-  if (!canPickFile()) return shareBackupSheet(root);
-  try {
-    const name = await pickBackupFile();
-    showSaveStatus(root);
-    toast('💾 Đã tạo file sao lưu: ' + name);
-  } catch (err) { fail(err); }
-};
-
-async function quickSave(root) {
-  if (!canPickFile()) return shareBackupSheet(root);
-  try {
-    const name = await saveToPickedFile() || await pickBackupFile();
-    showSaveStatus(root);
-    toast('💾 Đã lưu vào ' + name);
-  } catch (err) { fail(err); }
+/** Khôi phục file có mật khẩu: trả về dữ liệu đã giải mã, hoặc null nếu người dùng bỏ qua. */
+function askRestorePin(file) {
+  return new Promise((resolve) => {
+    let done = false;
+    const formId = 'rp-' + Date.now();
+    openSheet({
+      title: '🔐 Nhập mật khẩu file',
+      headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Mở file</button>`,
+      body: `<form class="form" id="${formId}">
+        <p class="muted small">File sao lưu ngày ${fmtDate(String(file.exportedAt || '').slice(0, 10))} có mật khẩu. Nhập đúng mật khẩu 4 số đã đặt lúc lưu.</p>
+        ${backupPinField('rp-pin', 'Mật khẩu (4 số)')}
+      </form>`,
+      onClose() { if (!done) resolve(null); },
+      onMount(sh, close) {
+        const inp = $(sh, '#rp-pin');
+        setTimeout(() => inp.focus(), 250);
+        let busy = false;
+        $(sh, 'form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          if (!BACKUP_PIN_RE.test(inp.value)) return toast('Mật khẩu phải đúng 4 chữ số');
+          busy = true;
+          try {
+            const data = await decryptBackup(file, inp.value);
+            done = true;
+            close();
+            resolve(data);
+          } catch (err) {
+            busy = false;
+            inp.value = '';
+            inp.focus();
+            toast(err.message === 'Sai mật khẩu' ? '⛔ Sai mật khẩu' : '⛔ File bị lỗi, không mở được', 3500);
+          }
+        });
+      },
+    });
+  });
 }
 
-actions.backup = async () => {
-  const data = await S.exportAll();
-  await shareOrDownload(`sothuchi-tat-ca-${todayISO()}.json`, JSON.stringify(data), 'application/json');
-  await S.setSetting('lastBackup', todayISO());
+actions['backup-pick'] = (el) => {
+  const root = el.closest('#main') || document;
+  askBackupPin((text) => saveBackupSheet({ text, name: AUTO_FILE_NAME, auto: true, root }));
+};
+
+function quickSave(root) {
+  askBackupPin((text) => saveBackupSheet({ text, name: AUTO_FILE_NAME, auto: true, root }));
+}
+
+actions.backup = () => {
+  askBackupPin((text) => saveBackupSheet({ text, name: `sothuchi-tat-ca-${todayISO()}.json`, auto: false }));
 };
 
 function csvOf(list) {
@@ -3906,7 +3982,7 @@ const VIEWS = {
 let current = { route: 'home', sub: null };
 
 // Phần đầu đứng yên khi cuộn, tính đến hết phần tử đánh dấu của từng màn hình.
-const PIN_END = { home: '.seg.tabs', tx: '.period > .seg', reports: '.period > .seg', plan: '.seg.tabs' };
+const PIN_END = { home: '.seg.tabs', tx: '.period > .seg', reports: '.period > .seg', plan: '.seg.tabs', settings: '.pin-end' };
 function splitPinned(box, route) {
   const moveUntil = (stop) => {
     const out = [];
