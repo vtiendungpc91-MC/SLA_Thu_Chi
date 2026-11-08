@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.18.2 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.19.0 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -33,7 +33,7 @@ Màn hình chính là **Tổng quan** của User: 4 thẻ Account, Thấu chi, T
 | **Thẻ Tín Dụng** | Tạo mới nhập hạn mức âm tối đa và số nợ hiện tại; Chi vượt hạn mức bị chặn. Có Thu/Chi, luôn hiện số âm, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Account. Nhận Transfer từ Account/Thấu chi và Get In từ Account/Thấu chi, không chuyển tiền ra và không bị Get In; form hiện số đang nợ, không cho thu hoặc trả vượt số nợ. Tổng quan hiện tổng nợ thẻ |
 | **Ví điện tử (đã bỏ, không tạo mới được; ví cũ vẫn dùng được)** | Không có số dư: ghi khoản chi (số tiền, danh mục, nội dung), rồi thanh toán từng khoản hoặc tất cả từ mục Account. Cài đặt thẻ có nhắc trích trả nợ theo ngày và giờ, gồm các khoản chưa trả trước tháng hiện tại |
 | **User đặc biệt ⭐** | Tối đa 1, đánh dấu lúc tạo. Có sẵn 1 Account + 1 Thấu chi, chia số dư thành **Personal** và **Family** (không được âm). Giao dịch phải ghi vào 1 trong 2 phần, trừ giao dịch giữa Account và Thấu chi. Chuyển đổi 2 phần và Reset trong Cài đặt. Chỉ Account của User này mới giao dịch được với User khác; Thấu chi được Transfer thêm đến ngân hàng trong Secrecy |
-| **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ. Lúc thanh toán khoản Trả nợ, số tiền điền sẵn theo thiết lập và sửa được cho riêng kỳ đó |
+| **Kế hoạch** | Ngân sách, Mục tiêu, Trả nợ, Định kỳ. Khoản định kỳ: Chi, Thu, Transfer, Get In (Tiết kiệm chỉ Transfer/Get In), chọn ngày bắt đầu, tự động ghi hoặc chờ xác nhận có giờ thông báo; khi xác nhận hiện số tiền đã đặt để sửa và ghi rõ tiền ra từ đâu, vào đâu. Lúc thanh toán khoản Trả nợ, số tiền điền sẵn theo thiết lập và sửa được cho riêng kỳ đó |
 | **Nhắc nhở** | Theo từng User, tối đa 9, tạo ở cuối màn hình nút góc phải Tổng quan. Có tên, ngày đến hạn, giờ nhắc, số ngày nhắc trước; lặp theo ngày, tuần hoặc tháng với số kì lặp (để trống là không giới hạn). Nhắc nhở cũ trong từng mục tự chuyển lên User |
 | **Notifications** | Trả nợ và Nhắc nhở hiện từ đúng ngày giờ đã chọn (hạn trừ số ngày nhắc trước), giữ đến khi thanh toán hoặc bấm Done. Tổng quan hiện 2 thông báo dưới dòng Nợ thẻ (mỗi dòng 1 cái, dài thì có ...), 5 giây đổi sang 2 cái kế tiếp, xoay vòng |
 | **Thống kê ở Tổng quan** | Tối đa 3 thống kê mỗi mục Account/Tiết kiệm, loại Transfer/Get In hoặc Thu/Chi, đặt được tên và biểu tượng, số liệu trong ngày. Trong Cài đặt của mục, mỗi thống kê có công tắc ẩn/hiện ở Tổng quan; công tắc ở dòng tiêu đề chỉ thu gọn danh sách |

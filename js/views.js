@@ -1482,7 +1482,7 @@ function quickRows(list, bookId) {
     rows.push(list.slice(start, start + size));
     start += size;
   }
-  const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span>${QUICK_KINDS[q.type].icon}</span><span class="qk-name">${esc(q.name)}</span></button>`;
+  const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${QUICK_KINDS[q.type].icon}</span><span class="qk-name">${esc(q.name)}</span></button>`;
   const row = (arr) => (arr.length ? `<div class="qk-row">${arr.map(btn).join('')}</div>` : '');
   const types = [...new Set(list.map((q) => q.type))];
   return `<div class="qk-legend">${types.map((t) => `<span>${QUICK_KINDS[t].icon} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
@@ -1500,7 +1500,7 @@ function recentRows(list, b) {
   const rows = list.map((t) => {
     const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
-    return `<div class="rc-row"><span class="rc-name">${QUICK_KINDS[txTypeKey(t)].icon} ${esc(txRowName(t))} <small>${esc(when)}</small></span>
+    return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${QUICK_KINDS[txTypeKey(t)].icon} ${esc(txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
       ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}</div>`;
   }).join('');
@@ -2679,17 +2679,225 @@ function recurringTab() {
     const t = r.template;
     const cat = S.catById(t.categoryId);
     return `<button type="button" class="row ${r.active ? '' : 'off'}" data-act="rec-open" data-id="${r.id}">
-      ${t.type === 'transfer' ? '<span class="ci">⇄</span>' : catIcon(cat)}
-      <span class="grow"><b>${esc(t.note || cat?.name || TYPE_LABEL[t.type])}</b>
-      <small>${FREQ_LABEL[r.freq]}${r.interval > 1 ? ` (mỗi ${r.interval})` : ''} · ${r.active ? 'kỳ tới ' + fmtDate(r.nextDate) : 'đã tắt'} · ${r.autoAdd ? 'tự động' : 'chờ xác nhận'}</small></span>
+      ${t.flow ? `<span class="ci">${QUICK_KINDS[t.flow].icon}</span>` : t.type === 'transfer' ? '<span class="ci">⇄</span>' : catIcon(cat)}
+      <span class="grow"><b>${esc(S.recurringTitle(r))}</b>
+      <small>${FREQ_LABEL[r.freq]}${r.interval > 1 ? ` (mỗi ${r.interval})` : ''} · ${r.active ? 'kỳ tới ' + fmtDate(r.nextDate) + (r.time && !r.autoAdd ? ' ' + r.time : '') : 'đã tắt'} · ${r.autoAdd ? '⚡ tự động' : '🔔 chờ xác nhận'}</small></span>
       <span class="amt ${t.type}">${fmtCur(t.amount, t.currency)}</span></button>`;
   }).join('')}</div>` : empty('🔁', 'Chưa có khoản định kỳ. Khi thêm giao dịch, chọn "Lặp lại" để tạo.')}
-  <button type="button" class="btn primary block" data-act="add" data-repeat="month">+ Thêm khoản định kỳ</button>`;
+  <button type="button" class="btn primary block" data-act="rec-new">+ Thêm khoản định kỳ</button>`;
+}
+
+// ----- Khoản định kỳ: Chi / Thu / Transfer / Get In, chọn ngày bắt đầu, giờ thông báo, tự động hoặc chờ xác nhận -----
+/** Khoản tạo từ bản cũ (chuyển giữa 2 tài khoản trong mục, hoặc ngoại tệ) vẫn dùng form cũ. */
+const legacyRec = (r) => r.template.type === 'transfer' || (r.template.currency && r.template.currency !== 'VND');
+const recKindOf = (t) => t.flow || t.type;
+/** Loại định kỳ mục đang mở được tạo, theo quyền của mục (Tiết kiệm chỉ Transfer / Get In). */
+function recKinds() {
+  const b = S.currentProfile();
+  const out = [];
+  if (!transferOnly(b)) for (const k of ['expense', 'income']) if (S.featureOn(b, k)) out.push(k);
+  if (S.featureOn(b, 'gop') && S.transferTargets('gop').length) out.push('gop');
+  if (S.featureOn(b, 'trich') && S.transferTargets('trich').length) out.push('trich');
+  return out;
+}
+/** Câu ghi rõ tiền ra từ đâu, vào đâu. */
+function recRoute(kind, me, myAcc, peer, peerAccName) {
+  const mine = `<b>${esc(S.bookLabel(me))}</b>${myAcc ? ` · ${esc(myAcc.name)}` : ''}`;
+  const other = peer ? `<b>${esc(S.bookLabel(peer))}</b>${peerAccName ? ` · ${esc(peerAccName)}` : ''}` : '<i>chưa chọn</i>';
+  return {
+    expense: `💸 Tiền <b class="expense">ra</b> từ ${mine}`,
+    income: `💰 Tiền <b class="income">vào</b> ${mine}`,
+    gop: `🤝 Tiền <b class="expense">ra</b> từ ${mine}<br>→ <b class="income">vào</b> ${other}`,
+    trich: `🔄 Tiền <b class="expense">ra</b> từ ${other}<br>→ <b class="income">vào</b> ${mine}`,
+  }[kind];
+}
+
+actions['rec-new'] = () => recurringForm(null);
+
+function recurringForm(r) {
+  const kinds = recKinds();
+  const t = r ? r.template : {};
+  let kind = r ? recKindOf(t) : kinds[0];
+  if (!kind) return toast('Mục này đang tắt mọi loại giao dịch nên chưa tạo được khoản định kỳ');
+  if (!kinds.includes(kind)) kinds.push(kind);
+  const me = S.currentProfile();
+  const myAcc = S.activeAccounts()[0];
+  if (!myAcc) return toast('Mục này chưa có tài khoản');
+  let mode = r ? (r.autoAdd ? 'auto' : 'confirm') : 'confirm';
+  const formId = 'rcf-' + Date.now();
+  openSheet({
+    title: r ? 'Sửa khoản định kỳ' : 'Thêm khoản định kỳ',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form" id="${formId}">
+      <div class="seg" id="rc-kind">${kinds.map((k) => `<button type="button" data-k="${k}">${QUICK_KINDS[k].icon} ${QUICK_KINDS[k].label}</button>`).join('')}</div>
+      <p class="rec-route" id="rc-route"></p>
+      ${amountField('rc-amt', t.amount || 0, 'Số tiền mỗi kỳ')}
+      <div id="rc-cat-wrap">${field('Danh mục', '<select id="rc-cat" class="cat-select"></select>')}</div>
+      <div id="rc-peer-wrap">
+        ${field('<span id="rc-peer-l">Mục</span>', '<select id="rc-peer"></select>')}
+        ${field('<span id="rc-pacc-l">Tài khoản</span>', '<select id="rc-pacc" data-acc><option></option></select>')}
+        ${flowCatField('rc-fcat', t.flowCat || '')}
+      </div>
+      ${pfField()}
+      ${field('Ghi chú', `<input id="rc-note" value="${esc(t.note || '')}" placeholder="vd: Tiền nhà, lương, gửi tiết kiệm">`)}
+      <div class="two">${field('Lặp lại', `<select id="rc-freq">${Object.entries(FREQ_LABEL).map(([k, v]) => `<option value="${k}" ${(r?.freq || 'month') === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
+        ${datePick('rc-date', r ? r.nextDate : todayISO(), r ? 'Kỳ tới' : 'Ngày bắt đầu')}</div>
+      <div class="field"><span>Khi đến kỳ</span><div class="seg" id="rc-mode">
+        <button type="button" data-m="confirm">🔔 Chờ xác nhận</button><button type="button" data-m="auto">⚡ Tự động ghi</button></div></div>
+      <div class="two" id="rc-time-wrap">${field('Giờ thông báo', `<input type="time" id="rc-time" value="${esc(r?.time || S.ALERT_TIME)}">`)}
+        ${field('Nhắc trước (ngày)', `<input type="number" id="rc-rem" min="0" max="30" value="${esc(r?.remindDays ?? 0)}">`)}</div>
+      <p class="muted small" id="rc-mode-hint"></p>
+      ${datePick('rc-end', r?.endDate || '', 'Kết thúc (không bắt buộc)')}
+      ${r ? `<label class="check"><input type="checkbox" id="rc-active" ${r.active ? 'checked' : ''}> Đang hoạt động</label>
+        <div class="actions"><button type="button" class="btn danger" data-del>Xóa</button><button type="button" class="btn ghost" data-ics>📅 Thêm vào Lịch</button></div>` : ''}
+    </form>`,
+    onMount(sh, close) {
+      const amt = bindMoney(sh, 'rc-amt');
+      const pfc = bindPf(sh, t.pf || null, false);
+      const peerSel = $(sh, '#rc-peer'), paccSel = $(sh, '#rc-pacc'), catSel = $(sh, '#rc-cat');
+      const peers = (k) => otherProfiles(k);
+      const curPeer = () => S.getProfiles().find((p) => p.id === peerSel.value) || null;
+      const paint = () => {
+        const isFlow = kind === 'gop' || kind === 'trich';
+        sh.querySelectorAll('#rc-kind [data-k]').forEach((b) => b.classList.toggle('on', b.dataset.k === kind));
+        sh.querySelectorAll('#rc-mode [data-m]').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
+        $(sh, '#rc-cat-wrap').hidden = isFlow;
+        $(sh, '#rc-peer-wrap').hidden = !isFlow;
+        $(sh, '#rc-peer-l').textContent = kind === 'gop' ? 'Transfer đến mục' : 'Get In từ mục';
+        $(sh, '#rc-pacc-l').textContent = kind === 'gop' ? 'Vào tài khoản' : 'Lấy từ tài khoản';
+        $(sh, '#rc-route').innerHTML = recRoute(kind, me, myAcc, isFlow ? curPeer() : null, paccSel.selectedOptions[0]?.dataset.name);
+        $(sh, '#rc-time-wrap').hidden = mode !== 'confirm';
+        $(sh, '#rc-mode-hint').textContent = mode === 'confirm'
+          ? 'Đến ngày, từ giờ thông báo sẽ hiện trong Notifications. Bấm Xác nhận để xem số tiền đã đặt, sửa nếu cần rồi mới ghi.'
+          : 'Đến ngày app tự ghi khi mở. Không đủ số dư hoặc thiếu Personal/Family thì chuyển thành chờ xác nhận.';
+        pfc.setNeeded(isFlow ? (curPeer() ? S.pfNeeded(me.id, curPeer().id) : false) : S.isSpecialBook(me));
+      };
+      const loadPeerAccs = async () => {
+        const p = curPeer();
+        if (!p) { paccSel.innerHTML = '<option></option>'; return paint(); }
+        const accs = await S.peerAccounts(p.id);
+        paccSel.innerHTML = accs.map((a) => `<option value="${a.id}" data-name="${esc(a.name)}" ${a.id === t.peerAccountId ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}</option>`).join('');
+        paint();
+      };
+      const fillKind = () => {
+        if (kind === 'expense' || kind === 'income') {
+          catSel.innerHTML = catOptions(kind, t.type === kind ? t.categoryId : state.settings.lastCat?.[kind]);
+          return paint();
+        }
+        // Mục của chính User này lên đầu (thường là chuyển giữa các tài khoản của mình).
+        const list = [...peers(kind)].sort((a, b) => (b.owner === me.owner) - (a.owner === me.owner));
+        peerSel.innerHTML = list.map((p) => `<option value="${p.id}" ${p.id === t.peerId ? 'selected' : ''}>${esc(S.bookLabel(p))}</option>`).join('') || '<option value="">Không có mục phù hợp</option>';
+        loadPeerAccs();
+      };
+      $(sh, '#rc-kind').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) { kind = b.dataset.k; fillKind(); } });
+      $(sh, '#rc-mode').addEventListener('click', (e) => { const b = e.target.closest('[data-m]'); if (b) { mode = b.dataset.m; paint(); } });
+      peerSel.addEventListener('change', loadPeerAccs);
+      paccSel.addEventListener('change', paint);
+      fillKind();
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = Math.round(readMoney(amt.value));
+        if (!(v > 0)) return toast('Nhập số tiền');
+        const date = $(sh, '#rc-date').value;
+        if (!date) return toast('Chọn ngày');
+        const isFlow = kind === 'gop' || kind === 'trich';
+        if (isFlow && !curPeer()) return toast('Chọn mục');
+        if (!isFlow && !catSel.value) return toast('Chọn danh mục');
+        const template = {
+          type: kind === 'income' || kind === 'trich' ? 'income' : 'expense', flow: isFlow ? kind : undefined,
+          amount: v, currency: 'VND', categoryId: isFlow ? null : catSel.value, accountId: myAcc.id, toAccountId: null,
+          note: $(sh, '#rc-note').value.trim(), tags: t.tags || [], splits: null, pf: pfc.value(),
+          peerId: isFlow ? curPeer().id : undefined, peerAccountId: isFlow ? paccSel.value || undefined : undefined,
+          flowCat: isFlow ? $(sh, '#rc-fcat').value || null : undefined,
+        };
+        const rec = r || { interval: 1, startDate: date };
+        rec.template = template;
+        rec.freq = $(sh, '#rc-freq').value;
+        if (!r || date !== r.nextDate) { rec.nextDate = date; rec.anchorDay = Number(date.slice(8)); }
+        rec.endDate = $(sh, '#rc-end').value || null;
+        rec.autoAdd = mode === 'auto';
+        rec.time = $(sh, '#rc-time').value || S.ALERT_TIME;
+        rec.remindDays = Number($(sh, '#rc-rem').value) || 0;
+        rec.active = r ? $(sh, '#rc-active').checked : true;
+        if (rec.endDate && rec.nextDate > rec.endDate) return toast('Ngày kết thúc phải sau kỳ tới');
+        await S.put('recurring', rec);
+        const n = await S.processRecurring();
+        close();
+        toast(n ? `Đã lưu, tự ghi ${n} kỳ đã đến hạn` : 'Đã lưu khoản định kỳ');
+      });
+      $(sh, '[data-del]')?.addEventListener('click', async () => {
+        if (!confirm('Xóa khoản định kỳ? Các giao dịch đã ghi vẫn được giữ.')) return;
+        await S.remove('recurring', r.id); close();
+      });
+      $(sh, '[data-ics]')?.addEventListener('click', () => {
+        const rr = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' }[r.freq];
+        calendarSheet('dinh-ky.ics', buildAllDayICS([{
+          uid: 'rec-' + r.id, date: r.nextDate, rrule: `FREQ=${rr};INTERVAL=${r.interval || 1}${r.endDate ? ';UNTIL=' + r.endDate.replace(/-/g, '') : ''}`,
+          remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME, title: `🔁 ${S.recurringTitle(r)}: ${fmtPlain(r.template.amount)}`, description: 'Khoản định kỳ trong Sổ Thu Chi',
+        }]));
+      });
+    },
+  });
+}
+
+/** Xác nhận một kỳ: hiện số tiền đã đặt (sửa được), ghi rõ tiền ra từ đâu, vào đâu. */
+async function recurringConfirm(r) {
+  const t = r.template, kind = recKindOf(t);
+  const me = S.currentProfile(), myAcc = S.accById(t.accountId) || S.activeAccounts()[0];
+  const peer = t.flow ? S.getProfiles().find((p) => p.id === t.peerId) : null;
+  if (t.flow && !peer) return toast('Mục nhận/nguồn của khoản này đã bị xóa. Hãy sửa khoản định kỳ.', 4500);
+  const peerAcc = peer ? (await S.peerAccounts(peer.id)).find((a) => a.id === t.peerAccountId) || (await S.peerAccounts(peer.id))[0] : null;
+  const formId = 'rcc-' + Date.now();
+  openSheet({
+    title: '🔁 Xác nhận khoản định kỳ',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">✅ Xác nhận</button>`,
+    body: `<form class="form" id="${formId}">
+      <p class="rec-route">${recRoute(kind, me, myAcc, peer, peerAcc?.name)}</p>
+      <p class="muted small">${QUICK_KINDS[kind].icon} ${esc(S.recurringTitle(r))} · kỳ ${fmtDate(r.nextDate)} · ${FREQ_LABEL[r.freq]}</p>
+      ${amountField('rcc-amt', t.amount, 'Số tiền kỳ này')}
+      <em class="hint" id="rcc-bal"></em>
+      ${pfField()}
+      <p class="muted small">Đã điền số tiền đã đặt. Kỳ này khác thì sửa lại, các kỳ sau vẫn theo số đã đặt.</p>
+      <div class="actions"><button type="button" class="btn ghost" data-skip>Bỏ qua kỳ này</button><button class="btn primary">✅ Xác nhận</button></div>
+    </form>`,
+    onMount(sh, close) {
+      const amt = bindMoney(sh, 'rcc-amt');
+      const pfc = bindPf(sh, t.pf || null, t.flow ? S.pfNeeded(me.id, peer.id) : S.isSpecialBook(me));
+      // Số dư của tài khoản bị trừ tiền.
+      const upd = async () => {
+        const need = Math.round(readMoney(amt.value) || 0);
+        if (kind === 'expense' || kind === 'gop') balHint($(sh, '#rcc-bal'), { have: S.available(myAcc.id), need, bookId: me.id });
+        else if (kind === 'trich') balHint($(sh, '#rcc-bal'), { have: await S.peerBalance(peer.id, peerAcc.id), need, bookId: peer.id, who: ' của ' + S.bookLabel(peer) });
+      };
+      amt.addEventListener('input', upd);
+      upd();
+      $(sh, '[data-skip]').addEventListener('click', async () => {
+        S.advanceRecurring(r);
+        await S.put('recurring', r);
+        close(); toast('Đã bỏ qua kỳ này. Kỳ tới: ' + fmtDate(r.nextDate));
+      });
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = Math.round(readMoney(amt.value));
+        if (!(v > 0)) return toast('Nhập số tiền');
+        if (kind === 'expense' || kind === 'income') {
+          if (kind === 'expense' && !checkFunds(myAcc.id, v)) return;
+          if (!await confirmOdTx(kind, myAcc.id, v)) return;
+        } else if (kind === 'gop') {
+          if (!await confirmOverdraft({ fromId: me.id, fromAccountId: myAcc.id, toId: peer.id, toAccountId: peerAcc.id, amount: v })) return;
+        } else if (!await confirmOverdraft({ fromId: peer.id, fromAccountId: peerAcc.id, toId: me.id, toAccountId: myAcc.id, amount: v })) return;
+        try { await S.runRecurring(r, v, { pf: pfc.value() }); } catch (err) { return toast('⛔ ' + err.message, 4500); }
+        close();
+        toast(`✅ Đã ghi ${fmt(v)} · kỳ tới ${r.active ? fmtDate(r.nextDate) : 'đã hết'}`);
+      });
+    },
+  });
 }
 
 actions['rec-open'] = (el) => {
   const r = state.recurring.find((x) => x.id === el.dataset.id);
   if (!r) return;
+  if (!legacyRec(r)) return recurringForm(r);
   const t = r.template;
   const curOpts = state.settings.currencies.map((c) => `<option ${c.code === (t.currency || 'VND') ? 'selected' : ''}>${esc(c.code)}</option>`).join('');
   openSheet({
@@ -2746,6 +2954,7 @@ actions['rec-open'] = (el) => {
 actions['pending-open'] = (el) => {
   const r = state.recurring.find((x) => x.id === el.dataset.id);
   if (!r) return;
+  if (!legacyRec(r)) return recurringConfirm(r);
   const tx = S.txFromTemplate(r, r.nextDate);
   openTxForm({ preset: { ...tx, id: undefined }, fromRecurring: r });
 };

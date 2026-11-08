@@ -1015,3 +1015,34 @@ body.pin-small .pin-head .title-row .btn.small { padding: 4px 10px; font-size: 1
 /* Màn khóa khi có Face ID: chỉ hiện nút Face ID, sai 2 lần mới hiện bàn phím */
 .lock.bio-first .dots, .lock.bio-first .keypad { display: none; }
 .lock.bio-first .bio-btn { margin-top: 28px; padding: 16px 24px; font-size: 17px; }
+/* ===== v7.19: màu theo loại tài khoản nhạt hơn (nền nhạt, chữ đậm cùng tông) ===== */
+.seg.tabs > [data-act="over-tab"][data-v="bank"].on, .seg.tabs > [data-act="over-tab"][data-v="wallet"].on { background: #ffd8a8; color: #8a3a0a; }
+.seg.tabs > [data-act="over-tab"][data-v="od"].on { background: #d0ebff; color: #174a7c; }
+.seg.tabs > [data-act="over-tab"][data-v="saving"].on { background: #c3f0cb; color: #1c5a2a; }
+.seg.tabs > [data-act="over-tab"][data-v="credit"].on { background: #ffd0d0; color: #8a1f1f; }
+.fab[data-tab="bank"], .fab[data-tab="wallet"] { background: #ffd8a8; color: #8a3a0a; box-shadow: 0 6px 18px rgba(255, 168, 80, .4); }
+.fab[data-tab="od"] { background: #d0ebff; color: #174a7c; box-shadow: 0 6px 18px rgba(116, 192, 252, .4); }
+.fab[data-tab="saving"] { background: #c3f0cb; color: #1c5a2a; box-shadow: 0 6px 18px rgba(81, 207, 102, .35); }
+.fab[data-tab="credit"] { background: #ffd0d0; color: #8a1f1f; box-shadow: 0 6px 18px rgba(255, 107, 107, .35); }
+body[data-tab="bank"], body[data-tab="wallet"] { --kc: #ffd8a8; --kc-ink: #f08c3a; --kc-on: #8a3a0a; }
+body[data-tab="od"] { --kc: #d0ebff; --kc-ink: #4dabf7; --kc-on: #174a7c; }
+body[data-tab="saving"] { --kc: #c3f0cb; --kc-ink: #4cb563; --kc-on: #1c5a2a; }
+body[data-tab="credit"] { --kc: #ffd0d0; --kc-ink: #f07070; --kc-on: #8a1f1f; }
+html.dark body[data-tab="bank"], html.dark body[data-tab="wallet"] { --kc-ink: #ffc078; }
+html.dark body[data-tab="od"] { --kc-ink: #a5d8ff; }
+html.dark body[data-tab="saving"] { --kc-ink: #8ce99a; }
+html.dark body[data-tab="credit"] { --kc-ink: #ffa8a8; }
+
+/* Giao dịch gần đây: nội dung dài thì cắt "…", giờ (hôm nay) hoặc ngày/tháng luôn hiện */
+.rc-name { display: flex; align-items: baseline; gap: 5px; overflow: visible; }
+.rc-name .rc-txt { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-name > small { flex: 0 0 auto; white-space: nowrap; }
+
+/* Nút nhanh: icon sát lề trái, tên ở giữa */
+.qk-btn { position: relative; padding-left: 24px; padding-right: 24px; }
+.qk-btn .qk-ic { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); line-height: 1; }
+.qk-btn .qk-name { flex: 0 1 auto; text-align: center; }
+@media (max-width: 380px) { .qk-btn { padding-left: 21px; padding-right: 21px; } .qk-btn .qk-ic { left: 5px; } }
+
+/* Khoản định kỳ: dòng ghi rõ tiền ra / vào */
+.rec-route { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: 14px; line-height: 1.55; }

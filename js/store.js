@@ -1021,6 +1021,49 @@ export const advanceRecurring = (r) => {
   if (r.endDate && r.nextDate > r.endDate) r.active = false;
 };
 
+/** Tên hiển thị của khoản định kỳ. */
+export function recurringTitle(r) {
+  const t = r.template;
+  if (t.note) return t.note;
+  if (t.flow) {
+    const p = getProfiles().find((x) => x.id === t.peerId);
+    return (t.flow === 'gop' ? 'Transfer → ' : 'Get In ← ') + (p ? bookLabel(p) : 'mục đã xóa');
+  }
+  return catById(t.categoryId)?.name || 'Giao dịch định kỳ';
+}
+
+/**
+ * Ghi một kỳ của khoản định kỳ với số tiền của kỳ này (có thể đã sửa), rồi chuyển sang kỳ sau.
+ * Transfer / Get In dùng đúng gop()/trich() như ghi tay. Lỗi (thiếu tiền, khóa trừ tiền…) thì báo, không chuyển kỳ.
+ */
+export async function runRecurring(r, amount, { pf } = {}) {
+  const t = r.template;
+  const date = r.nextDate;
+  const usePf = pf ?? t.pf ?? null;
+  amount = Math.round(amount);
+  if (t.flow === 'gop' || t.flow === 'trich') {
+    const peerAcc = t.peerAccountId || (await peerAccounts(t.peerId))[0]?.id;
+    if (t.flow === 'gop') await gop({ toProfileId: t.peerId, amount, fromAccountId: t.accountId, toAccountId: peerAcc, date, note: t.note || '', flowCat: t.flowCat || null, pf: usePf });
+    else await trich({ fromProfileId: t.peerId, amount, fromAccountId: peerAcc, toAccountId: t.accountId, date, note: t.note || '', flowCat: t.flowCat || null, pf: usePf });
+  } else {
+    const tx = txFromTemplate(r, date);
+    if (amount !== Math.round(tx.amount)) { tx.amount = amount; tx.amountVnd = Math.round(amount * tx.rate); tx.splits = null; }
+    if (usePf) tx.pf = usePf;
+    if (tx.type !== 'income') { const e = fundsError(tx.accountId, tx.amountVnd); if (e) throw new Error(e); }
+    const ce = creditError(pfDelta(tx));
+    if (ce) throw new Error(ce);
+    if (isSpecialBook(currentProfile())) {
+      if (!tx.pf) throw new Error('Chọn Personal hoặc Family');
+      const pe = await pfCheck({ pf: tx.pf, delta: pfDelta(tx) });
+      if (pe) throw new Error(pe);
+    }
+    await put('transactions', tx, { silent: true });
+  }
+  advanceRecurring(r);
+  await put('recurring', r, { silent: true });
+  emit();
+}
+
 /** Tự ghi các giao dịch định kỳ (loại "tự động") đã đến hạn. */
 export async function processRecurring() {
   const today = todayISO();
@@ -1029,6 +1072,10 @@ export async function processRecurring() {
     if (!r.active || !r.autoAdd) continue;
     let guard = 0;
     while (r.active && r.nextDate <= today && guard++ < 400) {
+      // Transfer / Get In định kỳ: ghi như thao tác tay; lỗi thì dừng, để lại cho người dùng xác nhận.
+      if (r.template.flow) {
+        try { await runRecurring(r, r.template.amount); added++; continue; } catch { break; }
+      }
       const tx = txFromTemplate(r, r.nextDate);
       // Khoản chi/chuyển khoản không đủ số dư: không tự ghi, để lại thành mục "cần xử lý".
       if (tx.type !== 'income' && fundsError(tx.accountId, tx.amountVnd)) break;
@@ -1165,10 +1212,13 @@ export function getAlerts() {
   for (const r of state.recurring) {
     if (!r.active) continue;
     const days = diffDays(today, r.nextDate);
-    const title = r.template.note || catById(r.template.categoryId)?.name || 'Giao dịch định kỳ';
+    const title = recurringTitle(r);
+    // Chờ xác nhận có giờ thông báo: trong ngày đến hạn chỉ hiện từ giờ đó.
+    const timeOk = days < 0 || r.autoAdd || !r.time || fmtTimeVN(Date.now()) >= r.time;
+    if (days <= 0 && !timeOk) continue;
     if (days <= 0) {
       // Chờ xác nhận, hoặc khoản tự động bị dừng vì không đủ số dư.
-      out.push({ key: `pending:${r.id}:${r.nextDate}`, kind: 'pending', id: r.id, days, noFunds: !!r.autoAdd, title, amount: Math.round(r.template.amount * rateOf(r.template.currency)), date: r.nextDate });
+      out.push({ key: `pending:${r.id}:${r.nextDate}`, kind: 'pending', id: r.id, days, noFunds: !!r.autoAdd, title, amount: Math.round(r.template.amount * rateOf(r.template.currency)), date: r.nextDate, time: r.time || null });
     } else if (r.template.type === 'expense' && days > 0 && days <= (r.remindDays ?? def)) {
       out.push({ key: `rec:${r.id}:${r.nextDate}`, kind: 'recurring', id: r.id, days, title, amount: Math.round(r.template.amount * rateOf(r.template.currency)), date: r.nextDate });
     }
