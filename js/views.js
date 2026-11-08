@@ -1461,15 +1461,21 @@ function homeView() {
 }
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
 
-/** Nút nhanh: chia đều, mỗi dòng tối đa 3 nút, tối đa 2 dòng. */
+/** Nút nhanh: mỗi dòng tối đa 3 nút, chia đều các dòng (thường tối đa 2 dòng, User đặc biệt tối đa 4 dòng). */
 function quickRows(list, bookId) {
   if (!list.length) return '';
-  const first = list.length > 3 ? Math.ceil(list.length / 2) : list.length;
+  const rowCount = Math.ceil(list.length / 3);
+  const rows = [];
+  for (let i = 0, start = 0; i < rowCount; i++) {
+    const size = Math.ceil((list.length - start) / (rowCount - i));
+    rows.push(list.slice(start, start + size));
+    start += size;
+  }
   const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span>${QUICK_KINDS[q.type].icon}</span><span class="qk-name">${esc(q.name)}</span></button>`;
   const row = (arr) => (arr.length ? `<div class="qk-row">${arr.map(btn).join('')}</div>` : '');
   const types = [...new Set(list.map((q) => q.type))];
   return `<div class="qk-legend">${types.map((t) => `<span>${QUICK_KINDS[t].icon} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
-    ${row(list.slice(0, first))}${row(list.slice(first))}`;
+    ${rows.map(row).join('')}`;
 }
 
 /** Còn được Recall không: mới ghi trong 10 phút, chưa thanh toán (thẻ), không phải khoản trả nợ (có Hoàn tác riêng). */
@@ -1518,7 +1524,7 @@ async function overCard(b) {
   overExpiry = Math.min(overExpiry, ...o.recent.filter(canRecall).map((t) => t.createdAt + S.RECALL_MS));
   const isCard = b.kind === 'card' && !b.credit;
   const st = o.settings;
-  const quicks = sortQuicks(S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type))).slice(0, S.QUICK_MAX[S.kindOfBook(b)]);
+  const quicks = sortQuicks(S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type))).slice(0, S.quickMax(b));
   let stats = '';
   if (!isCard) {
     for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
@@ -3192,7 +3198,7 @@ actions['quick-run'] = async (el) => {
 /** Phần nút nhanh trong Cài đặt: công tắc ẩn/hiện, danh sách, nút tạo. */
 function quickSettingsHtml() {
   const b = S.currentProfile();
-  const max = S.QUICK_MAX[S.kindOfBook(b)];
+  const max = S.quickMax(b);
   const list = sortQuicks(S.quicksOf().filter((q) => S.quickTypesFor(b).includes(q.type)));
   const open = state.settings.quickListOpen !== false;
   return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${list.length}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
@@ -3207,7 +3213,7 @@ function quickSettingsHtml() {
 actions['quick-new'] = () => {
   const b = S.currentProfile();
   const types = S.quickTypesFor(b);
-  if (S.quicksOf().filter((q) => types.includes(q.type)).length >= S.QUICK_MAX[S.kindOfBook(b)]) return toast('Đã đủ số nút nhanh tối đa');
+  if (S.quicksOf().filter((q) => types.includes(q.type)).length >= S.quickMax(b)) return toast('Đã đủ số nút nhanh tối đa');
   if (types.length === 1) return actions['quick-edit']({ dataset: { type: types[0] } });
   openSheet({
     title: 'Tạo nút nhanh',

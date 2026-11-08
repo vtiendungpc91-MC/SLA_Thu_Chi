@@ -1279,6 +1279,9 @@ export async function kindTotal(userId, kind) {
 
 // ---------- Màn hình Tổng quan chung: nút nhanh, thống kê, số liệu trong ngày của từng mục ----------
 export const QUICK_MAX = { bank: 6, saving: 3, card: 6 };
+/** Bank (không gồm Thấu chi) của User đặc biệt: 12 nút nhanh (4 dòng × 3 nút ở Tổng quan). */
+export const QUICK_MAX_SPECIAL = 12;
+export const quickMax = (b) => (kindOfBook(b) === 'bank' && !b.overdraft && userOf(b)?.special ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
 export const STAT_MAX = 3;
 /** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 10 phút được hủy (Recall). */
 export const RECALL_MS = 10 * 60 * 1000;
