@@ -97,17 +97,32 @@ async function onResume() {
   notifyAlerts();
 }
 
+/**
+ * Cập nhật app: iPhone ít khi tắt hẳn web app nên không tự kiểm tra bản mới.
+ * App chủ động hỏi bản mới khi mở, mỗi lần quay lại app và mỗi 30 phút; có bản mới thì tự tải lại
+ * (đang mở form nhập thì chờ đóng form xong mới tải, để không mất số đang nhập).
+ */
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('./sw.js').then((reg) => {
-    reg.addEventListener('updatefound', () => {
-      const w = reg.installing;
-      w?.addEventListener('statechange', () => {
-        if (w.state === 'installed' && navigator.serviceWorker.controller) {
-          toast('Đã có bản cập nhật mới — đóng và mở lại app để dùng', 5000);
-        }
-      });
-    });
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  const reloadWhenIdle = () => {
+    if (reloading) return;
+    if (document.querySelector('.sheet-wrap')) { setTimeout(reloadWhenIdle, 2000); return; }
+    reloading = true;
+    location.reload();
+  };
+  // Bản mới đã nhận quyền điều khiển: tải lại để dùng ngay (lần cài đầu tiên thì không cần).
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;
+    toast('🔄 Đang cập nhật bản mới…', 2500);
+    setTimeout(reloadWhenIdle, 600);
+  });
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((reg) => {
+    const check = () => reg.update().catch(() => {});
+    check();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 30 * 60 * 1000);
   }).catch((err) => console.warn('SW lỗi', err));
 }
 

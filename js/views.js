@@ -3873,7 +3873,8 @@ function settingsView() {
   </section>
   ${s.lastBackup && diffDays(s.lastBackup, todayISO()) < 30 ? '' : '<p class="muted small center">⚠️ Dữ liệu chỉ nằm trên máy này. Nên sao lưu định kỳ (lưu vào iCloud Drive / Google Drive / Zalo "Cloud của tôi").</p>'}
   <p class="muted small center" id="storage-info"></p>
-  <p class="muted small center">Sổ Thu Chi · chạy offline · dữ liệu không rời khỏi điện thoại của bạn</p>`;
+  <p class="muted small center">Sổ Thu Chi · chạy offline · dữ liệu không rời khỏi điện thoại của bạn</p>
+  <p class="muted small center" id="app-version"></p>`;
 }
 
 // ================= Cài đặt riêng của mục (tab ⚙️ ở thanh dưới) =================
@@ -4106,6 +4107,12 @@ async function mountSettings(root) {
   if (navigator.storage?.estimate) {
     const { usage } = await navigator.storage.estimate();
     const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    // Phiên bản đang chạy = tên bộ nhớ đệm của service worker (vd sothuchi-v7.24.0).
+    caches.keys().then((keys) => {
+      const v = keys.filter((k) => k.startsWith('sothuchi-')).map((k) => k.slice(9)).sort().pop();
+      const vEl = root.querySelector('#app-version');
+      if (vEl && v) vEl.textContent = `Phiên bản đang chạy: ${v}`;
+    }).catch(() => {});
     const el = root.querySelector('#storage-info');
     if (el) el.textContent = `Dung lượng đang dùng: ${(usage / 1048576).toFixed(1)} MB${persisted ? ' · lưu trữ bền vững ✓' : ''}`;
   }

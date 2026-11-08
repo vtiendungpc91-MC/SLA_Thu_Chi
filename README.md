@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.23.1 (09/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.24.0 (09/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -77,7 +77,7 @@ Mở `http://localhost:8080` bằng Chrome hoặc Edge. Bấm F12, chọn biểu
 
 1. Mở `sw.js`, tăng số phiên bản ở dòng `const VERSION = '...';`. Không tăng thì điện thoại vẫn giữ bản cũ.
 2. Trên GitHub, vào đúng thư mục (`js`, `css` hoặc thư mục gốc), chọn **Add file → Upload files**, kéo file đã sửa vào rồi bấm **Commit changes**. Không cần tải `.nojekyll` (file rỗng).
-3. Đợi GitHub Pages cập nhật xong. Trên điện thoại, mở app khi có mạng, đóng hẳn rồi mở lại, có thể phải làm 2 lần. Dữ liệu vẫn giữ nguyên.
+3. Đợi GitHub Pages cập nhật xong. Từ v7.24.0, app tự kiểm tra bản mới khi mở và mỗi lần quay lại app (cần có mạng), có bản mới thì tự tải lại (đang mở form thì chờ đóng form). Xem phiên bản đang chạy ở cuối Cài đặt chung. Dữ liệu vẫn giữ nguyên.
 
 ## 4. Lưu ý quan trọng
 
