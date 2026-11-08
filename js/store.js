@@ -1,5 +1,6 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
 import { db, dbOf, STORES, useProfile, dropProfile } from './db.js';
+import { BANK_LOGOS, bankIcon } from './icons.js';
 import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate, fmt, fmtTimeVN } from './utils.js';
 
 const LIST = STORES.filter((s) => s !== 'settings' && s !== 'photos');
@@ -81,7 +82,7 @@ function seedRows() {
       ...SEED_INCOME.map(([name, icon, sys], i) => ({ id: uid(), type: 'income', name, icon, sys: sys || null, color: PALETTE[(i + 3) % PALETTE.length], order: i })),
     ],
     accs: [
-      { id: uid(), name: 'Tài khoản chính', bank: '', number: '', holder: '', icon: '🏦', kind: 'bank', initial: 0, order: 0 },
+      { id: uid(), name: 'Tài khoản chính', autoName: true, bank: '', number: '', holder: '', icon: '🏦', kind: 'bank', initial: 0, order: 0 },
     ],
   };
 }
@@ -117,7 +118,7 @@ export const PROFILE_COLORS = [
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
-  card: { label: 'Thẻ tín dụng', icon: '💳', max: 5 },
+  card: { label: 'Credit Card', icon: '💳', max: 5 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -283,8 +284,92 @@ export function lockError(bookId) {
   return b.kind === 'card' ? `🔒 Mục "${bookLabel(b)}" đang khóa` : `🔒 Mục "${bookLabel(b)}" đang tắt trừ tiền — bật lại trong Cài đặt của mục`;
 }
 
-/** Nhãn đầy đủ của một mục: "Tôi · Ngân hàng". */
-export const bookLabel = (b) => (b.owner === SECRECY ? `Secrecy · ${b.name}` : `${userOf(b)?.name || '?'} · ${b.name}`);
+/** Nhãn đầy đủ của một mục: "Tôi · Techcombank · Account" (bỏ tên Bank nếu là tên mặc định "Bank"). */
+export const bookLabel = (b) => {
+  if (b.owner === SECRECY) return `Secrecy · ${b.name}`;
+  const g = groupOf(b);
+  return `${userOf(b)?.name || '?'} · ${g && g.name !== 'Bank' && g.name !== b.name ? g.name + ' · ' : ''}${b.name}`;
+};
+
+// ---------- Bank / Ví điện tử: nhóm các mục của User ----------
+const GROUPS_KEY = 'stc-groups';
+export const GROUP_TYPES = { bank: { label: 'Bank', icon: '🏦' }, wallet: { label: 'Ví điện tử', icon: '👛' } };
+/** Mỗi Bank: 2 Account, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card. Mỗi Ví: 1 tài khoản thanh toán, 1 Thẻ trả trước. */
+export const GROUP_LIMITS = { bank: { account: 2, od: 1, saving: 2, credit: 1 }, wallet: { account: 1, prepaid: 1 } };
+export const SLOT_LABEL = { account: 'Account', od: 'Thấu chi', saving: 'Tiết kiệm', credit: 'Credit Card', prepaid: 'Thẻ trả trước', legacy: 'Ví (bản cũ)' };
+export const MAX_GROUPS = 10;
+export const getGroups = () => readJSON(GROUPS_KEY) || [];
+const saveGroups = (list) => localStorage.setItem(GROUPS_KEY, JSON.stringify(list));
+export const userGroups = (userId) => getGroups().filter((g) => g.owner === userId);
+export const groupOf = (b) => (b?.group ? getGroups().find((g) => g.id === b.group) || null : null);
+export const groupBooks = (groupId) => getProfiles().filter((b) => b.group === groupId);
+/** Loại ô của một mục trong Bank/Ví. */
+export function slotOf(b) {
+  const k = b.kind || 'bank';
+  if (k === 'saving') return 'saving';
+  // Thẻ trả trước của Ví: là thẻ kiểu Credit Card (hạn mức, số âm là nợ, Thanh toán).
+  if (k === 'card') return b.prepaid ? 'prepaid' : b.credit || b.cardType === 'credit' ? 'credit' : 'legacy';
+  if (b.overdraft) return 'od';
+  return b.prepaid ? 'prepaid' : 'account';
+}
+export const groupMax = (g, slot) => GROUP_LIMITS[g?.type]?.[slot] ?? 0;
+/** Tên loại mục theo nhóm: trong Ví điện tử, Account gọi là "Tài khoản thanh toán". */
+export const slotLabel = (g, slot) => (g?.type === 'wallet' && slot === 'account' ? 'Tài khoản thanh toán' : SLOT_LABEL[slot]);
+export function saveGroup(g) {
+  const list = getGroups();
+  if (!g.id) {
+    if (list.filter((x) => x.owner === g.owner).length >= MAX_GROUPS) throw new Error(`Tối đa ${MAX_GROUPS} Bank / Ví điện tử`);
+    g.id = uid().replace(/-/g, '').slice(0, 12);
+    list.push(g);
+  } else {
+    const i = list.findIndex((x) => x.id === g.id);
+    if (i >= 0) list[i] = { ...list[i], ...g };
+  }
+  saveGroups(list);
+  emit();
+  return g;
+}
+export function deleteGroup(id) {
+  if (groupBooks(id).length) throw new Error('Còn mục bên trong, hãy xóa hết mục trước');
+  saveGroups(getGroups().filter((g) => g.id !== id));
+  emit();
+}
+/** Icon mặc định của Bank theo tên ngân hàng: huy hiệu nếu khớp, không thì 🏦. */
+function iconForBankName(name) {
+  const k = String(name || '').toLowerCase().replace(/\s+/g, '');
+  const l = k && BANK_LOGOS.find((x) => x.name.toLowerCase().replace(/\s+/g, '') === k || x.code.toLowerCase() === k);
+  return l ? bankIcon(l.code) : '🏦';
+}
+/**
+ * Bản 7: bỏ User đặc biệt; mục chưa thuộc Bank/Ví nào được xếp vào Bank theo tên ngân hàng của tài khoản
+ * (chưa khai tên ngân hàng thì vào Bank "Bank"). Account gốc của User đặc biệt cũ được giữ quyền giao dịch NEOBANK.
+ */
+async function ensureGroups() {
+  const users = getUsers();
+  const list = getProfiles();
+  const groups = getGroups();
+  const orphans = list.filter((b) => b.owner !== SECRECY && !groups.some((g) => g.id === b.group));
+  if (orphans.length) {
+    for (const b of orphans) {
+      let bank = '';
+      try {
+        const accs = await dbOf(b.id).getAll('accounts');
+        bank = ((accs.find((a) => !a.archived) || accs[0])?.bank || '').trim();
+      } catch { /* sổ chưa mở lần nào */ }
+      const name = bank || 'Bank';
+      let g = groups.find((x) => x.owner === b.owner && x.type === 'bank' && x.name.toLowerCase() === name.toLowerCase());
+      if (!g) {
+        g = { id: uid().replace(/-/g, '').slice(0, 12), owner: b.owner, type: 'bank', name, icon: iconForBankName(name) };
+        groups.push(g);
+      }
+      b.group = g.id;
+      if (users.find((u) => u.id === b.owner)?.special && (b.kind || 'bank') === 'bank' && !b.overdraft && !b.plain) b.neoOk = true;
+    }
+    saveGroups(groups);
+    saveProfiles(list);
+  }
+  if (users.some((u) => u.special)) saveUsers(users.map((u) => (u.special ? { ...u, special: false } : u)));
+}
 
 export async function switchProfile(id) {
   localStorage.setItem(CURRENT_KEY, id);
@@ -314,7 +399,9 @@ export function saveUser(u) {
     u.color = u.color || PROFILE_COLORS[users.length % PROFILE_COLORS.length];
     users.push(u);
     saveUsers(users);
-    saveProfile({ name: BOOK_KINDS.bank.label, icon: BOOK_KINDS.bank.icon, kind: 'bank', owner: u.id, color: u.color });
+    // User mới có sẵn 1 Bank "Bank" chứa 1 Account.
+    const g = saveGroup({ owner: u.id, type: 'bank', name: 'Bank', icon: '🏦' });
+    saveProfile({ name: 'Account', icon: BOOK_KINDS.bank.icon, kind: 'bank', owner: u.id, color: u.color, group: g.id });
   } else {
     saveUsers(users.map((x) => (x.id === u.id ? { ...x, ...u } : x)));
   }
@@ -328,6 +415,7 @@ export async function deleteUser(userId) {
   const drop = userBooks(userId);
   saveUsers(users);
   saveProfiles(getProfiles().filter((b) => b.owner !== userId));
+  saveGroups(getGroups().filter((g) => g.owner !== userId));
   if (drop.some((b) => b.id === localStorage.getItem(CURRENT_KEY))) await switchUser(users[0].id);
   for (const b of drop) await dropProfile(b.id);
 }
@@ -341,12 +429,16 @@ export function saveProfile(p) {
     const same = list.filter((b) => b.owner === p.owner && (b.kind || 'bank') === (p.kind || 'bank')
       && (p.kind !== 'card' || isCreditCard(b) === isCreditCard(p))
       && ((p.kind || 'bank') !== 'bank' || !!b.overdraft === !!p.overdraft));
-    const isMoney = (p.kind || 'bank') === 'bank';
-    const max = isMoney && p.owner ? moneyBookMax(p.owner, p.overdraft) : kind.max;
-    const label = isMoney ? (p.overdraft ? 'Thấu chi' : 'Account') : p.kind === 'card' ? CARD_TYPES[isCreditCard(p) ? 'credit' : 'wallet'] : kind.label;
-    if (p.owner && same.length >= max) throw new Error(`Tối đa ${max} mục ${label}`);
-    // Account thêm sau của User đặc biệt là Account thường: không Personal/Family, không giao dịch với Secrecy.
-    if (isMoney && !p.overdraft && getUsers().find((u) => u.id === p.owner)?.special && same.some((b) => !b.plain)) p.plain = true;
+    if (p.group) {
+      // Giới hạn tính theo từng Bank / Ví điện tử.
+      const g = getGroups().find((x) => x.id === p.group);
+      const slot = slotOf(p);
+      const max = groupMax(g, slot);
+      const n = list.filter((b) => b.group === p.group && slotOf(b) === slot).length;
+      if (n >= max) throw new Error(max ? `${g.name}: tối đa ${max} ${slotLabel(g, slot)}` : `${g?.name || 'Nhóm này'} không có loại ${slotLabel(g, slot)}`);
+    } else if (p.owner && same.length >= kind.max) {
+      throw new Error(`Tối đa ${kind.max} mục ${kind.label}`);
+    }
     p.id = uid().replace(/-/g, '').slice(0, 12);
     p.color = p.color || PROFILE_COLORS[list.length % PROFILE_COLORS.length];
     list.push(p);
@@ -372,6 +464,7 @@ export async function deleteProfile(id) {
 
 // ---------- Tải / ghi ----------
 export async function loadAll() {
+  await ensureGroups();
   await useProfile(currentProfile().id);
   await applyV6Stash();
   for (const s of LIST) state[s] = await db.getAll(s);
@@ -730,7 +823,7 @@ export async function deleteTx(tx) {
 // ---------- Thẻ trả trước ----------
 // Thẻ trả trước là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
 // Mỗi khoản chi có trạng thái open/done; "Get In thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
-export const CARD_TYPES = { credit: 'Thẻ Tín Dụng', wallet: 'Ví điện tử' };
+export const CARD_TYPES = { credit: 'Credit Card', wallet: 'Ví điện tử (bản cũ)' };
 export const isCard = (p = currentProfile()) => p && p.kind === 'card' && !p.credit;
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);
@@ -1444,7 +1537,8 @@ export function canTransfer(a, b) {
   const neoA = kindOfBook(a) === 'neo', neoB = kindOfBook(b) === 'neo';
   if (neoA || neoB) {
     const other = neoA ? b : a;
-    return isSpecialBook(other) && !other.overdraft;
+    // NEOBANK: chỉ Account đã bật "Cho phép Transfer / Get In với NEOBANK" trong Cài đặt của mục.
+    return kindOfBook(other) === 'bank' && !other.overdraft && !!other.neoOk;
   }
   return a.owner === b.owner || (!closedBook(a) && !closedBook(b));
 }
@@ -1559,7 +1653,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), profiles, books, flowCats: flowCats(), txIcons: txIcons() };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: flowCats(), txIcons: txIcons() };
 }
 
 /**
@@ -1583,6 +1677,8 @@ export async function importAny(data) {
   // Bản sao lưu cũ chưa có danh sách người dùng → để ensureModel() chuyển đổi lại từ danh sách mục.
   if (Array.isArray(data.users) && data.users.length) saveUsers(data.users);
   else localStorage.removeItem(USERS_KEY);
+  // Bản sao lưu trước khi có Bank/Ví: bỏ nhóm cũ để lần nạp tới tự xếp lại theo tên ngân hàng.
+  if (Array.isArray(data.groups)) saveGroups(data.groups); else localStorage.removeItem(GROUPS_KEY);
   if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
   if (data.txIcons) localStorage.setItem(TX_ICONS_KEY, JSON.stringify(data.txIcons));
   // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.

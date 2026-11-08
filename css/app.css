@@ -1064,3 +1064,20 @@ html.dark body[data-tab="credit"] { --kc-ink: #ffa8a8; }
 html.dark .tx-ic.out, html.dark .icon-chip.tint-out { background: #4a1f24; }
 html.dark .tx-ic.in, html.dark .icon-chip.tint-in { background: #1d3d27; }
 .icon-chip.tint-out.on, .icon-chip.tint-in.on { outline: 2px solid var(--primary); }
+/* ===== v7.22: Bank / Ví điện tử ===== */
+.grp-card { margin: 12px 0; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--card) 70%, transparent); }
+.grp-card-h { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; }
+.grp-card-h b { font-size: 16px; }
+.grp-card-h small { color: var(--muted); font-size: 12px; }
+.grp-card-h .ptile-del { margin-left: auto; }
+.grp-ic { position: relative; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--soft); font-size: 20px; cursor: pointer; }
+.grp-ic > i { position: absolute; right: -4px; bottom: -4px; font-size: 10px; font-style: normal; background: var(--card); border-radius: 50%; padding: 1px 2px; }
+.grp-card .tile-grid { margin-bottom: 6px; }
+.grp-adds { display: flex; flex-wrap: wrap; gap: 6px; }
+.grp-add { border: 1px dashed var(--line); background: none; border-radius: 999px; padding: 5px 10px; font-size: 12.5px; color: var(--primary); font-weight: 700; }
+.grp-add small { color: var(--muted); font-weight: 500; }
+/* Thẻ trả trước: tím nhạt */
+.seg.tabs > [data-act="over-tab"][data-v="prepaid"].on { background: #e5dbff; color: #432874; }
+.fab[data-tab="prepaid"] { background: #e5dbff; color: #432874; box-shadow: 0 6px 18px rgba(151, 117, 250, .35); }
+body[data-tab="prepaid"] { --kc: #e5dbff; --kc-ink: #9775fa; --kc-on: #432874; }
+html.dark body[data-tab="prepaid"] { --kc-ink: #d0bfff; }

@@ -200,7 +200,7 @@ const avatarFull = (p, cls) => (p.photo
   : `<span class="${cls}" style="--c:${esc(p.color)}">${esc(p.icon)}</span>`);
 
 // --- Đầu trang: trái = User (dưới là số thông báo), phải = mục đang mở (dưới là tổng tiền của nhóm mục) ---
-const kindOf = (b) => (b.overdraft ? { label: 'Thấu chi', icon: '💳' } : S.BOOK_KINDS[b.kind] || S.BOOK_KINDS.bank);
+const kindOf = (b) => (b.overdraft ? { label: 'Thấu chi', icon: '💳' } : b.prepaid ? { label: 'Thẻ trả trước', icon: '🪪' } : S.BOOK_KINDS[b.kind] || S.BOOK_KINDS.bank);
 /** Tiết kiệm chỉ có Transfer, không ghi thu/chi. */
 const transferOnly = (b = S.currentProfile()) => b.kind === 'saving';
 
@@ -521,27 +521,25 @@ actions.books = () => {
           <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}</b>
           ${overTabs(u.id).map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
         </div>
-      </div>` + overTabs(u.id).map(([tab, label]) => {
-      const list = tabBooks(u.id, tab);
-      const isMoney = tab === 'bank' || tab === 'od';
-      const isCardTab = tab === 'credit' || tab === 'wallet';
-      const max = isMoney ? S.moneyBookMax(u.id, tab === 'od') : S.BOOK_KINDS[isCardTab ? 'card' : tab].max;
-      // Bank và Thấu chi của User đặc biệt tạo sẵn lúc thiết lập, không thêm tay.
-      // User đặc biệt: Thấu chi cố định 1; Account được thêm 2 cái thường ngoài Account gốc.
-      const room = list.length < max && !(u.special && tab === 'od') && tab !== 'wallet';
-      // Nhóm trống mà hết chỗ tạo thêm thì không cần hiện.
-      if (!list.length && !room) return '';
-      const count = tab === 'wallet' ? `(${list.length})` : `(${list.length}/${max})`;
-      const pfLine = u.special && tab === 'od'
-        ? '<div class="pf-line"><span class="pf-p">Personal <b data-pf-val="personal">…</b></span><span class="pf-f">Family <b data-pf-val="family">…</b></span></div>' : '';
-      return `<h4 class="grp-h"><span>${OVER_ICONS[tab]} ${label} <small>${count}</small></span></h4>
-        <div class="tile-grid one-col">${list.map((b) => tileHtml({
+      </div>` + S.userGroups(u.id).map((g) => {
+      // Mỗi Bank / Ví điện tử: các mục bên trong, nút thêm theo giới hạn từng loại.
+      const order = ['account', 'od', 'saving', 'prepaid', 'credit', 'legacy'];
+      const books = S.groupBooks(g.id).sort((x, y) => order.indexOf(S.slotOf(x)) - order.indexOf(S.slotOf(y)));
+      const adds = Object.keys(S.GROUP_LIMITS[g.type] || {}).map((slot) => {
+        const n = books.filter((b) => S.slotOf(b) === slot).length, max = S.groupMax(g, slot);
+        return n < max ? `<button type="button" class="grp-add" data-add="${slot}" data-group="${esc(g.id)}">＋ ${S.slotLabel(g, slot)} <small>${n}/${max}</small></button>` : '';
+      }).join('');
+      return `<section class="grp-card">
+        <div class="grp-card-h"><span class="grp-ic" data-group-edit="${esc(g.id)}" role="button" aria-label="Sửa">${esc(g.icon || S.GROUP_TYPES[g.type].icon)}<i>✎</i></span>
+          <b>${esc(g.name)}</b><small>${S.GROUP_TYPES[g.type].label}</small>
+          ${books.length ? '' : `<button type="button" class="ptile-del" data-group-del="${esc(g.id)}" aria-label="Xóa">🗑</button>`}</div>
+        <div class="tile-grid one-col">${books.map((b) => tileHtml({
           attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : ''), on: b.id === cur,
-          sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1 && !S.isSpecialBook(b), iconEdit: true,
-        })).join('')}
-        ${pfLine}
-        ${room ? `<button type="button" class="ptile-add block" data-add="${tab}">＋ ${label}</button>` : ''}</div>`;
-    }).join('') + reminderSection(u) + '</div>',
+          sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1, iconEdit: true,
+        })).join('')}</div>
+        ${adds ? `<div class="grp-adds">${adds}</div>` : ''}
+      </section>`;
+    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button>' + reminderSection(u) + '</div>',
     onMount(sh, close) {
       fillProfileSums(sh);
       fillPfVals(sh);
@@ -559,7 +557,14 @@ actions.books = () => {
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
         const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), rem = e.target.closest('[data-rem]');
+        const gEdit = e.target.closest('[data-group-edit]'), gDel = e.target.closest('[data-group-del]');
         if (rem) { close(); reminderForm(S.remindersOf(u.id).find((x) => x.id === rem.dataset.rem) || null); }
+        else if (e.target.closest('[data-group-new]')) { close(); groupTypeChooser(); }
+        else if (gEdit) { close(); groupForm(S.getGroups().find((x) => x.id === gEdit.dataset.groupEdit)); }
+        else if (gDel) {
+          const g = S.getGroups().find((x) => x.id === gDel.dataset.groupDel);
+          if (g && confirm(`Xóa ${S.GROUP_TYPES[g.type].label} "${g.name}"?`)) { try { S.deleteGroup(g.id); } catch (err) { return toast(err.message); } close(); actions.books(); }
+        }
         else if (e.target.closest('[data-over-edit]')) { close(); overNameForm(u); }
         else if (e.target.closest('[data-over]')) { close(); actions['book-close'](); }
         else if (del) {
@@ -569,16 +574,61 @@ actions.books = () => {
         else if (sw) { close(); await openBook(sw.dataset.switch); }
         else if (add) {
           close();
-          const v = add.dataset.add;
-          if (v === 'od') bookForm(null, 'bank', true);
-          else if (v === 'credit' || v === 'wallet') bookForm(null, 'card', false, v);
-          else bookForm(null, v);
+          const v = add.dataset.add, group = add.dataset.group;
+          if (v === 'od') bookForm(null, 'bank', true, 'credit', { group });
+          else if (v === 'credit') bookForm(null, 'card', false, 'credit', { group });
+          else if (v === 'prepaid') bookForm(null, 'card', false, 'credit', { group, prepaid: true });
+          else if (v === 'saving') bookForm(null, 'saving', false, 'credit', { group });
+          else bookForm(null, 'bank', false, 'credit', { group, prepaid: v === 'prepaid' });
         }
       });
     },
   });
 };
 actions.profiles = actions.books;
+
+// ----- Bank / Ví điện tử -----
+function groupTypeChooser() {
+  openSheet({
+    title: 'Thêm Bank / Ví điện tử',
+    body: `<div class="card list">
+      <button type="button" class="row" data-type="bank"><span class="ci">🏦</span><span class="grow"><b>Bank</b><small>Tối đa 2 Account, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card</small></span>›</button>
+      <button type="button" class="row" data-type="wallet"><span class="ci">👛</span><span class="grow"><b>Ví điện tử</b><small>1 tài khoản thanh toán và 1 Thẻ trả trước</small></span>›</button></div>`,
+    onMount(sh, close) {
+      sh.addEventListener('click', (e) => { const b = e.target.closest('[data-type]'); if (b) { close(); groupForm(null, b.dataset.type); } });
+    },
+  });
+}
+
+/** Tạo / sửa Bank hoặc Ví điện tử: tên và biểu tượng (có huy hiệu ngân hàng). */
+function groupForm(g, type = 'bank') {
+  const u = S.currentUser();
+  const f = g ? { ...g } : { owner: u.id, type, name: S.GROUP_TYPES[type].label, icon: S.GROUP_TYPES[type].icon };
+  let icon = f.icon;
+  const formId = 'gpf-' + Date.now();
+  openSheet({
+    title: `${g ? 'Sửa' : 'Thêm'} ${S.GROUP_TYPES[f.type].label}`,
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">${g ? 'Lưu' : 'Tạo'}</button>`,
+    onClose() { actions.books(); },
+    body: `<form class="form" id="${formId}">
+      ${field('Tên', `<input id="gp-name" required maxlength="24" value="${esc(f.name)}" placeholder="${f.type === 'bank' ? 'vd: Techcombank, Vietcombank' : 'vd: MoMo, ZaloPay'}">`)}
+      <div class="field"><span>Biểu tượng <b id="gp-now">${esc(icon)}</b> <small class="muted">(gõ tên ngân hàng để tìm huy hiệu)</small></span>${iconPickerHtml('gp-icons', icon)}</div>
+      <p class="muted small">${f.type === 'bank' ? 'Mỗi Bank: tối đa 2 Account, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card.' : 'Mỗi Ví điện tử: 1 tài khoản thanh toán (giao dịch như Account) và 1 Thẻ trả trước.'}</p>
+    </form>`,
+    onMount(sh, close) {
+      bindIconPicker($(sh, '#gp-icons'), (v) => { icon = v; $(sh, '#gp-now').textContent = v; }, () => icon);
+      setTimeout(() => { if (!g) $(sh, '#gp-name').select(); }, 250);
+      $(sh, 'form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = $(sh, '#gp-name').value.trim();
+        if (!name) return toast('Nhập tên');
+        try { S.saveGroup({ ...f, name, icon }); } catch (err) { return toast(err.message); }
+        close();
+        toast(g ? 'Đã lưu' : `Đã tạo ${S.GROUP_TYPES[f.type].label} "${name}"`);
+      });
+    },
+  });
+}
 
 /** Xóa một mục (hỏi xác nhận 2 lần). */
 async function confirmDeleteProfile(b) {
@@ -784,27 +834,19 @@ function userForm(u) {
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ">`)}
       ${looksFields(f, true)}
-      ${u ? '' : '<p class="muted small">User mới có sẵn 1 mục 🏦 Ngân hàng.</p>'}
-      ${!u && !S.specialUser() ? `<label class="check"><input type="checkbox" id="uf-special"> ⭐ User đặc biệt (có sẵn Account + Thấu chi, chia Personal / Family)</label>
-        <div id="sp-box" hidden>${specialFields()}</div>` : ''}
-      ${u?.special ? '<p class="muted small">⭐ User đặc biệt.</p><div class="actions"><button type="button" class="btn ghost" data-act="pf-reset">🔄 Reset số dư, hạn mức, Personal / Family</button></div>' : ''}
+      ${u ? '' : '<p class="muted small">User mới có sẵn 1 Bank chứa 1 Account.</p>'}
       ${u && users.length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa User</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
       bindLooks(sh, f);
-      const spChk = $(sh, '#uf-special');
-      const sp = spChk ? bindSpecialFields(sh) : null;
-      spChk?.addEventListener('change', () => { $(sh, '#sp-box').hidden = !spChk.checked; });
+
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = $(sh, '#pf-name').value.trim();
         if (!name) return toast('Nhập tên');
         if (S.getUsers().some((x) => x.id !== f.id && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên này đã có');
-        const special = spChk?.checked ? sp.read() : null;
-        if (spChk?.checked && !special) return;
         let saved;
-        try { saved = S.saveUser({ ...f, name, ...(special ? { special: true } : {}) }); } catch (err) { return toast(err.message); }
-        if (special) await S.setupSpecial(saved.id, special);
+        try { saved = S.saveUser({ ...f, name }); } catch (err) { return toast(err.message); }
         close();
         if (u) { refresh(); toast('Đã lưu'); return; }
         await switchToUser(saved.id);
@@ -820,11 +862,20 @@ const CREDIT_HINT = 'Có Thu/Chi như một tài khoản, luôn hiện số âm 
 const ODRAFT_HINT = 'Thu/Chi và Transfer như Account, số dư được âm và vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức sẽ có cảnh báo.';
 
 /** Thêm/sửa mục (Ngân hàng / Tiết kiệm / Thẻ trả trước) của User hiện tại. */
-function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
+function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group = null, prepaid = false } = {}) {
   if (b) kind = b.kind || 'bank';
   const k = S.BOOK_KINDS[kind];
   const owner = b ? S.userOf(b) : S.currentUser();
-  const f = b ? { ...b } : { name: '', kind, owner: owner.id, icon: od ? '💳' : kind === 'card' && cardPreset === 'wallet' ? '👛' : k.icon, color: owner.color, ...(kind === 'card' ? { cardType: cardPreset } : {}) };
+  const f = b ? { ...b } : { name: '', kind, owner: owner.id, icon: od ? '💳' : prepaid ? '🪪' : kind === 'card' && cardPreset === 'wallet' ? '👛' : k.icon, color: owner.color, ...(kind === 'card' ? { cardType: cardPreset } : {}), ...(group ? { group } : {}), ...(prepaid ? { prepaid: true } : {}) };
+  const grp = S.groupOf(f);
+  if (!b) {
+    // Tên gợi ý: loại mục, thêm số nếu trong Bank/Ví đã có tên đó.
+    const base = S.slotLabel(grp, S.slotOf({ ...f, overdraft: od })) || k.label;
+    const taken = S.userBooks(owner.id).filter((x) => x.group === f.group).map((x) => x.name.toLowerCase());
+    let n = 1, name = base;
+    while (taken.includes(name.toLowerCase())) name = `${base} ${++n}`;
+    f.name = name;
+  }
   let isOd = !!f.overdraft || od;
   const formId = 'bf-' + Date.now();
   const hint = {
@@ -833,12 +884,12 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
     saving: 'Chỉ Transfer với các mục Ngân hàng.',
   }[kind] || '';
   openSheet({
-    title: `${b ? 'Sửa' : 'Thêm'} ${isOd ? 'Thấu chi' : kind === 'card' ? S.CARD_TYPES[f.cardType] || kindOf(f).label : 'mục ' + kindOf(f).label}`,
+    title: `${b ? 'Sửa' : 'Thêm'} ${grp ? S.slotLabel(grp, S.slotOf({ ...f, overdraft: isOd })) : isOd ? 'Thấu chi' : kind === 'card' ? S.CARD_TYPES[f.cardType] || kindOf(f).label : kindOf(f).label}${grp ? ' · ' + grp.name : ''}`,
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">${b ? 'Lưu' : 'Tạo'}</button>`,
     body: `<form class="form" id="${formId}">
       ${kind === 'card' && b && !b.credit ? `<div class="field"><span>Loại thẻ</span><div class="seg" id="bf-card">${Object.entries(S.CARD_TYPES).map(([v, label]) =>
         `<button type="button" data-c="${v}" class="${v === (f.cardType || 'credit') ? 'on' : ''}">${label}</button>`).join('')}</div></div>` : ''}
-      <p class="muted small">${k.icon} Mục của <b>${esc(owner.name)}</b>. <span id="bf-hint">${isOd ? ODRAFT_HINT : b?.credit || (kind === 'card' && !b && (f.cardType || 'credit') === 'credit') ? CREDIT_HINT : hint}</span></p>
+      <p class="muted small">${k.icon} Mục của <b>${esc(owner.name)}</b>${grp ? ` · ${esc(S.GROUP_TYPES[grp.type].label)} <b>${esc(grp.name)}</b>` : ''}.${f.prepaid ? ' Thẻ trả trước hoạt động như Credit Card: có hạn mức, số âm là tiền đang dùng, nút Thanh toán trả từ Account.' : ''} <span id="bf-hint">${isOd ? ODRAFT_HINT : b?.credit || (kind === 'card' && !b && (f.cardType || 'credit') === 'credit') ? CREDIT_HINT : hint}</span></p>
       ${b?.credit ? amountField('bf-climit', b.limit || 0, 'Hạn mức âm tối đa có thể dùng') : ''}
       ${kind === 'card' && !b && f.cardType === 'credit' ? `<div id="bf-debt-box">${amountField('bf-climit', 0, 'Hạn mức âm tối đa có thể dùng')}${amountField('bf-debt', 0, 'Số dư đang nợ hiện tại')}<p class="muted small">⚠️ Sau khi tạo không sửa được số này, chỉ thay đổi qua Chi, Thu và Thanh toán.</p></div>` : ''}
       ${isOd && !b ? `<div id="bf-od">
@@ -852,7 +903,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
         <p class="muted small">Không sửa được số dư và hạn mức. Muốn đổi: ${S.isSpecialBook(b) ? 'dùng Reset trong Cài đặt' : 'xóa mục này rồi tạo lại'}.</p>` : ''}
       ${field('Tên mục', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="${{ card: 'vd: Thẻ MoMo, Đi chợ', saving: 'vd: Quỹ học phí, Tiết kiệm mua nhà' }[kind] || 'vd: Ngân hàng, Tiền nhà'}">`)}
       ${looksFields(f, false)}
-      ${b && S.userBooks(owner.id).length > 1 && !S.isSpecialBook(b) ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa mục</button></div>' : ''}
+      ${b && S.userBooks(owner.id).length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa mục</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
       bindLooks(sh, f);
@@ -873,7 +924,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
         e.preventDefault();
         const name = $(sh, '#pf-name').value.trim();
         if (!name) return toast('Nhập tên mục');
-        if (S.userBooks(owner.id).some((x) => x.id !== f.id && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên mục này đã có');
+        if (S.userBooks(owner.id).some((x) => x.id !== f.id && x.group === f.group && x.name.toLowerCase() === name.toLowerCase())) return toast('Tên mục này đã có trong ' + (grp?.name || 'nhóm này'));
         const data = { ...f, name };
         if (kind === 'card') data.cardType = cardType;
         let initial = 0;
@@ -1416,10 +1467,10 @@ function creditPaySheet() {
 const overName = (u) => u.overName || 'Tổng quan';
 const overIcon = (u) => u.overIcon || '📊';
 const overColor = (u) => u.overColor || u.color;
-const OVER_TABS = [['bank', 'Account'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['credit', 'Thẻ tín dụng'], ['wallet', 'Ví điện tử']];
-const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', credit: '💳', wallet: '👛' };
+const OVER_TABS = [['bank', 'Account'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['prepaid', 'Thẻ trả trước'], ['credit', 'Credit Card'], ['wallet', 'Ví điện tử']];
+const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', prepaid: '🪪', credit: '💳', wallet: '👛' };
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
-const overTabs = (userId) => OVER_TABS.filter(([tab]) => tab !== 'wallet' || tabBooks(userId, 'wallet').length);
+const overTabs = (userId) => OVER_TABS.filter(([tab]) => (tab !== 'wallet' && tab !== 'prepaid') || tabBooks(userId, tab).length);
 const overKindNow = () => {
   const tabs = homeTabs(S.currentUser().id);
   return tabs.some(([tab]) => tab === ui.overKind) ? ui.overKind : tabs[0]?.[0] || 'bank';
@@ -1428,7 +1479,9 @@ const overKindNow = () => {
 const homeTabs = (userId) => overTabs(userId).filter(([tab]) => tabBooks(userId, tab).length);
 /** Các mục của một thẻ ở Tổng quan: Bank và Thấu chi tách riêng. */
 const tabBooks = (userId, tab) => S.userBooks(userId).filter((b) => {
-  if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft;
+  if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft && !b.prepaid;
+  // Thẻ trả trước kiểu mới nằm chung thẻ Credit Card; tab riêng chỉ còn cho bản thử nghiệm cũ (kind bank).
+  if (tab === 'prepaid') return !!b.prepaid && b.kind !== 'card';
   if (tab === 'od') return !!b.overdraft;
   if (tab === 'credit') return b.kind === 'card' && (b.credit || b.cardType === 'credit');
   if (tab === 'wallet') return b.kind === 'card' && !(b.credit || b.cardType === 'credit');
@@ -1570,10 +1623,11 @@ async function overCard(b) {
   }
   const sub = b.kind === 'card' ? (b.credit && b.limit ? `Hạn mức ${fmtShort(b.limit)}` : S.CARD_TYPES[b.cardType] || '')
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
+  const grpName = S.groupOf(b)?.name;
   return `<section class="card over-acc" style="--c:${esc(b.color)}">
     <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
       <span class="ol"><b>${esc(b.icon || kindOf(b).icon)} ${esc(b.name)}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
-      <span class="ol ol-sm"><small>${esc(sub)}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
+      <span class="ol ol-sm"><small>${esc([grpName && grpName !== b.name ? grpName : null, sub].filter(Boolean).join(' · '))}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
     ${quickRows(quicks, b.id)}
@@ -1623,7 +1677,7 @@ async function overTabHtml(u, tab) {
 }
 
 /** Thẻ của một mục, để nút + mang màu của thẻ đó. */
-const tabOfBook = (b) => (b.overdraft ? 'od' : b.kind === 'saving' ? 'saving' : b.kind !== 'card' ? 'bank' : b.credit || b.cardType === 'credit' ? 'credit' : 'wallet');
+const tabOfBook = (b) => (b.overdraft ? 'od' : b.prepaid && b.kind !== 'card' ? 'prepaid' : b.kind === 'saving' ? 'saving' : b.kind !== 'card' ? 'bank' : b.credit || b.cardType === 'credit' ? 'credit' : 'wallet');
 const fab = (tab = tabOfBook(S.currentProfile())) => `<button type="button" class="fab" data-act="add" data-tab="${tab}" aria-label="Thêm giao dịch">+</button>`;
 
 // ================= Giao dịch =================
@@ -3749,7 +3803,13 @@ function txPermHtml(p) {
       <label class="switch"><input type="checkbox" data-feature="${f}" ${S.featureOn(p, f) ? 'checked' : ''}><i></i></label></div>`).join('')}
     <p class="muted small">Tắt thì mục này không tạo được giao dịch loại đó, nút nhanh cùng loại cũng ẩn. Giao dịch đã có vẫn giữ.</p>
   </section>` : '';
-  return `${features}${sectionTitle('Tiền ra')}
+  const neo = S.kindOfBook(p) === 'bank' && !p.overdraft ? `${sectionTitle('NEOBANK (Secrecy)')}
+  <section class="card form">
+    <div class="row-between"><span>Cho phép Transfer / Get In với NEOBANK</span>
+      <label class="switch"><input type="checkbox" data-neo-ok ${p.neoOk ? 'checked' : ''}><i></i></label></div>
+    <p class="muted small">Bật thì các NEOBANK trong Secrecy hiện trong Transfer và Get In của mục này.</p>
+  </section>` : '';
+  return `${features}${neo}${sectionTitle('Tiền ra')}
   <section class="card form">
     <div class="row-between"><span>Cho phép trừ tiền khỏi tài khoản</span>
       <label class="switch"><input type="checkbox" data-allow-out ${p.locked ? '' : 'checked'}><i></i></label></div>
@@ -3895,6 +3955,11 @@ async function mountSettings(root) {
     refresh();
   });
   root.querySelector('[data-lock-delay]')?.addEventListener('change', (e) => { setLockDelay(Number(e.target.value)); toast('Đã lưu'); });
+  root.querySelector('[data-neo-ok]')?.addEventListener('change', (e) => {
+    S.saveProfile({ id: S.currentProfile().id, neoOk: e.target.checked });
+    S.emit();
+    toast(e.target.checked ? 'Đã cho phép giao dịch với NEOBANK' : 'Đã tắt giao dịch với NEOBANK');
+  });
   const bioRow = root.querySelector('[data-bio-row]');
   if (bioRow) bioAvailable().then((ok) => { if (ok && bioRow.isConnected) bioRow.style.display = ''; });
   root.querySelector('[data-bio-toggle]')?.addEventListener('change', async (e) => {
@@ -4110,6 +4175,9 @@ const canAddAccount = () => S.activeAccounts().length < 1;
 function accountForm(a) {
   if (!a && !canAddAccount()) return toast('Mỗi mục chỉ gắn 1 tài khoản ngân hàng. Muốn thêm tài khoản khác, hãy tạo mục Ngân hàng mới.', 4000);
   const f = a ? { ...a } : { name: '', bank: '', number: '', holder: '', icon: '🏦', kind: 'bank', initial: 0, order: state.accounts.length };
+  // Chưa khai tên ngân hàng: điền sẵn theo tên Bank chứa mục này.
+  const grp = S.groupOf(S.currentProfile());
+  if (!f.bank && grp && grp.type === 'bank' && grp.name !== 'Bank') f.bank = grp.name;
   const used = a && state.transactions.some((t) => t.accountId === a.id || t.toAccountId === a.id);
   const curBal = a ? S.accountBalance(a) : 0;
   const od = !!S.currentProfile().overdraft || S.isSpecialBook(S.currentProfile()) || !!S.currentProfile().credit;
@@ -4126,7 +4194,7 @@ function accountForm(a) {
         <div class="bank-logos" id="af-logos">${BANK_LOGOS.map((l) => `<button type="button" class="logo-pick" data-logo="${l.code}" title="${esc(l.name)}">${badgeHtml(l)}</button>`).join('')}
           <button type="button" class="logo-pick" data-logo="" title="Dùng emoji"><span class="logo-emoji">${esc(f.logo ? '🏦' : f.icon || '🏦')}</span></button></div>
         <div class="two" id="af-emoji-row" style="margin-top:6px">${field('Emoji (khi không chọn huy hiệu)', `<input id="af-icon" maxlength="4" class="emoji" value="${esc(f.icon || '🏦')}">`)}</div></div>
-      ${field('Tên gợi nhớ (không bắt buộc)', `<input id="af-name" value="${esc(a && !f.autoName ? f.name : '')}" placeholder="Để trống thì dùng tên ngân hàng">`)}
+      ${field('Tên gợi nhớ (không bắt buộc)', `<input id="af-name" value="${esc(a && !f.autoName && f.name !== 'Tài khoản chính' ? f.name : '')}" placeholder="Để trống thì dùng tên ngân hàng">`)}
       ${od ? `<div class="kv"><span>Số dư hiện tại</span><b>${fmt(curBal)}</b></div><p class="muted small">Không sửa được số dư ở đây. Muốn đổi: ${S.isSpecialBook(S.currentProfile()) ? 'dùng Reset trong Cài đặt' : 'xóa mục này rồi tạo lại'}.</p>`
         : amountField('af-bal', curBal, a ? 'Số dư hiện tại (sửa nếu lệch với app ngân hàng)' : 'Số dư hiện tại')}
       <div class="actions">${a && !od ? `<button type="button" class="btn danger" data-del>${used ? (a.archived ? 'Hiện lại' : 'Ẩn tài khoản') : 'Xóa'}</button>` : ''}<button class="btn primary">Lưu</button></div>
@@ -4147,7 +4215,7 @@ function accountForm(a) {
         logo = b.dataset.logo || null; picked = true; paintLogo();
       });
       $(sh, '#af-bank').addEventListener('input', () => { if (!picked) { logo = logoForBank($(sh, '#af-bank').value)?.code || null; paintLogo(); } });
-      if (!a && !logo) logo = logoForBank(f.bank)?.code || null;
+      if (!logo && !picked) logo = logoForBank(f.bank)?.code || null;
       paintLogo();
       $(sh, '[data-copy]')?.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText(f.number.replace(/\s/g, '')); toast('Đã chép số tài khoản'); } catch { toast('Không sao chép được'); }
