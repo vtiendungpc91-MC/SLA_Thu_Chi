@@ -91,17 +91,19 @@ export function showLock() {
     let pin = '';
     let tries = 0;
     let waitUntil = 0;
+    const bio = bioEnabled();
     const el = document.createElement('div');
-    el.className = 'lock';
+    // Có Face ID: ẩn bàn phím, tự hỏi Face ID; thất bại 2 lần mới hiện nhập mật khẩu.
+    el.className = 'lock' + (bio ? ' bio-first' : '');
     el.innerHTML = `
       <div class="lock-box">
         <div class="lock-ic">🔒</div>
         <h2>Sổ Thu Chi</h2>
-        <p class="lock-msg">Nhập mật khẩu để mở</p>
+        <p class="lock-msg">${bio ? 'Đang mở bằng Face ID / Touch ID…' : 'Nhập mật khẩu để mở'}</p>
         <div class="dots">${'<i></i>'.repeat(len)}</div>
         <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-k="${n}">${n}</button>`).join('')}
           <span></span><button type="button" data-k="0">0</button><button type="button" data-k="del" aria-label="Xóa">⌫</button></div>
-        ${bioEnabled() ? '<button type="button" class="bio-btn" data-bio>🙂 Mở bằng Face ID / Touch ID</button>' : ''}
+        ${bio ? '<button type="button" class="bio-btn" data-bio>🙂 Mở bằng Face ID / Touch ID</button>' : ''}
       </div>`;
     document.body.appendChild(el);
     document.body.classList.add('is-locked');
@@ -118,7 +120,7 @@ export function showLock() {
     };
 
     async function press(k) {
-      if (Date.now() < waitUntil) return;
+      if (Date.now() < waitUntil || el.classList.contains('bio-first')) return;
       if (k === 'del') pin = pin.slice(0, -1);
       else if (pin.length < len) pin += k;
       paint();
@@ -152,10 +154,26 @@ export function showLock() {
       lastPointer = Date.now();
       press(b.dataset.k);
     });
-    el.querySelector('[data-bio]')?.addEventListener('click', async () => {
-      if (Date.now() < waitUntil) return;
-      try { await bioCheck(); finish(); } catch { msg.textContent = 'Không xác thực được, hãy nhập mật khẩu'; }
-    });
+    // Face ID: tự chạy khi mở màn khóa. iPhone có thể không cho tự chạy khi chưa chạm màn hình;
+    // lần đó bị từ chối ngay nên không tính là sai, chỉ hiện nút để chạm.
+    const BIO_MAX_FAILS = 2;
+    let bioFails = 0, bioBusy = false;
+    const showKeypad = (text) => { el.classList.remove('bio-first'); msg.textContent = text; };
+    async function tryBio(auto) {
+      if (bioBusy || !el.isConnected) return;
+      bioBusy = true;
+      const started = Date.now();
+      try {
+        await bioCheck();
+        finish();
+      } catch {
+        if (auto && Date.now() - started < 600) msg.textContent = 'Chạm nút bên dưới để mở bằng Face ID / Touch ID';
+        else if (++bioFails >= BIO_MAX_FAILS) showKeypad('Không nhận diện được. Nhập mật khẩu để mở');
+        else msg.textContent = `Không nhận diện được, thử lại (còn ${BIO_MAX_FAILS - bioFails} lần)`;
+      } finally { bioBusy = false; }
+    }
+    el.querySelector('[data-bio]')?.addEventListener('click', () => tryBio(false));
+    if (bio) setTimeout(() => tryBio(true), 300);
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-k]');
       if (b && Date.now() - lastPointer > 600) press(b.dataset.k); // dự phòng khi không có pointer event

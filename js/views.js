@@ -8,7 +8,7 @@ import {
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
   getRange, shiftAnchor, prevRange, elapsedDays, parseISO, nextDate, FREQ_LABEL, PERIOD_LABEL, splitTags, debounce, addMonths,
-  fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN, isMasked, setMasked, fmtPlain,
+  fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN, isMasked, setMasked, fmtPlain, fmtBal, fmtBalShort,
 } from './utils.js';
 import { donut, bars, lineChart } from './charts.js';
 import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, plain } from './icons.js';
@@ -97,7 +97,7 @@ function accOptions(selected, withBalance = false) {
   const list = S.activeAccounts();
   const cur = S.accById(selected);
   if (cur && cur.archived) list.push(cur);
-  return list.map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}${withBalance ? ' — ' + fmt(S.accountBalance(a)) : ''}</option>`).join('');
+  return list.map((a) => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(a.icon + ' ' + a.name)}${withBalance ? ' — ' + fmtBal(S.accountBalance(a)) : ''}</option>`).join('');
 }
 
 /** Dòng phụ mô tả tài khoản ngân hàng: ngân hàng · STK · chủ TK. */
@@ -105,7 +105,7 @@ function accOptions(selected, withBalance = false) {
 const accLine = () => {
   const list = S.activeAccounts();
   const od = S.currentProfile().overdraft ? ` · Hạn mức ${fmt(S.currentProfile().limit)}` : '';
-  return list.map((a) => a.icon + ' ' + [a.name, a.number && 'STK ' + a.number].filter(Boolean).join(' · ') + (list.length > 1 ? ' · ' + fmt(S.accountBalance(a)) : '')).join('  |  ') + od;
+  return list.map((a) => a.icon + ' ' + [a.name, a.number && 'STK ' + a.number].filter(Boolean).join(' · ') + (list.length > 1 ? ' · ' + fmtBal(S.accountBalance(a)) : '')).join('  |  ') + od;
 };
 const accSub = (a) => [a.bank, a.number && 'STK ' + a.number, a.holder].filter(Boolean).join(' · ')
   || (a.kind === 'cash' ? 'Tiền mặt (bản cũ)' : 'Chưa có thông tin ngân hàng — bấm để bổ sung');
@@ -124,19 +124,19 @@ function balHint(el, { have, need, bookId, who = '' }) {
   if (S.getProfiles().some((b) => b.id === bookId && b.credit)) {
     const lim = Number(S.getProfiles().find((b) => b.id === bookId).limit) || 0;
     const over = lim && have - need < -lim;
-    el.textContent = `Thẻ tín dụng · đang nợ ${fmt(Math.max(0, -have))}` + (lim ? ` · còn dùng được ${fmt(Math.max(0, lim + have))}` : '') + (over ? ' — ⚠️ vượt hạn mức' : '');
+    el.textContent = `Thẻ tín dụng · đang nợ ${fmtBal(Math.max(0, -have))}` + (lim ? ` · còn dùng được ${fmtBal(Math.max(0, lim + have))}` : '') + (over ? ' — ⚠️ vượt hạn mức' : '');
     el.className = 'hint' + (over ? ' warn-red' : '');
     return;
   }
   const od = S.getProfiles().find((b) => b.id === bookId && b.overdraft);
   if (od) {
     const over = need > od.limit || have - need < -od.limit;
-    el.textContent = `Thấu chi · số dư ${fmt(have)} · hạn mức ${fmt(od.limit)}` + (over ? ' — ⚠️ vượt hạn mức' : '');
+    el.textContent = `Thấu chi · số dư ${fmtBal(have)} · hạn mức ${fmt(od.limit)}` + (over ? ' — ⚠️ vượt hạn mức' : '');
     el.className = 'hint' + (over ? ' warn-red' : '');
     return;
   }
   const short = need > have;
-  el.textContent = `Khả dụng${who}: ${fmt(have)}` + (short ? ` — ⚠️ Số dư không đủ (thiếu ${fmt(need - have)})` : '');
+  el.textContent = `Khả dụng${who}: ${fmtBal(have)}` + (short ? ` — ⚠️ Số dư không đủ (thiếu ${fmtBal(need - have)})` : '');
   el.className = 'hint' + (short ? ' warn-red' : '');
 }
 
@@ -213,7 +213,7 @@ function fillPfVals(root) {
   if (!els.length) return;
   const key = (el) => `pf:${el.dataset.pfVal}`;
   els.forEach((el) => showCached(el, key(el)));
-  S.pfBalances().then((b) => { if (b) els.forEach((el) => setCached(el, key(el), fmt(b[el.dataset.pfVal]))); });
+  S.pfBalances().then((b) => { if (b) els.forEach((el) => setCached(el, key(el), fmtBal(b[el.dataset.pfVal]))); });
 }
 
 // Phần đầu màn hình: nhớ nội dung đã điền theo User và loại mục, vẽ lại thì dán ngay.
@@ -278,7 +278,7 @@ async function fillTopBar(root) {
   count.hidden = !alerts.length;
   count.textContent = `🔔 ${alerts.length} thông báo`;
   startTicker(root.querySelector('[data-over-ticker]'), alerts);
-  total.innerHTML = (kind === 'card' ? '<small>Chưa TT</small> ' : '') + fmt(sum);
+  total.innerHTML = (kind === 'card' ? '<small>Chưa TT</small> ' : '') + fmtBal(sum);
   // Số tiền rất lớn hoặc màn hình hẹp: thu nhỏ vừa đủ để không đè lên nút + giữa màn hình.
   if (onHome) {
     const [saving, wallet] = await Promise.all([S.kindTotal(u.id, 'saving'), tabTotal(u.id, 'wallet')]);
@@ -288,10 +288,10 @@ async function fillTopBar(root) {
     const credits = tabBooks(u.id, 'credit');
     const debt = -(await tabTotal(u.id, 'credit'));
     debtEl.hidden = !credits.length;
-    debtEl.textContent = `Nợ thẻ ${fmt(debt)}`;
-    savingEl.textContent = `Tiết kiệm ${fmt(saving)}`;
+    debtEl.textContent = `Nợ thẻ ${fmtBal(debt)}`;
+    savingEl.textContent = `Tiết kiệm ${fmtBal(saving)}`;
     cardEl.hidden = !tabBooks(u.id, 'wallet').length;
-    cardEl.textContent = `Ví điện tử ${fmt(wallet)}`;
+    cardEl.textContent = `Ví điện tử ${fmtBal(wallet)}`;
   } else {
     const room = innerWidth / 2 - 44;
     total.style.fontSize = `${Math.min(15.4, room / (total.textContent.length * 0.515))}px`;
@@ -300,7 +300,7 @@ async function fillTopBar(root) {
     const b = await S.pfBalances(u.id);
     root.querySelectorAll('[data-pf-top]').forEach((el) => {
       el.hidden = false;
-      el.textContent = `${S.PF_LABEL[el.dataset.pfTop]} ${fmt(b[el.dataset.pfTop])}`;
+      el.textContent = `${S.PF_LABEL[el.dataset.pfTop]} ${fmtBal(b[el.dataset.pfTop])}`;
     });
   }
   if (root.contains(total)) saveTop(root);
@@ -382,10 +382,10 @@ async function fillProfileSums(root) {
     try {
       const s = await S.profileSummary(p);
       setCached(el, 'p:' + p.id, s.credit
-        ? `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.limit ? `Hạn mức ${fmtShort(p.limit)}` : S.CARD_TYPES.credit} · ${s.balance < 0 ? 'đang nợ' : 'hết nợ'}</small>`
+        ? `<b class="${s.balance < 0 ? 'expense' : ''}">${fmtBal(s.balance)}</b><small>${p.limit ? `Hạn mức ${fmtShort(p.limit)}` : S.CARD_TYPES.credit} · ${s.balance < 0 ? 'đang nợ' : 'hết nợ'}</small>`
         : s.kind === 'card'
-        ? `<b class="${s.unpaid ? 'expense' : 'income'}">${fmt(s.unpaid)}</b><small>${p.cardType ? S.CARD_TYPES[p.cardType] + ' · ' : ''}${s.count ? `${s.count} khoản chưa TT` : 'Đã thanh toán hết'}</small>`
-        : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmt(s.balance)}</b><small>${p.overdraft ? `Thấu chi · hạn mức ${fmtShort(p.limit)}` : 'Số dư'}</small>`);
+        ? `<b class="${s.unpaid ? 'expense' : 'income'}">${fmtBal(s.unpaid)}</b><small>${p.cardType ? S.CARD_TYPES[p.cardType] + ' · ' : ''}${s.count ? `${s.count} khoản chưa TT` : 'Đã thanh toán hết'}</small>`
+        : `<b class="${s.balance < 0 ? 'expense' : ''}">${fmtBal(s.balance)}</b><small>${p.overdraft ? `Thấu chi · hạn mức ${fmtShort(p.limit)}` : 'Số dư'}</small>`);
     } catch { el.textContent = ''; }
   }
   for (const el of root.querySelectorAll('[data-usum]')) {
@@ -396,7 +396,7 @@ async function fillProfileSums(root) {
         const s = await S.profileSummary(b);
         if (s.kind === 'card') unpaid += s.unpaid; else balance += s.balance;
       }
-      setCached(el, 'u:' + el.dataset.usum, `<b class="${balance < 0 ? 'expense' : ''}">${fmt(balance)}</b><small>Tổng số dư · ${books.length} mục</small>`
+      setCached(el, 'u:' + el.dataset.usum, `<b class="${balance < 0 ? 'expense' : ''}">${fmtBal(balance)}</b><small>Tổng số dư · ${books.length} mục</small>`
         + (unpaid ? `<small class="expense">Thẻ chưa TT: ${fmt(unpaid)}</small>` : ''));
     } catch { el.textContent = ''; }
   }
@@ -533,7 +533,7 @@ actions.books = () => {
         // Thẻ tín dụng: tabTotal là số đang nợ (dương); hiện số âm màu đỏ giống dòng "Nợ thẻ" ở Tổng quan.
         const v = await tabTotal(u.id, el.dataset.overSum);
         const shown = el.dataset.overSum === 'credit' ? -v : v;
-        setCached(el, key, shown < 0 ? `<span class="expense">${fmt(shown)}</span>` : fmt(shown));
+        setCached(el, key, shown < 0 ? `<span class="expense">${fmtBal(shown)}</span>` : fmtBal(shown));
       });
       sh.addEventListener('click', async (e) => {
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
@@ -725,7 +725,7 @@ actions['pf-convert'] = () => {
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'pc-amt');
-      S.pfBalances().then((b) => sh.querySelectorAll('[data-pc]').forEach((el) => { el.textContent = fmt(b[el.dataset.pc]); }));
+      S.pfBalances().then((b) => sh.querySelectorAll('[data-pc]').forEach((el) => { el.textContent = fmtBal(b[el.dataset.pc]); }));
       $(sh, '#pc-dir').addEventListener('click', (e) => {
         const b = e.target.closest('[data-from]');
         if (!b) return;
@@ -847,7 +847,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit') {
       });
       const limitIn = isOd && !b ? bindMoney(sh, 'bf-limit') : null;
       const initIn = isOd && !b ? bindMoney(sh, 'bf-init') : null;
-      if (b?.overdraft) S.peerAccounts(b.id).then(async (accs) => { $(sh, '[data-od-bal]').textContent = fmt(await S.peerBalance(b.id, accs[0].id)); });
+      if (b?.overdraft) S.peerAccounts(b.id).then(async (accs) => { $(sh, '[data-od-bal]').textContent = fmtBal(await S.peerBalance(b.id, accs[0].id)); });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = $(sh, '#pf-name').value.trim();
@@ -1284,7 +1284,7 @@ function cardPaySheet(items) {
         const accs = banks.length ? banks : all;
         balances.clear();
         for (const a of accs) balances.set(a.id, await S.peerBalance(whoId, a.id));
-        $(sh, '#cp-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmt(balances.get(a.id))}</option>`).join('');
+        $(sh, '#cp-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
       $(sh, '#cp-who').addEventListener('click', (e) => {
@@ -1342,12 +1342,12 @@ function creditPaySheet() {
     title: 'Thanh toán thẻ',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">💸 Trả</button>`,
     body: `<form class="form" id="${formId}">
-      <div class="note-box">${esc(S.bookLabel(card))} · đang nợ<br><b class="expense big-amt">${fmt(debt)}</b></div>
+      <div class="note-box">${esc(S.bookLabel(card))} · đang nợ<br><b class="expense big-amt">${fmtBal(debt)}</b></div>
       <div class="field"><span>Trả từ</span>${userChips('cr-who', users, (p) => `<button type="button" class="chip ${p.id === users[0].id ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản', '<select id="cr-acc" data-acc><option></option></select>')}
       <em class="hint" id="cr-bal"></em>
       ${amountLine({ dateId: 'cr-date', date: todayISO(), amtId: 'cr-amt', amount: fmtNum(debt), label: 'Ngày', after: pfField() })}
-      <button type="button" class="btn ghost small" data-full>Trả toàn bộ ${fmt(debt)}</button>
+      <button type="button" class="btn ghost small" data-full>Trả toàn bộ ${fmtBal(debt)}</button>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'cr-amt');
@@ -1362,7 +1362,7 @@ function creditPaySheet() {
         const accs = await S.peerAccounts(whoId);
         balances.clear();
         for (const a of accs) balances.set(a.id, await S.peerBalance(whoId, a.id));
-        $(sh, '#cr-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmt(balances.get(a.id))}</option>`).join('');
+        $(sh, '#cr-acc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)} — ${fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
       $(sh, '#cr-who').addEventListener('click', (e) => {
@@ -1551,7 +1551,7 @@ async function overCard(b) {
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
   return `<section class="card over-acc" style="--c:${esc(b.color)}">
     <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
-      <span class="ol"><b>${esc(b.icon || kindOf(b).icon)} ${esc(b.name)}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmt(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
+      <span class="ol"><b>${esc(b.icon || kindOf(b).icon)} ${esc(b.name)}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
       <span class="ol ol-sm"><small>${esc(sub)}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
@@ -1649,7 +1649,7 @@ function txView() {
   if (f.tag) chips.push(['tag', '#' + f.tag]);
   const tags = S.allTags().slice(0, 12);
   return `
-  ${topBar(`📒 Giao dịch · Số dư ${fmt(S.totalBalance())}`, `<div class="title-acts">${S.currentProfile().credit ? '<button type="button" class="btn primary small" data-act="credit-pay">💸 Thanh toán</button>' : ''}<button type="button" class="icon-btn" data-act="export-csv" title="Xuất CSV">⬇️</button></div>`)}
+  ${topBar(`📒 Giao dịch · Số dư ${fmtBal(S.totalBalance())}`, `<div class="title-acts">${S.currentProfile().credit ? '<button type="button" class="btn primary small" data-act="credit-pay">💸 Thanh toán</button>' : ''}<button type="button" class="icon-btn" data-act="export-csv" title="Xuất CSV">⬇️</button></div>`)}
   ${periodBar()}
   <div class="filters">
     <input id="tx-q" type="search" placeholder="Tìm ghi chú, danh mục, tag, số tiền…" value="${esc(f.q)}">
@@ -1806,7 +1806,7 @@ function bindDebtHint(sh, amt, getBook) {
     el.hidden = debt == null;
     if (debt == null) return;
     const over = need() > debt;
-    el.textContent = debt > 0 ? `💳 ${book.name} đang nợ ${fmt(debt)}${over ? ' — ⚠️ vượt số nợ' : ''}` : `💳 ${book.name} không còn nợ`;
+    el.textContent = debt > 0 ? `💳 ${book.name} đang nợ ${fmtBal(debt)}${over ? ' — ⚠️ vượt số nợ' : ''}` : `💳 ${book.name} không còn nợ`;
     el.className = 'hint debt-hint' + (over || debt <= 0 ? ' warn-red' : '');
   };
   const load = async () => {
@@ -1994,7 +1994,7 @@ function openTrichForm(pick = null) {
         balances.clear();
         for (const a of accs) balances.set(a.id, await S.peerBalance(fromId, a.id));
         const hideBal = others.find((x) => x.id === fromId)?.owner === S.SECRECY && S.secrecyHidden();
-        $(sh, '#tr-facc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)}${hideBal ? '' : ' — ' + fmt(balances.get(a.id))}</option>`).join('');
+        $(sh, '#tr-facc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(a.icon + ' ' + a.name)}${hideBal ? '' : ' — ' + fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
       $(sh, '#tr-from').addEventListener('click', (e) => {
@@ -2125,8 +2125,8 @@ async function fillNetWorth(root) {
   try {
     const pts = await S.netWorthSeries(S.currentUser().id);
     const now = pts[pts.length - 1].value, first = pts[0].value;
-    setCached(el, key, `<div class="nw-head"><span>Hiện tại <b class="${now < 0 ? 'expense' : ''}">${fmt(now)}</b></span>
-      <span class="${now - first >= 0 ? 'income' : 'expense'}">${fmtSigned(now - first)} <small class="muted">so với ${esc(pts[0].label)}/${esc(pts[0].year)}</small></span></div>${lineChart(pts)}`);
+    setCached(el, key, `<div class="nw-head"><span>Hiện tại <b class="${now < 0 ? 'expense' : ''}">${fmtBal(now)}</b></span>
+      <span class="${now - first >= 0 ? 'income' : 'expense'}">${fmtSigned(now - first)} <small class="muted">so với ${esc(pts[0].label)}/${esc(pts[0].year)}</small></span></div>${lineChart(pts, { fmtLabel: fmtBalShort })}`);
   } catch (err) { console.warn(err); }
 }
 
@@ -3560,7 +3560,7 @@ function bookSettingsView() {
     ${sectionTitle('Tài khoản ngân hàng')}
     <section class="card list">${S.activeAccounts().map((a) => {
       const b = S.accountBalance(a);
-      return `<button type="button" class="row" data-act="acc-edit" data-id="${a.id}"><span class="ci" style="--c:#3e63dd">${esc(a.icon)}</span><span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}</small></span><span class="amt ${b < 0 ? 'expense' : ''}">${fmt(b)}</span></button>`;
+      return `<button type="button" class="row" data-act="acc-edit" data-id="${a.id}"><span class="ci" style="--c:#3e63dd">${esc(a.icon)}</span><span class="grow"><b>${esc(a.name)}</b><small>${esc(accSub(a))}</small></span><span class="amt ${b < 0 ? 'expense' : ''}">${fmtBal(b)}</span></button>`;
     }).join('')}
     ${canAddAccount() ? `<button type="button" class="row add-row" data-act="acc-edit"><span class="ci">＋</span><span class="grow"><b>Thêm tài khoản ngân hàng</b></span></button>` : ''}</section>
 
@@ -4052,14 +4052,14 @@ actions['period-date'] = (el) => {
 };
 actions['period-today'] = (el) => { pOf(el).anchor = todayISO(); refresh(); };
 
-// ----- Nút 👁: che / hiện mọi số tiền -----
-const maskBtn = () => `<button type="button" class="icon-btn mask-btn" data-act="mask-toggle" title="${isMasked() ? 'Hiện số tiền' : 'Che số tiền'}" aria-label="${isMasked() ? 'Hiện số tiền' : 'Che số tiền'}">${isMasked() ? '🙈' : '👁️'}</button>`;
+// ----- Nút 👁: che / hiện số dư (thu, chi, giao dịch, chênh lệch vẫn hiện) -----
+const maskBtn = () => `<button type="button" class="icon-btn mask-btn" data-act="mask-toggle" title="${isMasked() ? 'Hiện số dư' : 'Che số dư'}" aria-label="${isMasked() ? 'Hiện số dư' : 'Che số dư'}">${isMasked() ? '🙈' : '👁️'}</button>`;
 actions['mask-toggle'] = () => {
   setMasked(!isMasked());
   // Các bộ nhớ tạm đang giữ chữ số đã định dạng: bỏ để vẽ lại theo chế độ mới.
   fillCache.clear(); topCache.clear(); overCache.clear();
   refresh();
-  toast(isMasked() ? '🙈 Đã che số tiền' : '👁️ Đã hiện số tiền');
+  toast(isMasked() ? '🙈 Đã che số dư' : '👁️ Đã hiện số dư');
 };
 
 // ----- Tìm trong mọi tài khoản của User -----

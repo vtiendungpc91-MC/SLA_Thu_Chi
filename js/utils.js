@@ -10,7 +10,7 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 const nfVi = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
 const nfVi2 = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 });
 export const fmtNum = (n) => nfVi.format(Math.round(n || 0));
-// Che số tiền (nút 👁): chỉ đổi cách hiển thị, không đổi dữ liệu. Ô nhập vẫn dùng fmtNum nên vẫn thấy số đang gõ.
+// Che số dư (nút 👁): chỉ các chỗ hiện SỐ DƯ dùng fmtBal/fmtBalShort; thu, chi, giao dịch, chênh lệch vẫn hiện số thật.
 const MASK_KEY = 'stc-mask';
 let masked = localStorage.getItem(MASK_KEY) === '1';
 const MASK = '•••••';
@@ -18,13 +18,14 @@ export const isMasked = () => masked;
 export function setMasked(on) { masked = !!on; localStorage.setItem(MASK_KEY, masked ? '1' : '0'); }
 /** Luôn ra số thật: dùng cho file xuất (lịch, ảnh tóm tắt). */
 export const fmtPlain = (n) => fmtNum(n) + ' ₫';
-export const fmt = (n) => (masked ? MASK + ' ₫' : fmtPlain(n));
-export const fmtSigned = (n) => (masked ? MASK + ' ₫' : (n > 0 ? '+' : n < 0 ? '−' : '') + fmtNum(Math.abs(n)) + ' ₫');
+export const fmt = fmtPlain;
+export const fmtBal = (n) => (masked ? MASK + ' ₫' : fmtPlain(n));
+export const fmtSigned = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + fmtNum(Math.abs(n)) + ' ₫';
 export const fmtCur = (amount, code) => (!code || code === 'VND' ? fmt(amount) : nfVi2.format(amount) + ' ' + code);
 
 const oneDec = (x) => (Math.round(x * 10) / 10).toString().replace('.', ',');
+export const fmtBalShort = (n) => (masked ? '•••' : fmtShort(n));
 export function fmtShort(n) {
-  if (masked) return '•••';
   const a = Math.abs(n || 0), s = n < 0 ? '-' : '';
   if (a >= 1e9) return s + oneDec(a / 1e9) + ' tỷ';
   if (a >= 1e6) return s + oneDec(a / 1e6) + 'tr';

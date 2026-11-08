@@ -46,7 +46,7 @@ export function bars(buckets, { height = 170 } = {}) {
 }
 
 /** points: [{ label, value }] — đường tổng tài sản theo tháng, có vạch 0 nếu có tháng âm. */
-export function lineChart(points, { height = 160 } = {}) {
+export function lineChart(points, { height = 160, fmtLabel = fmtShort } = {}) {
   const W = 340, top = 20, bottom = 22, left = 6, right = 6;
   const ch = height - top - bottom;
   const vals = points.map((p) => p.value);
@@ -63,9 +63,9 @@ export function lineChart(points, { height = 160 } = {}) {
   parts.push(`<path d="${line}" class="nw-line"/>`);
   const every = n > 8 ? 2 : 1;
   points.forEach((p, i) => {
-    parts.push(`<circle cx="${x(i)}" cy="${y(p.value)}" r="${i === n - 1 ? 3.5 : 2.2}" class="nw-dot${p.value < 0 ? ' neg' : ''}"><title>${esc(p.label)}: ${esc(fmtShort(p.value))}</title></circle>`);
+    parts.push(`<circle cx="${x(i)}" cy="${y(p.value)}" r="${i === n - 1 ? 3.5 : 2.2}" class="nw-dot${p.value < 0 ? ' neg' : ''}"><title>${esc(p.label)}: ${esc(fmtLabel(p.value))}</title></circle>`);
     if (i % every === (n - 1) % every) parts.push(`<text x="${x(i)}" y="${height - 5}" text-anchor="middle" class="axis">${esc(p.label)}</text>`);
   });
-  parts.push(`<text x="${W}" y="11" text-anchor="end" class="axis">cao nhất ${esc(fmtShort(Math.max(...vals)))}</text>`);
+  parts.push(`<text x="${W}" y="11" text-anchor="end" class="axis">cao nhất ${esc(fmtLabel(Math.max(...vals)))}</text>`);
   return `<svg class="bars nw" viewBox="0 0 ${W} ${height}" preserveAspectRatio="none" role="img" aria-label="Tổng tài sản theo tháng">${parts.join('')}</svg>`;
 }
