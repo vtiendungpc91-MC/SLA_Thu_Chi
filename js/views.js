@@ -531,8 +531,10 @@ actions.books = () => {
       return `<section class="grp-card${g.collapsed ? ' collapsed' : ''}">
         <div class="grp-card-h"><span class="grp-ic" data-group-edit="${esc(g.id)}" role="button" aria-label="Sửa">${esc(g.icon || S.GROUP_TYPES[g.type].icon)}<i>✎</i></span>
           <b>${esc(g.name)}</b><small>${S.GROUP_TYPES[g.type].label} · ${books.length} mục</small>
-          <button type="button" class="ptile-del" data-group-del="${esc(g.id)}" aria-label="Xóa ${esc(S.GROUP_TYPES[g.type].label)}">🗑</button>
-          <button type="button" class="grp-toggle" data-group-toggle="${esc(g.id)}" aria-label="Ẩn/hiện danh sách" aria-expanded="${g.collapsed ? 'false' : 'true'}">▾</button></div>
+          <span class="grp-acts">
+            <button type="button" class="grp-btn grp-toggle" data-group-toggle="${esc(g.id)}" aria-label="Ẩn/hiện danh sách" aria-expanded="${g.collapsed ? 'false' : 'true'}">▾</button>
+            <button type="button" class="grp-btn grp-del" data-group-del="${esc(g.id)}" aria-label="Xóa ${esc(S.GROUP_TYPES[g.type].label)}">🗑</button>
+          </span></div>
         <div class="tile-grid one-col">${books.map((b) => tileHtml({
           attr: 'switch', id: b.id, color: b.color, av: avatar(b, 'ptile-av'), name: b.name + (b.locked ? ' 🔒' : ''), on: b.id === cur,
           sum: `<span class="psum" data-psum="${esc(b.id)}">…</span>`, del: mine.length > 1, iconEdit: true,

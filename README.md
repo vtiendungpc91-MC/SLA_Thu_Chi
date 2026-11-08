@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.23.0 (09/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.23.1 (09/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
