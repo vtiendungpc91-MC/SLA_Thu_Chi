@@ -4,7 +4,7 @@ Web app (PWA): cài lên màn hình chính iPhone/Android như app thật, chạ
 Dữ liệu chỉ lưu trên thiết bị (IndexedDB), không gửi lên server nào.
 
 - **Link app:** https://vtiendungpc91-mc.github.io/SLA_Thu_Chi/
-- **Phiên bản khi ghi tài liệu này:** v7.17.0 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
+- **Phiên bản khi ghi tài liệu này:** v7.18.0 (08/11/2026). Phiên bản hiện tại xem ở `VERSION` trong `sw.js`.
 
 ## Cách tổ chức dữ liệu
 
@@ -42,6 +42,11 @@ Màn hình chính là **Tổng quan** của User: 4 thẻ Account, Thấu chi, T
 | **Phần đầu cố định** | Khi cuộn, phần đầu đứng yên: Tổng quan đến dòng thẻ Account, Thấu chi…; Giao dịch và Báo cáo đến dòng Ngày/Tuần/Tháng; Kế hoạch đến dòng thẻ Ngân sách, Mục tiêu…; Cài đặt của mục đến ngay trên nhóm đầu tiên; Cài đặt chung đến hết danh sách chọn User |
 | **Giao dịch** | Lọc theo kỳ, loại và nhiều danh mục đã có trong lịch sử; tìm kiếm; xuất CSV |
 | **Báo cáo** | Theo ngày, tháng, quý, năm hoặc khoảng tự chọn; biểu đồ theo thời gian và danh mục |
+| **Giao diện** | Mỗi loại tài khoản một màu (Account cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ) ở tab, nút +, viền thẻ tài khoản, tiêu đề và nút Đóng. Số tiền thẳng cột. Phần đầu thu gọn khi cuộn. Nút 👁 che mọi số tiền. Chế độ sáng/tối |
+| **Tìm kiếm chung** | Nút 🔎 ở Tổng quan: tìm theo ghi chú, danh mục, tên tài khoản, tag hoặc số tiền trong mọi tài khoản của User; bấm kết quả mở đúng ngày của giao dịch |
+| **Báo cáo thêm** | Biểu đồ tổng tài sản của User 12 tháng (Account + Thấu chi + Tiết kiệm − nợ thẻ). Nút 🖼️ tạo ảnh tóm tắt thu chi của kỳ đang xem để chia sẻ hoặc lưu |
+| **Nhắc sao lưu** | Quá 7 ngày chưa sao lưu (hoặc chưa sao lưu lần nào) thì hiện trong Notifications và dòng thông báo ở Tổng quan |
+| **Face ID / Touch ID** | Bật trong Cài đặt chung → Bảo mật (chỉ hiện khi máy hỗ trợ). Màn khóa có thêm nút mở bằng Face ID; mật khẩu số vẫn luôn dùng được |
 | **Khóa app** | Mật khẩu số khi mở app (mặc định `2024`, nên đổi trong Cài đặt), khóa riêng từng mục được |
 | **Dữ liệu** | Sao lưu **tất cả** vào 1 file `.json` và khôi phục từ file đó; nút Save nhanh. Mỗi lần lưu phải đặt mật khẩu 4 số, file được mã hóa (PBKDF2 + AES-GCM); khôi phục phải nhập đúng mật khẩu. Quên mật khẩu thì không mở được file. File cũ không có mật khẩu vẫn khôi phục được |
 
