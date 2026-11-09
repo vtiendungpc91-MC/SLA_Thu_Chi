@@ -1120,3 +1120,26 @@ html.dark body[data-tab="prepaid"] { --kc-ink: #d0bfff; }
 .grp-btn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; padding: 0; font-size: 15px; line-height: 1; }
 .grp-acts .grp-toggle { margin-left: 0; }
 .grp-del { border: 0; background: var(--over-soft); font-size: 14px; }
+/* v7.25.0: nền dòng tên Bank theo màu icon Account của Bank đó (nhạt hơn) */
+.grp-card-h.tinted { background: color-mix(in srgb, var(--gc) 18%, var(--card)); border-radius: 12px; padding: 6px 8px; margin: -2px -2px 8px; }
+html.dark .grp-card-h.tinted { background: color-mix(in srgb, var(--gc) 30%, var(--card)); }
+.grp-card.collapsed .grp-card-h.tinted { margin-bottom: -2px; }
+/* Chữ nút nhanh: Chi/Transfer đỏ, Thu/Get In xanh lá */
+.quick-btn.q-expense, .quick-btn.q-gop, .quick-btn.q-card { color: #c62f35; }
+.quick-btn.q-income, .quick-btn.q-trich { color: #18794e; }
+html.dark .quick-btn.q-expense, html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { color: #ff8a8f; }
+html.dark .quick-btn.q-income, html.dark .quick-btn.q-trich { color: #4ee39b; }
+/* v7.26.0: icon XÓA (thùng rác trắng trên hình tròn xanh → tím) */
+.del-ic { display: inline-grid; place-items: center; width: 100%; height: 100%; min-width: 22px; min-height: 22px; border-radius: 50%;
+  background: linear-gradient(180deg, #3fc0ea 0%, #3a8fdc 50%, #6b4fc2 100%); box-shadow: 0 1px 3px rgba(40, 60, 140, .35); line-height: 0; }
+.del-ic svg { width: 100%; height: 100%; display: block; }
+.ptile-del, .grp-del, [data-act="secrecy-del"] { background: transparent !important; padding: 0; border: 0; overflow: visible; }
+.ptile-del .del-ic, .grp-del .del-ic { width: 100%; height: 100%; }
+[data-act="secrecy-del"] .del-ic { width: 30px; height: 30px; }
+.ci.ci-del { background: transparent; }
+.ci.ci-del .del-ic { width: 34px; height: 34px; }
+.ptile-del:active .del-ic, .grp-del:active .del-ic { filter: brightness(.9); transform: scale(.94); }
+/* Kế hoạch chung của User: tiêu đề từng Ngân hàng */
+.plan-book { display: flex; align-items: center; gap: 6px; margin: 14px 4px 6px; font-size: 14px; }
+.notif-row[data-plan-open] { border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); }
+.row[disabled] { opacity: .5; }

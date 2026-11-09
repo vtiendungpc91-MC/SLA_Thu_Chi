@@ -87,6 +87,11 @@ export const BANK_LOGOS = [
 export const BANK_SEP = '\u2063';
 export const bankIcon = (code) => '🏦' + BANK_SEP + code;
 const bankOf = (code) => BANK_LOGOS.find((l) => l.code === code);
+/** Màu huy hiệu nếu icon là logo ngân hàng, không thì null. */
+export const bankColorOf = (icon) => {
+  const m = /🏦⁣([A-Z]{2,6})/.exec(String(icon || ''));
+  return (m && bankOf(m[1])?.bg) || null;
+};
 ICONS.push(...BANK_LOGOS.map((l) => ({ icon: bankIcon(l.code), kw: `logo ngan hang bank ${plain(l.name)} ${l.code.toLowerCase()}` })));
 
 const TOKEN_RE = /🏦\u2063([A-Z]{2,6})/g;

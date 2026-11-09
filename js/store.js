@@ -1226,9 +1226,63 @@ export async function payDebt(debt, { amount, accountId, date, pf = null }) {
   await put('debts', debt);
 }
 
+/**
+ * Trả nợ bằng tiền của mục khác (Bank khác của cùng User): ghi khoản chi ở mục trả, rồi cập nhật khoản nợ
+ * ở mục của khoản nợ. Mục trả là mục của khoản nợ thì giống payDebt. Kết thúc ở mục của khoản nợ.
+ */
+export async function payDebtFrom(debtId, debtBookId, { payerBookId, amount, accountId, date }) {
+  amount = Math.round(amount);
+  if (payerBookId === debtBookId) {
+    if (currentProfile().id !== debtBookId) await switchProfile(debtBookId);
+    const d = state.debts.find((x) => x.id === debtId);
+    if (!d) throw new Error('Không tìm thấy khoản nợ');
+    await payDebt(d, { amount, accountId, date });
+    return d;
+  }
+  if (currentProfile().id !== debtBookId) await switchProfile(debtBookId);
+  const debt = state.debts.find((x) => x.id === debtId);
+  if (!debt) throw new Error('Không tìm thấy khoản nợ');
+  await switchProfile(payerBookId);
+  const err = fundsError(accountId, amount);
+  if (err) { await switchProfile(debtBookId); throw new Error(err); }
+  const cat = sysCat('debt');
+  const tx = await put('transactions', {
+    type: 'expense', amount, currency: 'VND', rate: 1, amountVnd: amount, date,
+    categoryId: cat ? cat.id : null, accountId, note: 'Trả nợ ' + debtName(debt), tags: [], splits: null,
+    photoIds: [], debtId, createdAt: Date.now(),
+  }, { silent: true });
+  await switchProfile(debtBookId);
+  const d = state.debts.find((x) => x.id === debtId);
+  d.history = [...(d.history || []), { dueDate: d.dueDate, paidDate: date, amount, txId: tx.id, bookId: payerBookId, periodsLeft: d.periodsLeft }];
+  if (d.repeat === 'monthly' && (d.periodsLeft == null || d.periodsLeft > 1)) {
+    d.dueDate = addMonths(d.dueDate, 1, d.dueDay);
+    if (d.periodsLeft != null) d.periodsLeft--;
+  } else {
+    d.done = true;
+    if (d.periodsLeft != null) d.periodsLeft = 0;
+  }
+  await put('debts', d);
+  return d;
+}
+
+/** Chạy fn() đồng bộ với state tạm là dữ liệu của mục b (đọc từ database), rồi trả state lại như cũ. */
+export async function withBook(b, fn) {
+  if (b.id === currentProfile().id) return fn();
+  const { peer } = await openPeerBook(b.id);
+  const data = { settings: { ...DEFAULT_SETTINGS } };
+  for (const s of LIST) data[s] = await peer.getAll(s);
+  for (const r of await peer.getAll('settings')) data.settings[r.key] = r.value;
+  const saved = {};
+  for (const k of Object.keys(data)) saved[k] = state[k];
+  Object.assign(state, data);
+  try { return fn(); } finally { Object.assign(state, saved); }
+}
+
 export async function undoDebtPayment(debt) {
   const last = (debt.history || []).slice(-1)[0];
   if (!last) return;
+  // Lần trả bằng mục khác: xóa khoản chi trong sổ của mục đó.
+  if (last.bookId && last.bookId !== currentProfile().id) await dbOf(last.bookId).del('transactions', last.txId);
   const tx = state.transactions.find((t) => t.id === last.txId);
   if (tx) await remove('transactions', tx.id, { silent: true });
   debt.history = debt.history.slice(0, -1);
