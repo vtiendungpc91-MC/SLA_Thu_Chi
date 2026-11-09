@@ -1091,6 +1091,7 @@ function statFlowForm(item = null) {
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Đầu tư chứng khoán">`)}
       ${statIconField(src.icon || STATS.flow.icon)}
+      ${statPeriodField(src)}
       <p class="muted small">Chỉ lấy các khoản <b>Transfer / Get In</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Transfer từ A cho B, hoặc B Get In từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>🔁 Luồng tiền lấy vào</span><div id="is-rules"></div>
         <button type="button" class="btn ghost small" data-add-rule>＋ Thêm luồng</button></div>
@@ -1102,6 +1103,7 @@ function statFlowForm(item = null) {
     onMount(sh, close) {
       bindStatDel(sh, item, close);
       const getIcon = bindStatIcon(sh, src.icon || STATS.flow.icon);
+      const getPeriod = bindStatPeriod(sh, src);
       const renderRules = () => {
         $(sh, '#is-rules').innerHTML = rules.map((r, i) => `<div class="rule-row" data-i="${i}">
           <select data-k="from">${opts(r.from)}</select><span class="rule-arrow">→</span><select data-k="to">${opts(r.to)}</select>
@@ -1131,7 +1133,7 @@ function statFlowForm(item = null) {
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (rules.some((r) => r.from === r.to)) return toast('Mục nguồn và mục đích phải khác nhau');
-        await saveStat(item, { type: 'flow', name: $(sh, '#st-name').value.trim(), icon: getIcon(), rules, flowCats: [...picked] });
+        await saveStat(item, { type: 'flow', name: $(sh, '#st-name').value.trim(), icon: getIcon(), period: getPeriod(), rules, flowCats: [...picked] });
         close();
         toast('Đã lưu thiết lập thống kê');
       });
@@ -1152,6 +1154,7 @@ function statTrackForm(item = null) {
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Chi tiêu gia đình">`)}
       ${statIconField(src.icon || STATS.track.icon)}
+      ${statPeriodField(src)}
       <p class="muted small">Lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, thuộc các danh mục bạn tích. Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>📒 Lấy từ các mục</span><div class="check-list one" id="ts-books">${books.map((b) =>
         `<label class="check"><input type="checkbox" value="${esc(b.id)}" ${pickedBooks.has(b.id) ? 'checked' : ''}> ${esc(b.icon + ' ' + S.bookLabel(b))}</label>`).join('')}</div></div>
@@ -1161,6 +1164,7 @@ function statTrackForm(item = null) {
     onMount(sh, close) {
       bindStatDel(sh, item, close);
       const getIcon = bindStatIcon(sh, src.icon || STATS.track.icon);
+      const getPeriod = bindStatPeriod(sh, src);
       const load = async () => {
         const names = await S.categoryNamesOf([...pickedBooks]);
         const box = (type, title, set) => `<div class="field"><span>${title}</span><div class="check-list">${names[type].map(([n, ic]) =>
@@ -1180,7 +1184,7 @@ function statTrackForm(item = null) {
         e.preventDefault();
         if (!pickedBooks.size) return toast('Chọn ít nhất 1 mục');
         if (!inc.size && !exp.size) return toast('Chọn ít nhất 1 danh mục thu hoặc chi');
-        await saveStat(item, { type: 'track', name: $(sh, '#st-name').value.trim(), icon: getIcon(), books: [...pickedBooks], income: [...inc], expense: [...exp] });
+        await saveStat(item, { type: 'track', name: $(sh, '#st-name').value.trim(), icon: getIcon(), period: getPeriod(), books: [...pickedBooks], income: [...inc], expense: [...exp] });
         close();
         toast('Đã lưu thiết lập thống kê');
       });
@@ -1247,6 +1251,32 @@ function bindStatIcon(sh, start) {
   bindIconPicker($(sh, '#st-icons'), (v) => { icon = v; $(sh, '#st-icon-now').textContent = v; }, () => icon);
   return () => icon;
 }
+/**
+ * Kỳ của thống kê: đặt riêng trong thiết lập, không theo ô chọn Ngày/Tuần/Tháng ở Tổng quan.
+ * Thống kê tạo trước khi có lựa chọn này tính theo Tháng.
+ */
+const STAT_PERIODS = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['all', 'ALL']];
+const STAT_PERIOD_DEFAULT = 'month';
+const statPeriod = (st) => (STAT_PERIODS.some(([k]) => k === st.period) ? st.period : STAT_PERIOD_DEFAULT);
+const statPeriodLabel = (st) => STAT_PERIODS.find(([k]) => k === statPeriod(st))[1];
+function statRange(st) {
+  const p = statPeriod(st);
+  if (p === 'all') return { start: '0000-01-01', end: '9999-12-31', label: 'Tất cả thời gian' };
+  return getRange(p, todayISO(), state.settings.weekStart);
+}
+const statPeriodField = (st) => `<div class="field"><span>🗓️ Thống kê theo</span><div class="seg" id="st-period">${STAT_PERIODS.map(([k, l]) =>
+  `<button type="button" data-p="${k}" class="${statPeriod(st) === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <small class="muted">ALL = tất cả thời gian. Ô chọn Ngày/Tuần/Tháng ở Tổng quan không đổi số liệu của thống kê này.</small></div>`;
+function bindStatPeriod(sh, st) {
+  let p = statPeriod(st);
+  $(sh, '#st-period').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-p]');
+    if (!b) return;
+    p = b.dataset.p;
+    sh.querySelectorAll('#st-period [data-p]').forEach((x) => x.classList.toggle('on', x === b));
+  });
+  return () => p;
+}
 const statDelBtn = (item) => (item ? '<div class="actions"><button type="button" class="btn danger" data-stat-del>Xóa thống kê</button></div>' : '');
 function bindStatDel(sh, item, close) {
   $(sh, '[data-stat-del]')?.addEventListener('click', async () => {
@@ -1279,7 +1309,7 @@ function statRow(t) {
     <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
 }
 
-/** Bấm dòng thống kê ở Tổng quan: xem chi tiết theo kỳ đang chọn. */
+/** Bấm dòng thống kê ở Tổng quan: xem chi tiết theo kỳ đã đặt trong thiết lập của thống kê. */
 actions['stat-open'] = async (el) => {
   const { id, book } = el.dataset;
   await inBook(book);
@@ -1287,7 +1317,7 @@ actions['stat-open'] = async (el) => {
   if (!st) return;
   const m = await STATS[st.type].load(st);
   if (!m.configured) return STATS[st.type].form(st);
-  const r = overRange();
+  const r = statRange(st);
   const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
   const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
   openSheet({
@@ -1322,7 +1352,7 @@ function statSettingsHtml() {
   return `${sectionTitle(`📊 Thống kê <small class="muted">(${list.length}/${S.STAT_MAX})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="statListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
   ${open ? `<section class="card list">${list.map((st) => `<div class="row quick-row">
       <button type="button" class="grow-btn" data-act="stat-setup" data-id="${esc(st.id)}"><span class="ci">${esc(statIcon(st))}</span>
-        <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label}</small></span><span>✎</span></button>
+        <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label} · theo ${esc(statPeriodLabel(st))}</small></span><span>✎</span></button>
       <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-stat-show="${esc(st.id)}" ${st.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
     ${list.length < S.STAT_MAX ? '<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b></span></button>' : ''}
   </section>` : ''}`;
@@ -1718,10 +1748,12 @@ async function overCard(b) {
   if (!isCard) {
     for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
       const m = await STATS[x.type].load(x);
-      const list = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
+      // Kỳ riêng của thống kê, không theo ô chọn Ngày/Tuần/Tháng của Tổng quan.
+      const sr = statRange(x);
+      const list = m.txs.filter((t) => t.date >= sr.start && t.date <= sr.end);
       const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
       stats += `<button type="button" class="stat-line" data-act="stat-open" data-id="${esc(x.id)}" data-book="${esc(b.id)}">
-        <span class="grow"><b>${esc(statIcon(x))} ${esc(statName(x))}</b><small>${m.configured ? `Thu ${fmtShort(inc)} · Chi ${fmtShort(exp)}` : 'Chưa thiết lập nguồn'}</small></span>
+        <span class="grow"><b>${esc(statIcon(x))} ${esc(statName(x))} <small class="stat-per">· ${esc(statPeriodLabel(x))}</small></b><small>${m.configured ? `Thu ${fmtShort(inc)} · Chi ${fmtShort(exp)}` : 'Chưa thiết lập nguồn'}</small></span>
         ${m.configured ? `<strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong>` : ''}<i>›</i></button>`;
     }
   }
@@ -2859,7 +2891,7 @@ function debtQuickPay(d) {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">💸 Trả</button>`,
     body: `<form class="form" id="${formId}">
       ${bankRoute('dq-route', me, null)}
-      <p class="quick-info">Trả nợ kỳ ${fmtDate(d.dueDate)}<br><small>Từ tài khoản: ${esc(accTitle(acc))}</small></p>
+      <p class="quick-info">Trả nợ kỳ ${fmtDate(d.dueDate)}<br><small>Từ tài khoản: <b class="acc-out">${esc(accTitle(acc))}</b></small></p>
       ${amountLine({ dateId: 'dq-date', date: todayISO(), amtId: 'dq-amt', amount: fmtNum(d.amount), big: true })}
       <em class="hint" id="dq-bal"></em>
       <p class="muted small">Đã điền số tiền thiết lập, kỳ này khác thì sửa lại. Các kỳ sau vẫn theo số thiết lập.</p>
@@ -3103,13 +3135,15 @@ function recKinds() {
 }
 /** Câu ghi rõ tiền ra từ đâu, vào đâu. */
 function recRoute(kind, me, myAcc, peer, peerAccName) {
-  const mine = `<span class="br-ic sm">${esc(bankIconOf(me))}</span> <b>${esc(me.name)}</b>`;
-  const other = peer ? `<span class="br-ic sm">${esc(bankIconOf(peer))}</span> <b>${esc(peer.name)}</b>` : '<i>chưa chọn</i>';
+  // Tên bên trừ tiền màu đỏ, bên nhận tiền màu xanh lá.
+  const name = (b, dir) => `<span class="br-ic sm">${esc(bankIconOf(b))}</span> <b class="acc-${dir}">${esc(b.name)}</b>`;
+  const mineOut = name(me, 'out'), mineIn = name(me, 'in');
+  const other = (dir) => (peer ? name(peer, dir) : '<i>chưa chọn</i>');
   return {
-    expense: `💸 Tiền <b class="expense">ra</b> từ ${mine}`,
-    income: `💰 Tiền <b class="income">vào</b> ${mine}`,
-    gop: `🤝 Tiền <b class="expense">ra</b> từ ${mine}<br>→ <b class="income">vào</b> ${other}`,
-    trich: `🔄 Tiền <b class="expense">ra</b> từ ${other}<br>→ <b class="income">vào</b> ${mine}`,
+    expense: `💸 Tiền <b class="expense">ra</b> từ ${mineOut}`,
+    income: `💰 Tiền <b class="income">vào</b> ${mineIn}`,
+    gop: `🤝 Tiền <b class="expense">ra</b> từ ${mineOut}<br>→ <b class="income">vào</b> ${other('in')}`,
+    trich: `🔄 Tiền <b class="expense">ra</b> từ ${other('out')}<br>→ <b class="income">vào</b> ${mineIn}`,
   }[kind];
 }
 
@@ -3491,6 +3525,9 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
         const me = S.currentProfile();
         $(sh, '#tf-route').innerHTML = f.type === 'income' ? bankRouteHtml(null, me) : f.type === 'transfer' ? bankRouteHtml(me, me) : bankRouteHtml(me, null);
+        // Ô tài khoản: Thu = nhận tiền (xanh lá), Chi/chuyển = trừ tiền (đỏ).
+        $(sh, '#tf-acc').classList.toggle('acc-in', f.type === 'income');
+        $(sh, '#tf-acc').classList.toggle('acc-out', f.type !== 'income');
         const tr = f.type === 'transfer';
         $(sh, '#tf-cat').hidden = tr;
         $(sh, '#tf-split-wrap').hidden = tr;
@@ -3701,12 +3738,13 @@ function openAddForm(pick, { type = 'expense', repeat = 'none' } = {}) {
 /** Logo của Bank/Ví chứa mục (NEOBANK, mục chưa có Bank thì dùng icon của mục). */
 const bankIconOf = (b) => S.groupOf(b)?.icon || b?.icon || '🏦';
 /** Một bên của dòng từ → đến: logo Bank rồi tên mục (Account, Thấu chi, Tiết kiệm, Thẻ tín dụng). */
-function bankSide(b, label) {
+/** dir: 'out' = mục bị trừ tiền (tên đỏ), 'in' = mục nhận tiền (tên xanh lá), trống = không tô màu. */
+function bankSide(b, label, dir = '') {
   if (!b) return '';
-  return `<span class="br-side" title="${esc(label)}"><span class="br-ic">${esc(bankIconOf(b))}</span><span class="br-txt"><b>${esc(b.name)}</b></span></span>`;
+  return `<span class="br-side" title="${esc(label)}"><span class="br-ic">${esc(bankIconOf(b))}</span><span class="br-txt"><b${dir ? ` class="acc-${dir}"` : ''}>${esc(b.name)}</b></span></span>`;
 }
 /** from: mục bị trừ tiền; to: mục nhận tiền (một trong hai có thể trống, vd Chi chỉ có from). */
-const bankRouteHtml = (from, to) => [from && bankSide(from, 'Chi từ'), to && bankSide(to, 'Nhận vào')].filter(Boolean).join('<span class="br-arrow">→</span>');
+const bankRouteHtml = (from, to) => [from && bankSide(from, 'Chi từ', 'out'), to && bankSide(to, 'Nhận vào', 'in')].filter(Boolean).join('<span class="br-arrow">→</span>');
 const bankRoute = (id, from, to) => `<div class="bank-route" id="${id}">${bankRouteHtml(from, to)}</div>`;
 
 /** Dòng chọn tài khoản giao dịch, chỉ hiện khi thẻ đó có từ 2 tài khoản. */
@@ -3825,7 +3863,7 @@ actions['quick-run'] = async (el) => {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">OK</button>`,
     body: `<form class="form" id="${formId}">
       ${k === 'card' ? '' : bankRoute('qr-route', k === 'expense' || k === 'gop' ? S.currentProfile() : k === 'trich' ? peer : null, k === 'income' || k === 'trich' ? S.currentProfile() : k === 'gop' ? peer : null)}
-      <p class="quick-info">${esc(quickDesc(k, q))}${k !== 'card' ? `<br><small>${outgoing ? 'Từ' : 'Vào'} tài khoản: ${esc(accTitle(acc))}</small>` : ''}</p>
+      <p class="quick-info">${esc(quickDesc(k, q))}${k !== 'card' ? `<br><small>${outgoing ? 'Từ' : 'Vào'} tài khoản: <b class="acc-${outgoing ? 'out' : 'in'}">${esc(accTitle(acc))}</b></small>` : ''}</p>
       ${amountLine({ dateId: 'qr-date', date: todayISO(), amtId: 'qr-amt', big: true, after: debtHintEl + pfField() })}
       <em class="hint" id="qr-bal"></em>
     </form>`,

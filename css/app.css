@@ -1153,3 +1153,27 @@ html.dark .quick-btn.q-income, html.dark .quick-btn.q-trich { color: #4ee39b; }
 /* Thanh tiêu đề: ✕ góc trái, nút Lưu sát lề phải */
 .sheet-head { padding-right: 10px; }
 .sheet-head .head-save { margin-left: auto; }
+/* v7.28.0: tên tài khoản trong màn hình giao dịch: trừ tiền đỏ, nhận tiền xanh lá */
+.acc-out, .br-txt b.acc-out, .rec-route b.acc-out { color: #d1242f; }
+.acc-in, .br-txt b.acc-in, .rec-route b.acc-in { color: #18794e; }
+html.dark .acc-out, html.dark .br-txt b.acc-out, html.dark .rec-route b.acc-out { color: #ff8a8f; }
+html.dark .acc-in, html.dark .br-txt b.acc-in, html.dark .rec-route b.acc-in { color: #4ee39b; }
+select.acc-out, #gf-from, #tr-facc, #cp-acc, #cr-acc, #dp-acc, #df-acc { color: #d1242f; font-weight: 600; }
+select.acc-in, #gf-toacc, #tr-to, #tf-to { color: #18794e; font-weight: 600; }
+html.dark select.acc-out, html.dark #gf-from, html.dark #tr-facc, html.dark #cp-acc, html.dark #cr-acc, html.dark #dp-acc, html.dark #df-acc { color: #ff8a8f; }
+html.dark select.acc-in, html.dark #gf-toacc, html.dark #tr-to, html.dark #tf-to { color: #4ee39b; }
+#gf-to-name { color: #18794e; } #tr-from-name { color: #d1242f; }
+html.dark #gf-to-name { color: #4ee39b; } html.dark #tr-from-name { color: #ff8a8f; }
+/* Số tiền khi nhập: xanh dương */
+.sheet-body input.money, .sheet-body input.amount-input { color: #1f6feb; }
+html.dark .sheet-body input.money, html.dark .sheet-body input.amount-input { color: #58a6ff; }
+/* Nút nhanh: bỏ màu nền, giữ viền và màu chữ */
+.quick-btn.q-expense, .quick-btn.q-income, .quick-btn.q-gop, .quick-btn.q-card, .quick-btn.q-trich { background: var(--card) !important; border-width: 1.5px; border-style: solid; }select[data-acc].acc-out, select[data-acc].acc-out:disabled, #gf-from, #gf-from:disabled, #tr-facc, #tr-facc:disabled, #cp-acc, #cp-acc:disabled, #cr-acc, #cr-acc:disabled, #dp-acc, #dp-acc:disabled, #df-acc, #df-acc:disabled { color: #d1242f; -webkit-text-fill-color: #d1242f; font-weight: 600; }
+select[data-acc].acc-in, select[data-acc].acc-in:disabled, #gf-toacc, #gf-toacc:disabled, #tr-to, #tr-to:disabled, #tf-to, #tf-to:disabled { color: #18794e; -webkit-text-fill-color: #18794e; font-weight: 600; }
+html.dark select[data-acc].acc-out, html.dark select[data-acc].acc-out:disabled, html.dark #gf-from, html.dark #gf-from:disabled, html.dark #tr-facc, html.dark #tr-facc:disabled, html.dark #cp-acc, html.dark #cp-acc:disabled, html.dark #cr-acc, html.dark #cr-acc:disabled, html.dark #dp-acc, html.dark #dp-acc:disabled, html.dark #df-acc, html.dark #df-acc:disabled { color: #ff8a8f; -webkit-text-fill-color: #ff8a8f; }
+html.dark select[data-acc].acc-in, html.dark select[data-acc].acc-in:disabled, html.dark #gf-toacc, html.dark #gf-toacc:disabled, html.dark #tr-to, html.dark #tr-to:disabled, html.dark #tf-to, html.dark #tf-to:disabled { color: #4ee39b; -webkit-text-fill-color: #4ee39b; }
+.sheet-body input.money, .sheet-body input.amount-input { -webkit-text-fill-color: #1f6feb; }
+html.dark .sheet-body input.money, html.dark .sheet-body input.amount-input { -webkit-text-fill-color: #58a6ff; }
+.sheet-body input.money::placeholder, .sheet-body input.amount-input::placeholder { -webkit-text-fill-color: var(--muted); color: var(--muted); }
+/* v7.29.0: nhãn kỳ của thống kê ở Tổng quan (sau tên) */
+.stat-line .stat-per { display: inline; font-size: 11px; font-weight: 500; color: var(--muted); margin: 0; }
