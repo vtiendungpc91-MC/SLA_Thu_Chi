@@ -1971,6 +1971,11 @@ function byUser(books) {
 }
 const sortByUser = (books) => byUser(books).flatMap((g) => g.books);
 /** Các nút chọn mục, chia nhóm theo User. chip(b) trả về HTML một nút. */
+/** Ô chọn 1 dòng (droplist) các mục, chia nhóm theo Bank như userChips. */
+// Trong droplist không vẽ được huy hiệu logo: bỏ mã logo, chỉ để 🏦.
+const plainIcon = (s) => String(s || '').replace(/🏦⁣[A-Z]{2,6}/g, '🏦');
+const bookSelect = (id, books, selectedId) => `<select id="${id}" class="book-select">${byUser(books).map((g) =>
+  `<optgroup label="${esc(plainIcon(g.label))}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${esc(plainIcon(p.icon))} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
 const userChips = (id, books, chip) => `<div class="user-groups" id="${id}">${byUser(books).map((g) =>
   `<div class="user-group"><small>${esc(g.label)}</small><div class="chips">${g.books.map(chip).join('')}</div></div>`).join('')}</div>`;
 
@@ -2083,7 +2088,7 @@ function openGopForm(pick = null) {
       ${bookPick(pick)}
       ${bankRoute('gf-route', me, others[0])}
       <p class="muted small">Sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
-      <div class="field"><span>Transfer cho</span>${userChips('gf-to', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-to="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
+      ${field('Transfer cho', bookSelect('gf-to', others, others[0].id))}
       ${field('Từ tài khoản', `<select id="gf-from" data-acc>${accOptions(state.settings.lastAccount, true)}</select>`)}
       <em class="hint" id="gf-bal"></em>
       ${amountLine({ dateId: 'gf-date', date: todayISO(), amtId: 'gf-amt', after: debtHintEl + pfField() })}
@@ -2112,11 +2117,8 @@ function openGopForm(pick = null) {
         const accs = banks.length ? banks : all;
         $(sh, '#gf-toacc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))}</option>`).join('');
       };
-      $(sh, '#gf-to').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-to]');
-        if (!b) return;
-        toId = b.dataset.to;
-        sh.querySelectorAll('[data-to]').forEach((x) => x.classList.toggle('on', x === b));
+      $(sh, '#gf-to').addEventListener('change', (e) => {
+        toId = e.target.value;
         pfc.setNeeded(S.pfNeeded(me.id, toId));
         debtH.load();
         loadPeer();
@@ -2201,7 +2203,7 @@ function openTrichForm(pick = null) {
       ${bookPick(pick)}
       ${bankRoute('tr-route', others[0], me)}
       <p class="muted small">Rút tiền từ mục khác về <b>${esc(S.bookLabel(me))}</b>: sổ nguồn ghi một khoản <b class="expense">chi</b>, sổ này ghi một khoản <b class="income">thu</b>. Nguồn phải đủ số dư (riêng Thấu chi được âm, vượt hạn mức sẽ cảnh báo).</p>
-      <div class="field"><span>Get In từ</span>${userChips('tr-from', others, (p) => `<button type="button" class="chip ${p.id === others[0].id ? 'on' : ''}" data-from="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
+      ${field('Get In từ', bookSelect('tr-from', others, others[0].id))}
       ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc" data-acc><option></option></select>`)}
       <em class="hint" id="tr-bal"></em>
       ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt', after: debtHintEl + pfField() })}
@@ -2242,11 +2244,8 @@ function openTrichForm(pick = null) {
         $(sh, '#tr-facc').innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))}${hideBal ? '' : ' — ' + fmtBal(balances.get(a.id))}</option>`).join('');
         updBal();
       };
-      $(sh, '#tr-from').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-from]');
-        if (!b) return;
-        fromId = b.dataset.from;
-        sh.querySelectorAll('[data-from]').forEach((x) => x.classList.toggle('on', x === b));
+      $(sh, '#tr-from').addEventListener('change', (e) => {
+        fromId = e.target.value;
         pfc.setNeeded(S.pfNeeded(me.id, fromId));
         loadPeer();
       });
