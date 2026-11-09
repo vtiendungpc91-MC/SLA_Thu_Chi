@@ -216,7 +216,15 @@ function guardSheetTouch(wrap) {
     if (e.touches.length > 1) return;
     const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
     lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
-    if (Math.abs(dx) > Math.abs(dy)) return; // Vuốt ngang: dải nút cuộn ngang.
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Vuốt ngang/xéo: chỉ cho dải nút thật sự cuộn ngang được chạy; còn lại chặn để màn hình không lệch trái/phải.
+      if (e.target.closest?.('input, textarea')) return;
+      for (let el = e.target; el && el !== wrap; el = el.parentElement) {
+        if (/(auto|scroll)/.test(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1 && !el.classList.contains('sheet-body')) return;
+      }
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
     for (let el = e.target; el && el !== wrap; el = el.parentElement) {
       if (!/(auto|scroll)/.test(getComputedStyle(el).overflowY) || el.scrollHeight <= el.clientHeight + 1) continue;
       const atTop = el.scrollTop <= 0, atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
@@ -234,6 +242,30 @@ function guardSheetTouch(wrap) {
 
 // Sheet vừa đóng trong cùng lượt xử lý: sheet mở ngay sau đó thay thế tức thì, không trượt xuống rồi trượt lên.
 let justClosed = null;
+
+/**
+ * Mọi màn hình có nút Lưu / Xác nhận: đưa nút đó lên dòng đầu, sát lề phải (góc trái là nút ✕).
+ * Nút submit chính ở cuối form được chuyển thành nút trên thanh tiêu đề (form="id"), giữ nguyên chữ.
+ */
+let formSeq = 0;
+function liftSaveButton(wrap) {
+  const body = wrap.querySelector('.sheet-body');
+  const form = body.querySelector('form');
+  if (!form) return;
+  const btn = [...form.querySelectorAll('button.btn.primary')].find((b) => (b.getAttribute('type') || 'submit') === 'submit');
+  if (!btn) return;
+  if (!form.id) form.id = 'sf-' + Date.now() + '-' + (++formSeq);
+  const head = wrap.querySelector('.sheet-head');
+  const save = document.createElement('button');
+  save.type = 'submit';
+  save.setAttribute('form', form.id);
+  save.className = 'btn primary small head-save';
+  save.innerHTML = btn.innerHTML;
+  head.querySelector('.sp')?.replaceWith(save);
+  const box = btn.parentElement;
+  btn.remove();
+  if (box.classList.contains('actions') && !box.children.length) box.remove();
+}
 
 /** Mở bottom sheet. onMount(sheetEl, close) để gắn sự kiện cho form. */
 /** headAction: HTML đặt ở góc phải thanh tiêu đề (vd: nút Lưu của form). */
@@ -276,6 +308,7 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
   wrap.querySelector('.sheet-bg').addEventListener('click', close);
   wrap.querySelector('[data-close]').addEventListener('click', close);
   const sheet = wrap.querySelector('.sheet');
+  if (!headAction) liftSaveButton(wrap);
   onMount && onMount(sheet, close);
   // Mỗi mục chỉ có 1 tài khoản: ô tài khoản chỉ để xem, không bấm chọn được.
   const lockAccounts = () => sheet.querySelectorAll('select[data-acc]').forEach((s) => { s.disabled = s.options.length <= 1; });

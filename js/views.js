@@ -1443,7 +1443,7 @@ function cardPaySheet(items) {
       ${pfField()}
       ${datePick('cp-date', todayISO(), 'Ngày thanh toán', 'disabled')}
       <p class="muted small">Sổ của người trả sẽ ghi ${items.length > 1 ? 'các' : 'một'} khoản chi tương ứng; khoản của thẻ chuyển sang ✅ Done.</p>
-      <div class="actions"><button class="btn primary">💸 Thanh toán ${fmt(total)}</button></div>
+      <div class="actions"><button class="btn primary">💸 Trả</button></div>
     </form>`,
     onMount(sh, close) {
       let whoId = users[0].id;
@@ -3261,7 +3261,7 @@ async function recurringConfirm(r) {
       <em class="hint" id="rcc-bal"></em>
       ${pfField()}
       <p class="muted small">Đã điền số tiền đã đặt. Kỳ này khác thì sửa lại, các kỳ sau vẫn theo số đã đặt.</p>
-      <div class="actions"><button type="button" class="btn ghost" data-skip>Bỏ qua kỳ này</button><button class="btn primary">✅ Xác nhận</button></div>
+      <div class="actions"><button type="button" class="btn ghost" data-skip>Bỏ qua kỳ này</button></div>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'rcc-amt');
@@ -4610,7 +4610,8 @@ actions.categories = () => {
     onMount(sh, close) {
       const box = $(sh, '#cat-mgr');
       box.addEventListener('click', (e) => {
-        const t = e.target.closest('[data-tab]');
+        // Chỉ nút Chi/Thu trong khung này (body cũng có data-tab để tô màu loại tài khoản).
+        const t = e.target.closest('#cat-mgr [data-tab]');
         if (t) { tab = t.dataset.tab; box.innerHTML = render(); return; }
         const b = e.target.closest('[data-cat]');
         if (b) { close(); categoryForm(state.categories.find((c) => c.id === b.dataset.cat), tab); }

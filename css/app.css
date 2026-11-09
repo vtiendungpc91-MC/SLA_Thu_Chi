@@ -1143,3 +1143,13 @@ html.dark .quick-btn.q-income, html.dark .quick-btn.q-trich { color: #4ee39b; }
 .plan-book { display: flex; align-items: center; gap: 6px; margin: 14px 4px 6px; font-size: 14px; }
 .notif-row[data-plan-open] { border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); }
 .row[disabled] { opacity: .5; }
+/* v7.27.0: sheet không cuộn/lệch ngang; ô nhập (ngày, giờ, chọn, ghi chú) không vượt bề ngang trên iPhone */
+.sheet, .sheet-wrap { overflow-x: hidden; }
+.sheet-body { overflow-x: hidden; overscroll-behavior-x: none; }
+.sheet-body .form, .sheet-body .field, .sheet-body .two > *, .sheet-body .amt-line > *, .sheet-body .detail, .sheet-body .kv > * { min-width: 0; }
+.sheet-body input, .sheet-body select, .sheet-body textarea { max-width: 100%; min-width: 0; box-sizing: border-box; }
+.sheet-body input[type="date"], .sheet-body input[type="time"] { -webkit-appearance: none; appearance: none; width: 100%; }
+.sheet-body .note-box, .sheet-body .kv b { overflow-wrap: anywhere; }
+/* Thanh tiêu đề: ✕ góc trái, nút Lưu sát lề phải */
+.sheet-head { padding-right: 10px; }
+.sheet-head .head-save { margin-left: auto; }
