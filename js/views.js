@@ -3832,9 +3832,12 @@ actions['tx-icon'] = (el) => {
   });
 };
 const saveQuicks = (list) => S.setSetting('quicks', list);
-/** Nút nhanh luôn xếp theo Chi, Thu, Chuyển, Nhận; cùng loại giữ thứ tự tạo. */
+/**
+ * Thứ tự nút nhanh: theo "Thứ tự hiển thị" (pos 1, 2, 3…) đặt trong Cài đặt; ở Tổng quan xếp trái → phải rồi xuống dòng.
+ * Nút chưa có thứ tự đứng sau, xếp theo Chi, Thu, Chuyển, Nhận; cùng loại giữ thứ tự tạo.
+ */
 const QUICK_ORDER = ['expense', 'card', 'income', 'gop', 'trich'];
-const sortQuicks = (list) => [...list].sort((a, b) => QUICK_ORDER.indexOf(a.type) - QUICK_ORDER.indexOf(b.type));
+const sortQuicks = (list) => [...list].sort((a, b) => (a.pos ?? Infinity) - (b.pos ?? Infinity) || QUICK_ORDER.indexOf(a.type) - QUICK_ORDER.indexOf(b.type));
 const myAccount = () => S.activeAccounts()[0];
 const peerOf = (q) => q && q.peerId && S.getProfiles().find((p) => p.id === q.peerId && p.kind !== 'outflow');
 
@@ -3944,9 +3947,10 @@ function quickSettingsHtml() {
   const list = sortQuicks(S.quicksOf().filter((q) => S.quickTypesFor(b).includes(q.type)));
   const open = state.settings.quickListOpen !== false;
   return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${list.length}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
-  ${open ? `<section class="card list">${list.map((q) => `<div class="row quick-row">
+  ${open ? `<section class="card list">${list.length > 1 ? '<p class="muted small qk-pos-note">Ô số bên phải: thứ tự hiển thị ở Tổng quan (trái → phải, hết dòng thì xuống dòng dưới).</p>' : ''}${list.map((q, i) => `<div class="row quick-row">
       <button type="button" class="grow-btn" data-act="quick-edit" data-id="${esc(q.id)}"><span class="ci">${kIcon(q.type)}</span>
         <span class="grow"><b>${esc(q.name)}</b><small>${QUICK_KINDS[q.type].label} · ${esc(quickDesc(q.type, q))}</small></span><span>✎</span></button>
+      ${list.length > 1 ? `<select class="qk-pos" data-quick-pos="${esc(q.id)}" aria-label="Thứ tự hiển thị" title="Thứ tự hiển thị">${list.map((_, j) => `<option value="${j + 1}" ${j === i ? 'selected' : ''}>${j + 1}</option>`).join('')}</select>` : ''}
       <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-quick-show="${esc(q.id)}" ${q.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
     ${list.length < max ? '<button type="button" class="row add-row" data-act="quick-new"><span class="ci">＋</span><span class="grow"><b>Tạo nút nhanh</b></span></button>' : ''}
   </section>` : ''}`;
@@ -4315,6 +4319,19 @@ async function mountSettings(root) {
   root.querySelectorAll('[data-quick-show]').forEach((el) => el.addEventListener('change', async () => {
     await S.setSetting('quicks', S.quicksOf().map((q) => (q.id === el.dataset.quickShow ? { ...q, show: el.checked } : q)));
     toast(el.checked ? 'Đã hiện nút ở Tổng quan' : 'Đã ẩn nút khỏi Tổng quan');
+  }));
+  // Đổi thứ tự hiển thị: đưa nút về vị trí đã chọn, các nút khác dồn lại, rồi đánh số lại 1, 2, 3…
+  root.querySelectorAll('[data-quick-pos]').forEach((el) => el.addEventListener('change', async () => {
+    const types = S.quickTypesFor(S.currentProfile());
+    const list = sortQuicks(S.quicksOf().filter((q) => types.includes(q.type)));
+    const moved = list.find((q) => q.id === el.dataset.quickPos);
+    if (!moved) return;
+    const rest = list.filter((q) => q !== moved);
+    rest.splice(Number(el.value) - 1, 0, moved);
+    const pos = new Map(rest.map((q, i) => [q.id, i + 1]));
+    await S.setSetting('quicks', S.quicksOf().map((q) => (pos.has(q.id) ? { ...q, pos: pos.get(q.id) } : q)));
+    toast(`Đã đặt "${moved.name}" ở vị trí ${el.value}`);
+    refresh();
   }));
   root.querySelectorAll('[data-tab-toggle]').forEach((el) => el.addEventListener('change', async () => {
     await S.setSetting(el.dataset.tabToggle, el.checked);

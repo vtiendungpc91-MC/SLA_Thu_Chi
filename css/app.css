@@ -582,6 +582,9 @@ html.dark .quick-btn.q-income { background: #113222; color: #4ee39b; }
 html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #0f2e2b; color: #4fd1c1; }
 html.dark .quick-btn.q-trich { background: #2a1d40; color: #c4a5f2; }
 .quick-row { gap: 8px; }
+/* Ô chọn thứ tự hiển thị nút nhanh (chữ 16px để iPhone không phóng to) */
+.quick-row .qk-pos { flex: 0 0 auto; width: 54px; height: 34px; min-height: 34px; padding: 0 4px; font-size: 16px; font-weight: 700; text-align: center; text-align-last: center; border-radius: 10px; }
+.qk-pos-note { margin: 0; padding: 8px 14px 0; }
 .quick-row .grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 0; }
 .quick-info { text-align: center; margin: 0; font-weight: 600; }
 .quick-info small { font-weight: 400; color: var(--muted); }
