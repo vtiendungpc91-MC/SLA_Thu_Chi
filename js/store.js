@@ -1533,8 +1533,8 @@ export const QUICK_MAX_SPECIAL = 12;
 /** Account đã bật giao dịch với NEOBANK (Secrecy): 12 nút nhanh (4 dòng × 3 ở Tổng quan). */
 export const quickMax = (b) => (kindOfBook(b) === 'bank' && !b.overdraft && b.neoOk ? QUICK_MAX_SPECIAL : QUICK_MAX[kindOfBook(b)]);
 export const STAT_MAX = 3;
-/** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 10 phút được hủy (Recall). */
-export const RECALL_MS = 10 * 60 * 1000;
+/** Tổng quan luôn hiện 5 giao dịch gần nhất; khoản mới trong 5 phút được hủy (Recall). */
+export const RECALL_MS = 5 * 60 * 1000;
 export const RECALL_LINES = 5;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {

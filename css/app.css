@@ -1061,6 +1061,8 @@ html.dark body[data-tab="credit"] { --kc-ink: #ffa8a8; }
 .pic-ic { display: inline-block; width: 1.3em; height: 1.3em; object-fit: contain; vertical-align: middle; pointer-events: none; }
 /* Nền tối: ảnh nét đen khó thấy nên đặt trên ô sáng */
 html.dark .pic-ic { background: #f4f4f4; border-radius: .3em; padding: .06em; }
+/* Form Thu/Chi: ô chọn Tài khoản thấp hơn 20% (45px → 36px), giữ chữ 16px để iPhone không tự phóng to */
+.txf #tf-acc { height: 36px; min-height: 36px; padding-top: 0; padding-bottom: 0; }
 /* Logo ngân hàng sau tên trên thẻ ở Tổng quan */
 .ol-logo { display: inline-block; margin-left: 2px; vertical-align: middle; }
 .ol-logo .bank-badge.ib { min-width: 30px; height: 18px; font-size: 8.5px; border-radius: 5px; }

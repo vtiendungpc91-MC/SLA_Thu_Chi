@@ -1697,11 +1697,11 @@ function quickRows(list, bookId) {
     ${rows.map(row).join('')}`;
 }
 
-/** Còn được Recall không: mới ghi trong 10 phút, chưa thanh toán (thẻ), không phải khoản trả nợ (có Hoàn tác riêng). */
+/** Còn được Recall không: mới ghi trong 5 phút, chưa thanh toán (thẻ), không phải khoản trả nợ (có Hoàn tác riêng). */
 const canRecall = (t) => Date.now() - (t.createdAt || 0) < S.RECALL_MS && t.status !== 'done' && !t.debtId;
 const txTypeKey = (t) => (t.gop ? (t.gop.mode === 'trich' ? 'trich' : 'gop') : t.type === 'income' ? 'income' : 'expense');
 const txRowName = (t) => t.quick?.name || t.note || t.catName || (t.gop ? gopLabel(t.gop) : 'Giao dịch');
-/** 5 giao dịch gần nhất: khoản mới trong 10 phút có nút Recall; có nút ẩn/hiện. */
+/** 5 giao dịch gần nhất: khoản mới trong 5 phút có nút Recall; có nút ẩn/hiện. */
 function recentRows(list, b) {
   if (!list.length) return '';
   const today = todayISO();
@@ -1728,7 +1728,7 @@ actions['quick-recall'] = async (el) => {
   await inBook(book);
   const t = state.transactions.find((x) => x.id === id);
   if (!t) return refresh();
-  if (!canRecall(t)) { toast('Đã quá 10 phút, muốn xóa hãy vào Giao dịch'); return refresh(); }
+  if (!canRecall(t)) { toast('Đã quá 5 phút, muốn xóa hãy vào Giao dịch'); return refresh(); }
   const pfErr = await removeBlock(t);
   if (pfErr) return toast('⛔ ' + pfErr, 4500);
   if (!confirm(`Hủy khoản ${fmt(t.amountVnd)} "${txRowName({ ...t, catName: S.catById(t.categoryId)?.name })}"?${t.gop ? ' Giao dịch ở mục bên kia cũng bị xóa.' : ''}`)) return;
@@ -1757,7 +1757,8 @@ async function overCard(b) {
         ${m.configured ? `<strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong>` : ''}<i>›</i></button>`;
     }
   }
-  const sub = b.kind === 'card' ? (b.credit && b.limit ? `Hạn mức ${fmtShort(b.limit)}` : S.CARD_TYPES[b.cardType] || '')
+  // Thẻ tín dụng: hiện Khả dụng = hạn mức − dư nợ (số dư âm là đang nợ; trả dư thì khả dụng vượt hạn mức).
+  const sub = b.kind === 'card' ? (b.credit && b.limit ? `Khả dụng ${fmtBal(b.limit - (isCard ? o.balance : -o.balance))}` : S.CARD_TYPES[b.cardType] || '')
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
   const grpName = S.groupOf(b)?.name;
   // Logo ngân hàng đã chọn (của Bank chứa mục, không có thì của chính mục), đặt sau tên.
@@ -1806,7 +1807,7 @@ async function fillOverview(root) {
     // Vẫn đúng nội dung đang hiện thì không đụng vào, tránh vẽ lại vô ích.
     if (overCache.get(key) !== html || !painted) { box.innerHTML = html; fitQuickNames(box); }
     overCache.set(key, html);
-    // Dòng Recall tự biến mất đúng lúc hết 10 phút.
+    // Dòng Recall tự biến mất đúng lúc hết 5 phút.
     clearTimeout(recallTimer);
     if (overExpiry !== Infinity) {
       recallTimer = setTimeout(() => { if (current.route === 'home') refresh(); }, Math.max(1000, overExpiry - Date.now() + 500));
