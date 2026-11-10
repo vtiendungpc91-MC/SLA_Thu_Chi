@@ -1760,9 +1760,11 @@ async function overCard(b) {
   const sub = b.kind === 'card' ? (b.credit && b.limit ? `Hạn mức ${fmtShort(b.limit)}` : S.CARD_TYPES[b.cardType] || '')
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
   const grpName = S.groupOf(b)?.name;
+  // Logo ngân hàng đã chọn (của Bank chứa mục, không có thì của chính mục), đặt sau tên.
+  const logo = [S.groupOf(b)?.icon, b.icon].find((ic) => bankColorOf(ic));
   return `<section class="card over-acc" style="--c:${esc(b.color)}">
     <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
-      <span class="ol"><b>${esc(b.icon || kindOf(b).icon)} ${esc(b.name)}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
+      <span class="ol"><b>${esc(b.icon || kindOf(b).icon)} ${esc(b.name)}${logo ? ` <span class="ol-logo">${esc(logo)}</span>` : ''}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
       <span class="ol ol-sm"><small>${esc([grpName && grpName !== b.name ? grpName : null, sub].filter(Boolean).join(' · '))}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
@@ -1972,8 +1974,8 @@ function byUser(books) {
 const sortByUser = (books) => byUser(books).flatMap((g) => g.books);
 /** Các nút chọn mục, chia nhóm theo User. chip(b) trả về HTML một nút. */
 /** Ô chọn 1 dòng (droplist) các mục, chia nhóm theo Bank như userChips. */
-// Trong droplist không vẽ được huy hiệu logo: bỏ mã logo, chỉ để 🏦.
-const plainIcon = (s) => String(s || '').replace(/🏦⁣[A-Z]{2,6}/g, '🏦');
+// Trong droplist không vẽ được huy hiệu logo / icon ảnh: bỏ mã, chỉ để emoji (🏦, 🤑, 💰...).
+const plainIcon = (s) => String(s || '').replace(/⁣[A-Z]{2,6}/g, '');
 const bookSelect = (id, books, selectedId) => `<select id="${id}" class="book-select">${byUser(books).map((g) =>
   `<optgroup label="${esc(plainIcon(g.label))}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${esc(plainIcon(p.icon))} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
 const userChips = (id, books, chip) => `<div class="user-groups" id="${id}">${byUser(books).map((g) =>

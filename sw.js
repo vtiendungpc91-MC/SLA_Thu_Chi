@@ -1,6 +1,6 @@
 // Service worker: lưu toàn bộ app vào bộ nhớ đệm để chạy offline.
 // Khi sửa code, tăng VERSION để điện thoại tải bản mới.
-const VERSION = 'v7.30.0';
+const VERSION = 'v7.32.0';
 const CACHE = 'sothuchi-' + VERSION;
 const ASSETS = [
   './',
@@ -24,6 +24,10 @@ const ASSETS = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
+  './icons/pic/vui.png',
+  './icons/pic/tui.png',
+  './icons/pic/tang.png',
+  './icons/pic/trao.png',
 ];
 
 self.addEventListener('install', (e) => {

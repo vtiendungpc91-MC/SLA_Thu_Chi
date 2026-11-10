@@ -1057,6 +1057,13 @@ html.dark body[data-tab="credit"] { --kc-ink: #ffa8a8; }
 /* Huy hiệu ngân hàng dùng làm icon ở mọi nơi (cỡ theo chữ xung quanh) */
 .bank-badge.ib { min-width: 2.9em; height: 1.9em; padding: 0 .3em; font-size: max(8.5px, .48em); border-radius: .45em; vertical-align: middle; }
 .icon-chip .bank-badge.ib { font-size: 10px; }
+/* Icon hình ảnh (icons/pic), cỡ theo chữ xung quanh như emoji */
+.pic-ic { display: inline-block; width: 1.3em; height: 1.3em; object-fit: contain; vertical-align: middle; pointer-events: none; }
+/* Nền tối: ảnh nét đen khó thấy nên đặt trên ô sáng */
+html.dark .pic-ic { background: #f4f4f4; border-radius: .3em; padding: .06em; }
+/* Logo ngân hàng sau tên trên thẻ ở Tổng quan */
+.ol-logo { display: inline-block; margin-left: 2px; vertical-align: middle; }
+.ol-logo .bank-badge.ib { min-width: 30px; height: 18px; font-size: 8.5px; border-radius: 5px; }
 /* Cặp icon tiền ra / vào chưa rõ màu: nền đỏ nhạt / xanh lá nhạt */
 .tx-ic { display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; border-radius: .45em; line-height: 1; }
 .tx-ic.out, .icon-chip.tint-out { background: #ffe3e3; }

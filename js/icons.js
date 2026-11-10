@@ -94,23 +94,53 @@ export const bankColorOf = (icon) => {
 };
 ICONS.push(...BANK_LOGOS.map((l) => ({ icon: bankIcon(l.code), kw: `logo ngan hang bank ${plain(l.name)} ${l.code.toLowerCase()}` })));
 
-const TOKEN_RE = /🏦\u2063([A-Z]{2,6})/g;
+const TOKEN_RE = /(🏦|🤑|💰|📈|💸)\u2063([A-Z]{2,6})/gu;
 const SKIP = 'option, select, textarea, input, script, style, title';
+
+// ---------- Icon hình ảnh (file trong icons/pic) ----------
+// Lưu giống huy hiệu ngân hàng: emoji gần nghĩa + U+2063 + mã. Chỗ hiện HTML đổi thành ảnh; ô chọn chỉ hiện emoji.
+export const PIC_ICONS = [
+  ['🤑', 'VUI', 'vui', 'anh vui tien ve giau co money happy'],
+  ['💰', 'TUI', 'tui', 'anh tui tien money bag'],
+  ['📈', 'TANG', 'tang', 'anh tang truong tien vao loi nhuan growth'],
+  ['💸', 'TRAO', 'trao', 'anh trao tien dua tien tra no cho vay give money'],
+].map(([emoji, code, file, kw]) => ({ emoji, code, file, kw, icon: emoji + BANK_SEP + code }));
+const picOf = (code) => PIC_ICONS.find((p) => p.code === code);
+// Đặt ảnh lên đầu lưới để dễ thấy.
+ICONS.unshift(...PIC_ICONS.map((p) => ({ icon: p.icon, kw: p.kw })));
 function convertText(node) {
   const text = node.data;
-  if (!text.includes(BANK_SEP) || node.parentElement?.closest(SKIP)) return;
+  if (!text.includes(BANK_SEP)) return;
+  if (node.parentElement?.closest(SKIP)) {
+    // Ô chọn không vẽ được ảnh: icon ảnh chỉ còn emoji (huy hiệu ngân hàng vẫn hiện "🏦VCB").
+    if (node.parentElement.closest('option')) {
+      const clean = text.replace(TOKEN_RE, (all, e, code) => (e !== '🏦' && picOf(code) ? e : all));
+      if (clean !== text) node.data = clean;
+    }
+    return;
+  }
   const frag = document.createDocumentFragment();
   let last = 0;
   for (const m of text.matchAll(TOKEN_RE)) {
-    const l = bankOf(m[1]);
-    if (!l) continue;
+    const pic = m[1] !== '🏦' && picOf(m[2]);
+    const l = m[1] === '🏦' && bankOf(m[2]);
+    if (!pic && !l) continue;
     if (m.index > last) frag.append(text.slice(last, m.index));
-    const s = document.createElement('span');
-    s.className = 'bank-badge ib';
-    s.style.setProperty('--bb', l.bg);
-    s.title = l.name;
-    s.textContent = l.code;
-    frag.append(s);
+    if (pic) {
+      const img = document.createElement('img');
+      img.className = 'pic-ic';
+      img.src = `icons/pic/${pic.file}.png`;
+      img.alt = pic.emoji;
+      img.draggable = false;
+      frag.append(img);
+    } else {
+      const s = document.createElement('span');
+      s.className = 'bank-badge ib';
+      s.style.setProperty('--bb', l.bg);
+      s.title = l.name;
+      s.textContent = l.code;
+      frag.append(s);
+    }
     last = m.index + m[0].length;
   }
   if (!last) return;
