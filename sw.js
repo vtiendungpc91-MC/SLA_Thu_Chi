@@ -1,6 +1,6 @@
 // Service worker: lưu toàn bộ app vào bộ nhớ đệm để chạy offline.
 // Khi sửa code, tăng VERSION để điện thoại tải bản mới.
-const VERSION = 'v7.37.0';
+const VERSION = 'v7.37.1';
 const CACHE = 'sothuchi-' + VERSION;
 const ASSETS = [
   './',
@@ -30,8 +30,12 @@ const ASSETS = [
   './icons/pic/trao.png',
 ];
 
+// cache: 'reload' = luôn tải từ máy chủ, bỏ qua bộ nhớ tạm 10 phút của trình duyệt (GitHub Pages max-age=600).
+// Không có dòng này, bản mới có thể bị lưu lẫn file cũ và kẹt đến lần tăng VERSION sau.
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
