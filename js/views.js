@@ -74,7 +74,30 @@ async function removeBlock(t) {
   return S.creditError(0, t) || S.pfRemoveError(t);
 }
 
-function txRow(t) {
+/**
+ * Số dư của tài khoản ngay sau mỗi giao dịch (txId → số dư), tính trên toàn bộ giao dịch của mục đang mở,
+ * xếp theo ngày rồi giờ ghi. Chuyển giữa 2 tài khoản trong mục: lấy số dư của tài khoản bị trừ tiền.
+ * Khoản không gắn tài khoản (thẻ kiểu cũ) thì không có.
+ */
+function runningBalances() {
+  const bal = new Map(), out = new Map();
+  const start = (id) => (bal.has(id) ? bal.get(id) : Number(S.accById(id)?.initial) || 0);
+  const list = [...state.transactions].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || 0) - (b.createdAt || 0)));
+  for (const t of list) {
+    if (!t.accountId) continue;
+    const v = t.amountVnd || 0;
+    if (t.type === 'income') bal.set(t.accountId, start(t.accountId) + v);
+    else if (t.type === 'expense') bal.set(t.accountId, start(t.accountId) - v);
+    else if (t.type === 'transfer') {
+      bal.set(t.accountId, start(t.accountId) - v);
+      if (t.toAccountId) bal.set(t.toAccountId, start(t.toAccountId) + v);
+    } else continue;
+    out.set(t.id, bal.get(t.accountId));
+  }
+  return out;
+}
+
+function txRow(t, balAfter) {
   const parts = S.txParts(t);
   const isTr = t.type === 'transfer';
   const cat = isTr ? null : S.catById(parts[0].categoryId);
@@ -90,13 +113,14 @@ function txRow(t) {
   const foreign = t.currency && t.currency !== 'VND' ? `<small>${esc(fmtCur(t.amount, t.currency))}</small>` : '';
   const inner = `${icon}
     <span class="grow"><b>${esc(title)}</b><small>${esc(sub.join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
-    <span class="amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}${foreign}<small>${flags}${t.settleOf ? '📈' : ''}</small></span>`;
+    <span class="amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}${foreign}${balAfter == null ? '' : `<small class="tx-bal${balAfter < 0 ? ' neg' : ''}" title="Số dư sau giao dịch">${fmtBal(balAfter)}</small>`}<small>${flags}${t.settleOf ? '📈' : ''}</small></span>`;
   return `<button type="button" class="row tx" data-act="tx-edit" data-id="${t.id}">${inner}</button>`;
 }
 
 const sortTx = (list) => list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
 
 function groupedTx(list) {
+  const bals = runningBalances();
   const groups = new Map();
   for (const t of sortTx(list)) {
     if (!groups.has(t.date)) groups.set(t.date, []);
@@ -105,7 +129,7 @@ function groupedTx(list) {
   return [...groups.entries()].map(([d, items]) => {
     const net = items.reduce((s, t) => s + (t.type === 'income' ? t.amountVnd : t.type === 'expense' ? -t.amountVnd : 0), 0);
     return `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span><span class="${net >= 0 ? 'income' : 'expense'}">${fmtSigned(net)}</span></div>
-      <div class="card list">${items.map(txRow).join('')}</div></div>`;
+      <div class="card list">${items.map((t) => txRow(t, bals.get(t.id))).join('')}</div></div>`;
   }).join('');
 }
 

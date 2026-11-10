@@ -781,6 +781,9 @@ html.dark #tf-type .seg-trich { color: #c4a5f2; }
 .row.tx .grow small.when { font-size: 11px; line-height: 1.2; }
 .row.tx .amt { font-size: 14px; line-height: 1.2; }
 .row.tx .amt small { font-size: 11px; line-height: 1.1; }
+/* Số dư tài khoản sau giao dịch, dưới số tiền */
+.row.tx .amt .tx-bal { color: var(--muted); font-weight: 500; margin-top: 2px; }
+.row.tx .amt .tx-bal.neg { color: var(--expense); }
 /* Tổng quan chung */
 .over-lines { display: flex; flex-direction: column; gap: 2px; margin: 2px 2px 0; }
 .over-lines > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 16px; }
