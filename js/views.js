@@ -27,7 +27,7 @@ const TYPE_LABEL = { expense: 'Chi', income: 'Thu', transfer: 'Chuyển khoản'
 const PAY_METHODS = ['Chuyển khoản qua app ngân hàng', 'Withdraw nợ tự động', 'Nộp tiền mặt tại quầy', 'Ví điện tử (MoMo, ZaloPay...)', 'Khác'];
 // Huy hiệu ngân hàng (màu đặc trưng + tên viết tắt) để chọn làm biểu tượng tài khoản. Không dùng ảnh logo chính thức.
 const bankLogo = (code) => BANK_LOGOS.find((l) => l.code === code) || null;
-/** Icon của loại giao dịch; icon trong cặp tiền ra/vào chưa rõ màu thì có nền đỏ nhạt (Chi, Transfer) / xanh lá nhạt (Thu, Get In). */
+/** Icon của loại giao dịch; icon trong cặp tiền ra/vào chưa rõ màu thì có nền đỏ nhạt (Chi, Chuyển) / xanh lá nhạt (Thu, Nhận). */
 const OUT_KINDS = new Set(['expense', 'gop', 'card']);
 const kIcon = (k) => {
   const ic = QUICK_KINDS[k].icon;
@@ -62,11 +62,11 @@ function txWhen(t) {
     : `🕒 ${fmtDate(t.date)} · ghi lúc ${time} ${fmtDM(createdDay)}${createdDay.slice(0, 4) !== t.date.slice(0, 4) ? '/' + createdDay.slice(0, 4) : ''}`;
 }
 
-/** Nhãn khoản Transfer/Get In theo góc nhìn của sổ đang xem. */
+/** Nhãn khoản Chuyển/Nhận theo góc nhìn của sổ đang xem. */
 function gopLabel(g) {
   if (g.mode === 'pay') return g.dir === 'in' ? `Thanh toán từ ${g.peerName}` : `Thanh toán ${g.peerName}`;
-  if (g.mode === 'trich') return g.dir === 'in' ? `Get In từ ${g.peerName}` : `Chuyển Get In cho ${g.peerName}`;
-  return g.dir === 'out' ? `Transfer cho ${g.peerName}` : `Nhận transfer từ ${g.peerName}`;
+  if (g.mode === 'trich') return g.dir === 'in' ? `Nhận từ ${g.peerName}` : `Chuyển (Nhận) cho ${g.peerName}`;
+  return g.dir === 'out' ? `Chuyển cho ${g.peerName}` : `Nhận tiền chuyển từ ${g.peerName}`;
 }
 
 /** Lý do không được xóa giao dịch: làm Thẻ tín dụng thành số dương hoặc Personal/Family bị âm. */
@@ -201,7 +201,7 @@ const avatarFull = (p, cls) => (p.photo
 
 // --- Đầu trang: trái = User (dưới là số thông báo), phải = mục đang mở (dưới là tổng tiền của nhóm mục) ---
 const kindOf = (b) => (b.overdraft ? { label: 'Thấu chi', icon: '💳' } : b.prepaid ? { label: 'Thẻ trả trước', icon: '🪪' } : S.BOOK_KINDS[b.kind] || S.BOOK_KINDS.bank);
-/** Tiết kiệm chỉ có Transfer, không ghi thu/chi. */
+/** Tiết kiệm chỉ có Chuyển, không ghi thu/chi. */
 const transferOnly = (b = S.currentProfile()) => b.kind === 'saving';
 
 /** Icon XÓA: thùng rác trắng trong hình tròn chuyển màu xanh → tím (nền vẽ bằng CSS .del-ic). */
@@ -308,7 +308,7 @@ function startTicker(el, alerts) {
 }
 
 /**
- * Tổng số dư ở Tổng quan: mọi Account, Thấu chi (số âm trừ vào) và Tiết kiệm trong các Bank của User.
+ * Tổng số dư ở Tổng quan: mọi Thanh Toán, Thấu chi (số âm trừ vào) và Tiết kiệm trong các Bank của User.
  * Không tính Ví điện tử, thẻ trả trước, Credit Card (nợ thẻ hiện ở dòng riêng).
  */
 async function bankTotal(userId) {
@@ -570,7 +570,7 @@ actions.books = () => {
       // Một nút "Thêm mục": bấm vào chọn loại; hết chỗ mọi loại thì không hiện.
       const room = Object.keys(S.GROUP_LIMITS[g.type] || {}).some((slot) => books.filter((b) => S.slotOf(b) === slot).length < S.groupMax(g, slot));
       const adds = room ? `<button type="button" class="grp-add" data-group-add="${esc(g.id)}">＋ Thêm mục</button>` : '';
-      // Nền dòng tên Bank: màu nhạt theo icon của Account trong Bank (logo ngân hàng thì lấy màu logo).
+      // Nền dòng tên Bank: màu nhạt theo icon của Thanh Toán trong Bank (logo ngân hàng thì lấy màu logo).
       const acc = books.find((b) => S.slotOf(b) === 'account') || books[0];
       const tint = acc ? bankColorOf(acc.icon) || acc.color : bankColorOf(g.icon);
       return `<section class="grp-card${g.collapsed ? ' collapsed' : ''}">
@@ -696,7 +696,7 @@ function groupTypeChooser() {
   openSheet({
     title: 'Thêm Bank / Ví điện tử',
     body: `<div class="card list">
-      <button type="button" class="row" data-type="bank"><span class="ci">🏦</span><span class="grow"><b>Bank</b><small>Tối đa 2 Account, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card</small></span>›</button>
+      <button type="button" class="row" data-type="bank"><span class="ci">🏦</span><span class="grow"><b>Bank</b><small>Tối đa 2 Thanh Toán, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card</small></span>›</button>
       <button type="button" class="row" data-type="wallet"><span class="ci">👛</span><span class="grow"><b>Ví điện tử</b><small>1 tài khoản thanh toán và 1 Thẻ trả trước</small></span>›</button></div>`,
     onMount(sh, close) {
       sh.addEventListener('click', (e) => { const b = e.target.closest('[data-type]'); if (b) { close(); groupForm(null, b.dataset.type); } });
@@ -717,7 +717,7 @@ function groupForm(g, type = 'bank') {
     body: `<form class="form" id="${formId}">
       ${field('Tên', `<input id="gp-name" required maxlength="24" value="${esc(f.name)}" placeholder="${f.type === 'bank' ? 'vd: Techcombank, Vietcombank' : 'vd: MoMo, ZaloPay'}">`)}
       <div class="field"><span>Biểu tượng <b id="gp-now">${esc(icon)}</b> <small class="muted">(gõ tên ngân hàng để tìm huy hiệu)</small></span>${iconPickerHtml('gp-icons', icon)}</div>
-      <p class="muted small">${f.type === 'bank' ? 'Mỗi Bank: tối đa 2 Account, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card.' : 'Mỗi Ví điện tử: 1 tài khoản thanh toán (giao dịch như Account) và 1 Thẻ trả trước.'}</p>
+      <p class="muted small">${f.type === 'bank' ? 'Mỗi Bank: tối đa 2 Thanh Toán, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card.' : 'Mỗi Ví điện tử: 1 tài khoản thanh toán (giao dịch như Thanh Toán) và 1 Thẻ trả trước.'}</p>
     </form>`,
     onMount(sh, close) {
       bindIconPicker($(sh, '#gp-icons'), (v) => { icon = v; $(sh, '#gp-now').textContent = v; }, () => icon);
@@ -829,7 +829,7 @@ const specialFields = () => `
   ${amountField('sp-limit', 0, 'Hạn mức Thấu chi')}
   ${amountField('sp-od', 0, 'Số dư Thấu chi hiện tại')}
   <label class="check"><input type="checkbox" id="sp-neg"> Số dư Thấu chi đang âm</label>
-  <div class="kv"><span>Tổng Account + Thấu chi</span><b id="sp-total">0 ₫</b></div>
+  <div class="kv"><span>Tổng Thanh Toán + Thấu chi</span><b id="sp-total">0 ₫</b></div>
   ${amountField('sp-personal', 0, 'Phần Personal')}
   <div class="kv"><span>Phần Family (tự tính)</span><b id="sp-family">0 ₫</b></div>`;
 function bindSpecialFields(sh) {
@@ -851,11 +851,11 @@ function bindSpecialFields(sh) {
       if (!Number.isFinite(b) || b < 0) return toast('Nhập số dư Ngân hàng hiện tại'), null;
       if (!(l > 0)) return toast('Nhập hạn mức Thấu chi'), null;
       if (!Number.isFinite(o)) return toast('Nhập số dư Thấu chi hiện tại'), null;
-      if (b + o < 0) return toast('Tổng Account + Thấu chi đang âm nên không chia được Personal / Family', 4000), null;
+      if (b + o < 0) return toast('Tổng Thanh Toán + Thấu chi đang âm nên không chia được Personal / Family', 4000), null;
       if (!Number.isFinite(p) || p < 0) return toast('Nhập phần Personal'), null;
       if (p > b + o) return toast(`Personal không được lớn hơn tổng ${fmt(b + o)}`, 4000), null;
       const over = Math.abs(o) > l ? '\n⚠️ Số dư Thấu chi vượt hạn mức.' : '';
-      if (!confirm(`Account: ${fmt(b)}\nThấu chi: ${fmt(o)} · hạn mức ${fmt(l)}\nPersonal: ${fmt(p)}\nFamily: ${fmt(b + o - p)}${over}\n\nSau này muốn đổi phải Reset. Đồng ý?`)) return null;
+      if (!confirm(`Thanh Toán: ${fmt(b)}\nThấu chi: ${fmt(o)} · hạn mức ${fmt(l)}\nPersonal: ${fmt(p)}\nFamily: ${fmt(b + o - p)}${over}\n\nSau này muốn đổi phải Reset. Đồng ý?`)) return null;
       return { bank: b, limit: l, overdraft: o, personal: p };
     },
   };
@@ -896,7 +896,7 @@ actions['pf-convert'] = () => {
       <div class="kv"><span>Family</span><b class="pf-f" data-pc="family">…</b></div>
       <div class="seg" id="pc-dir"><button type="button" data-from="personal" class="on">Personal → Family</button><button type="button" data-from="family">Family → Personal</button></div>
       ${amountField('pc-amt', 0, 'Số tiền chuyển')}
-      <p class="muted small">Chỉ đổi cách chia giữa 2 phần, số dư Account và Thấu chi không đổi.</p>
+      <p class="muted small">Chỉ đổi cách chia giữa 2 phần, số dư Thanh Toán và Thấu chi không đổi.</p>
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'pc-amt');
@@ -938,7 +938,7 @@ function userForm(u) {
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ">`)}
       ${looksFields(f, true)}
-      ${u ? '' : '<p class="muted small">User mới có sẵn 1 Bank chứa 1 Account.</p>'}
+      ${u ? '' : '<p class="muted small">User mới có sẵn 1 Bank chứa 1 Thanh Toán.</p>'}
       ${u && users.length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa User</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
@@ -962,8 +962,8 @@ function userForm(u) {
   });
 }
 
-const CREDIT_HINT = 'Có Thu/Chi như một tài khoản, luôn hiện số âm là tiền đang nợ, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Account.';
-const ODRAFT_HINT = 'Thu/Chi và Transfer như Account, số dư được âm và vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức sẽ có cảnh báo.';
+const CREDIT_HINT = 'Có Thu/Chi như một tài khoản, luôn hiện số âm là tiền đang nợ, hết nợ là 0. Nút Thanh toán trả một phần hoặc toàn bộ từ Thanh Toán.';
+const ODRAFT_HINT = 'Thu/Chi và Chuyển như Thanh Toán, số dư được âm và vẫn cộng vào tổng Ngân hàng. Tiền ra hoặc vào vượt hạn mức sẽ có cảnh báo.';
 
 /** Thêm/sửa mục (Ngân hàng / Tiết kiệm / Thẻ trả trước) của User hiện tại. */
 function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group = null, prepaid = false } = {}) {
@@ -985,7 +985,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
   const hint = {
     bank: 'Sổ thu/chi có 1 tài khoản ngân hàng và số dư.',
     card: 'Ghi các khoản chi (MoMo, ZaloPay…), sau đó thanh toán từng khoản từ Ngân hàng.',
-    saving: 'Chỉ Transfer với các mục Ngân hàng.',
+    saving: 'Chỉ Chuyển với các mục Ngân hàng.',
   }[kind] || '';
   openSheet({
     title: `${b ? 'Sửa' : 'Thêm'} ${grp ? S.slotLabel(grp, S.slotOf({ ...f, overdraft: isOd })) : isOd ? 'Thấu chi' : kind === 'card' ? S.CARD_TYPES[f.cardType] || kindOf(f).label : kindOf(f).label}${grp ? ' · ' + grp.name : ''}`,
@@ -993,7 +993,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
     body: `<form class="form" id="${formId}">
       ${kind === 'card' && b && !b.credit ? `<div class="field"><span>Loại thẻ</span><div class="seg" id="bf-card">${Object.entries(S.CARD_TYPES).map(([v, label]) =>
         `<button type="button" data-c="${v}" class="${v === (f.cardType || 'credit') ? 'on' : ''}">${label}</button>`).join('')}</div></div>` : ''}
-      <p class="muted small">${k.icon} Mục của <b>${esc(owner.name)}</b>${grp ? ` · ${esc(S.GROUP_TYPES[grp.type].label)} <b>${esc(grp.name)}</b>` : ''}.${f.prepaid ? ' Thẻ trả trước hoạt động như Credit Card: có hạn mức, số âm là tiền đang dùng, nút Thanh toán trả từ Account.' : ''} <span id="bf-hint">${isOd ? ODRAFT_HINT : b?.credit || (kind === 'card' && !b && (f.cardType || 'credit') === 'credit') ? CREDIT_HINT : hint}</span></p>
+      <p class="muted small">${k.icon} Mục của <b>${esc(owner.name)}</b>${grp ? ` · ${esc(S.GROUP_TYPES[grp.type].label)} <b>${esc(grp.name)}</b>` : ''}.${f.prepaid ? ' Thẻ trả trước hoạt động như Credit Card: có hạn mức, số âm là tiền đang dùng, nút Thanh toán trả từ Thanh Toán.' : ''} <span id="bf-hint">${isOd ? ODRAFT_HINT : b?.credit || (kind === 'card' && !b && (f.cardType || 'credit') === 'credit') ? CREDIT_HINT : hint}</span></p>
       ${b?.credit ? amountField('bf-climit', b.limit || 0, 'Hạn mức âm tối đa có thể dùng') : ''}
       ${kind === 'card' && !b && f.cardType === 'credit' ? `<div id="bf-debt-box">${amountField('bf-climit', 0, 'Hạn mức âm tối đa có thể dùng')}${amountField('bf-debt', 0, 'Số dư đang nợ hiện tại')}<p class="muted small">⚠️ Sau khi tạo không sửa được số này, chỉ thay đổi qua Chi, Thu và Thanh toán.</p></div>` : ''}
       ${isOd && !b ? `<div id="bf-od">
@@ -1074,10 +1074,10 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
 // ================= Thống kê của mục Ngân hàng: thiết lập nguồn =================
 const moneyBookList = () => S.getProfiles().filter((p) => ['bank', 'saving', 'neo'].includes(p.kind || 'bank'));
 
-/** Thống kê Transfer/Get In: các luồng "từ mục → đến mục" + danh mục cần lấy. */
+/** Thống kê Chuyển/Nhận: các luồng "từ mục → đến mục" + danh mục cần lấy. */
 function statFlowForm(item = null) {
   const books = moneyBookList();
-  if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Transfer/Get In');
+  if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Chuyển/Nhận');
   const src = item || {};
   const has = (id) => books.some((b) => b.id === id);
   let rules = (src.rules || []).filter((r) => has(r.from) && has(r.to)).map((r) => ({ ...r }));
@@ -1086,16 +1086,16 @@ function statFlowForm(item = null) {
   const opts = (sel) => books.map((p) => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.icon + ' ' + S.bookLabel(p))}</option>`).join('');
   const formId = 'is-' + Date.now();
   openSheet({
-    title: '🔁 Thống kê Transfer/Get In',
+    title: '🔁 Thống kê Chuyển/Nhận',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Đầu tư chứng khoán">`)}
       ${statIconField(src.icon || STATS.flow.icon)}
       ${statPeriodField(src)}
-      <p class="muted small">Chỉ lấy các khoản <b>Transfer / Get In</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Transfer từ A cho B, hoặc B Get In từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
+      <p class="muted small">Chỉ lấy các khoản <b>Chuyển / Nhận</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Chuyển từ A cho B, hoặc B Nhận từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>🔁 Luồng tiền lấy vào</span><div id="is-rules"></div>
         <button type="button" class="btn ghost small" data-add-rule>＋ Thêm luồng</button></div>
-      <div class="field"><span>🏷️ Danh mục Transfer/Get In lấy vào <small class="muted">(không chọn = lấy tất cả)</small></span>
+      <div class="field"><span>🏷️ Danh mục Chuyển/Nhận lấy vào <small class="muted">(không chọn = lấy tất cả)</small></span>
         <div class="check-list" id="is-cats"></div>
         <button type="button" class="btn ghost small" data-add-cat>＋ Thêm danh mục</button></div>
       ${statDelBtn(item)}
@@ -1237,9 +1237,9 @@ function cardView() {
   <button type="button" class="fab" data-act="card-add" aria-label="Thêm khoản chi">+</button>`;
 }
 
-// ================= Thống kê Transfer/Get In và Thu/Chi ở Tổng quan =================
+// ================= Thống kê Chuyển/Nhận và Thu/Chi ở Tổng quan =================
 const STATS = {
-  flow: { icon: '🔁', label: 'Transfer/Get In', load: S.loadFlowStats, form: (item) => statFlowForm(item) },
+  flow: { icon: '🔁', label: 'Chuyển/Nhận', load: S.loadFlowStats, form: (item) => statFlowForm(item) },
   track: { icon: '📊', label: 'Thu/Chi', load: S.loadTrackStats, form: (item) => statTrackForm(item) },
 };
 const statName = (st) => st.name || STATS[st.type].label;
@@ -1305,7 +1305,7 @@ function statRow(t) {
   }
   const isW = t.gop.mode === 'trich';
   return `<div class="row tx mirror-row"><span class="ci" style="--c:${isW ? '#8e4ec6' : '#12a594'}">${isW ? '🔄' : '🔁'}</span>
-    <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isW ? 'Get In' : 'Transfer', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
+    <span class="grow"><b>${esc(t.flowLabel)}</b><small>${esc([isW ? 'Nhận' : 'Chuyển', t.flowCatName, t.note].filter(Boolean).join(' · '))}</small><small class="when">${esc(txWhen(t))}</small></span>
     <span class="amt ${t.type}">${fmtSigned(sign * t.amountVnd)}</span></div>`;
 }
 
@@ -1542,7 +1542,7 @@ function creditPaySheet() {
   const debt = -S.accountBalance(S.activeAccounts()[0]);
   if (debt <= 0) return toast('Thẻ không còn nợ');
   const users = sortByUser(S.moneyBooks().filter((p) => S.canTransfer(card, p)));
-  if (!users.length) return toast('Chưa có mục Account để thanh toán');
+  if (!users.length) return toast('Chưa có mục Thanh Toán để thanh toán');
   const formId = 'cr-' + Date.now();
   openSheet({
     title: 'Thanh toán thẻ',
@@ -1601,7 +1601,7 @@ function creditPaySheet() {
 const overName = (u) => u.overName || 'Tổng quan';
 const overIcon = (u) => u.overIcon || '📊';
 const overColor = (u) => u.overColor || u.color;
-const OVER_TABS = [['bank', 'Account'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['prepaid', 'Thẻ trả trước'], ['credit', 'Credit Card'], ['wallet', 'Ví điện tử']];
+const OVER_TABS = [['bank', 'Thanh Toán'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['prepaid', 'Thẻ trả trước'], ['credit', 'Credit Card'], ['wallet', 'Ví điện tử']];
 const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', prepaid: '🪪', credit: '💳', wallet: '👛' };
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
 const overTabs = (userId) => OVER_TABS.filter(([tab]) => (tab !== 'wallet' && tab !== 'prepaid') || tabBooks(userId, tab).length);
@@ -1946,9 +1946,9 @@ function cardPayDetail(tx) {
   });
 }
 
-// ================= Transfer tiền giữa các người dùng =================
-// Người dùng khác (không tính thẻ trả trước) — dùng cho Transfer, Get In, chọn sổ để ghi.
-// Đích Transfer / Get In tùy loại mục đang mở (Ngân hàng, Tiết kiệm, NEOBANK, Cash Outflow).
+// ================= Chuyển tiền giữa các người dùng =================
+// Người dùng khác (không tính thẻ trả trước) — dùng cho Chuyển, Nhận, chọn sổ để ghi.
+// Đích Chuyển / Nhận tùy loại mục đang mở (Ngân hàng, Tiết kiệm, NEOBANK, Cash Outflow).
 const otherProfiles = (mode = 'gop') => sortByUser(S.transferTargets(mode));
 
 /**
@@ -1984,9 +1984,9 @@ const userChips = (id, books, chip) => `<div class="user-groups" id="${id}">${by
 
 actions.gop = () => openGopForm();
 
-/** Ô chọn danh mục Transfer/Get In (dùng chung mọi mục); chọn "＋ Thêm danh mục…" để tạo mới. */
+/** Ô chọn danh mục Chuyển/Nhận (dùng chung mọi mục); chọn "＋ Thêm danh mục…" để tạo mới. */
 function flowCatField(id, selected = state.settings.lastFlowCat || '') {
-  return field('🏷️ Danh mục transfer/Get In', `<select id="${id}" data-flowcat>${flowCatOptions(selected)}</select>`);
+  return field('🏷️ Danh mục Chuyển/Nhận', `<select id="${id}" data-flowcat>${flowCatOptions(selected)}</select>`);
 }
 const flowCatOptions = (selected) => `<option value="">— Không phân loại —</option>`
   + S.flowCats().map((c) => `<option value="${esc(c.id)}" ${c.id === selected ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')
@@ -2005,12 +2005,12 @@ document.addEventListener('change', (e) => {
   if (sel.value) S.setSetting('lastFlowCat', sel.value, { silent: true });
 });
 
-/** Thêm danh mục Transfer/Get In: nhập tên, chọn biểu tượng. onDone nhận danh mục mới, hoặc null nếu hủy. */
+/** Thêm danh mục Chuyển/Nhận: nhập tên, chọn biểu tượng. onDone nhận danh mục mới, hoặc null nếu hủy. */
 function flowCatSheet(onDone) {
   let icon = '🏷️', made = null;
   const formId = 'fc-' + Date.now();
   openSheet({
-    title: 'Thêm danh mục Transfer/Get In',
+    title: 'Thêm danh mục Chuyển/Nhận',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên danh mục', '<input id="fc-name" required maxlength="30" placeholder="vd: Đầu tư, Học phí">')}
@@ -2045,7 +2045,7 @@ async function confirmOverdraft(args) {
   return !msgs.length || confirm(`⚠️ ${msgs.join('\n')}\n\nVẫn tiếp tục?`);
 }
 
-/** Dòng cho biết Thẻ tín dụng đang nợ bao nhiêu khi Transfer vào hoặc Get In; cảnh báo nếu nhập vượt số nợ. */
+/** Dòng cho biết Thẻ tín dụng đang nợ bao nhiêu khi Chuyển vào hoặc Nhận; cảnh báo nếu nhập vượt số nợ. */
 const debtHintEl = '<em class="hint debt-hint" data-debt hidden></em>';
 function bindDebtHint(sh, amt, getBook) {
   const el = $(sh, '[data-debt]');
@@ -2079,25 +2079,25 @@ function bindDebtHint(sh, amt, getBook) {
 function openGopForm(pick = null) {
   const others = otherProfiles('gop');
   if (!others.length) {
-    toast('Chưa có mục nào để transfer vào');
+    toast('Chưa có mục nào để chuyển vào');
     return actions.profiles();
   }
   const me = S.currentProfile();
   const formId = 'gf-' + Date.now();
   openSheet({
-    title: 'Transfer tiền cho người khác',
-    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🤝 Transfer</button>`,
+    title: 'Chuyển tiền cho người khác',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🤝 Chuyển</button>`,
     body: `<form class="form" id="${formId}">
       ${bookPick(pick)}
       ${bankRoute('gf-route', me, others[0])}
       <p class="muted small">Sổ của <b>${esc(S.bookLabel(me))}</b> ghi một khoản <b class="expense">chi</b>, sổ người nhận ghi một khoản <b class="income">thu</b>.</p>
-      ${field('Transfer cho', bookSelect('gf-to', others, others[0].id))}
+      ${field('Chuyển cho', bookSelect('gf-to', others, others[0].id))}
       ${field('Từ tài khoản', `<select id="gf-from" data-acc>${accOptions(state.settings.lastAccount, true)}</select>`)}
       <em class="hint" id="gf-bal"></em>
       ${amountLine({ dateId: 'gf-date', date: todayISO(), amtId: 'gf-amt', after: debtHintEl + pfField() })}
       ${flowCatField('gf-fcat')}
       ${field('Vào tài khoản của <span id="gf-to-name"></span>', `<select id="gf-toacc" data-acc><option></option></select>`)}
-      ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Transfer tiền chợ tháng 11">`)}
+      ${field('Ghi chú (không bắt buộc)', `<input id="gf-note" placeholder="vd: Chuyển tiền chợ tháng 11">`)}
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'gf-amt');
@@ -2130,7 +2130,7 @@ function openGopForm(pick = null) {
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = Math.round(readMoney(amt.value));
-        if (!(v > 0)) return toast('Nhập số tiền transfer');
+        if (!(v > 0)) return toast('Nhập số tiền chuyển');
         const toAccountId = $(sh, '#gf-toacc').value;
         if (!toAccountId) return toast('Chọn tài khoản nhận');
         if (!checkFunds($(sh, '#gf-from').value, v)) return;
@@ -2144,7 +2144,7 @@ function openGopForm(pick = null) {
           });
         } catch (err) { return toast('⛔ ' + err.message, 4500); }
         close();
-        toast(`🤝 Đã transfer ${fmt(v)} cho ${S.bookLabel(to)}`);
+        toast(`🤝 Đã chuyển ${fmt(v)} cho ${S.bookLabel(to)}`);
       });
     },
   });
@@ -2153,10 +2153,10 @@ function openGopForm(pick = null) {
 function gopDetail(tx) {
   const out = tx.gop.dir === 'out';
   const isTrich = tx.gop.mode === 'trich';
-  const word = tx.gop.mode === 'pay' ? 'thanh toán' : isTrich ? 'Get In' : 'transfer';
+  const word = tx.gop.mode === 'pay' ? 'thanh toán' : isTrich ? 'Nhận' : 'chuyển';
   const peerExists = S.getProfiles().some((p) => p.id === tx.gop.peer);
   openSheet({
-    title: tx.gop.mode === 'pay' ? 'Khoản thanh toán thẻ' : isTrich ? (out ? 'Khoản chuyển Get In' : 'Khoản Get In') : (out ? 'Khoản transfer' : 'Khoản nhận transfer'),
+    title: tx.gop.mode === 'pay' ? 'Khoản thanh toán thẻ' : isTrich ? (out ? 'Khoản chuyển (Nhận)' : 'Khoản Nhận') : (out ? 'Khoản chuyển' : 'Khoản nhận tiền chuyển'),
     body: `<div class="detail">
       <div class="big-ic">${isTrich ? '🔄' : '🤝'}</div>
       <div class="kv"><span>Nội dung</span><b>${esc(gopLabel(tx.gop))}${peerExists ? '' : ' (người dùng đã xóa)'}</b></div>
@@ -2190,29 +2190,29 @@ function gopDetail(tx) {
 
 actions.trich = () => openTrichForm();
 
-/** Get In: lấy tiền từ tài khoản của người khác về tài khoản của mình (ngược với Transfer). */
+/** Nhận: lấy tiền từ tài khoản của người khác về tài khoản của mình (ngược với Chuyển). */
 function openTrichForm(pick = null) {
   const others = otherProfiles('trich');
   if (!others.length) {
-    toast('Chưa có mục nào để Get In');
+    toast('Chưa có mục nào để Nhận');
     return actions.profiles();
   }
   const me = S.currentProfile();
   const formId = 'tr-' + Date.now();
   openSheet({
-    title: 'Get In',
-    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🔄 Get In</button>`,
+    title: 'Nhận',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🔄 Nhận</button>`,
     body: `<form class="form" id="${formId}">
       ${bookPick(pick)}
       ${bankRoute('tr-route', others[0], me)}
       <p class="muted small">Rút tiền từ mục khác về <b>${esc(S.bookLabel(me))}</b>: sổ nguồn ghi một khoản <b class="expense">chi</b>, sổ này ghi một khoản <b class="income">thu</b>. Nguồn phải đủ số dư (riêng Thấu chi được âm, vượt hạn mức sẽ cảnh báo).</p>
-      ${field('Get In từ', bookSelect('tr-from', others, others[0].id))}
+      ${field('Nhận từ', bookSelect('tr-from', others, others[0].id))}
       ${field('Từ tài khoản của <span id="tr-from-name"></span>', `<select id="tr-facc" data-acc><option></option></select>`)}
       <em class="hint" id="tr-bal"></em>
       ${amountLine({ dateId: 'tr-date', date: todayISO(), amtId: 'tr-amt', after: debtHintEl + pfField() })}
       ${flowCatField('tr-fcat')}
       ${field('Vào tài khoản của ' + esc(S.bookLabel(me)), `<select id="tr-to" data-acc>${accOptions(state.settings.lastAccount)}</select>`)}
-      ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Get In tháng 11">`)}
+      ${field('Ghi chú (không bắt buộc)', `<input id="tr-note" placeholder="vd: Nhận tháng 11">`)}
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'tr-amt');
@@ -2258,7 +2258,7 @@ function openTrichForm(pick = null) {
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const v = Math.round(readMoney(amt.value));
-        if (!(v > 0)) return toast('Nhập số tiền Get In');
+        if (!(v > 0)) return toast('Nhập số tiền Nhận');
         const fromAccountId = $(sh, '#tr-facc').value;
         if (!balances.has(fromAccountId)) return toast('Chọn tài khoản nguồn');
         if (debtH.error()) return toast('⛔ ' + debtH.error(), 4500);
@@ -2271,7 +2271,7 @@ function openTrichForm(pick = null) {
           });
         } catch (err) { return toast('⛔ ' + err.message, 4500); }
         close();
-        toast(`🔄 Đã Get In ${fmt(v)} từ ${S.bookLabel(from)}`);
+        toast(`🔄 Đã Nhận ${fmt(v)} từ ${S.bookLabel(from)}`);
       });
     },
   });
@@ -2360,7 +2360,7 @@ function reportsView() {
 
   ${sectionTitle(`📈 Tổng tài sản của ${esc(S.currentUser().name)}`)}
   <section class="card"><div data-networth>${fillCache.get('nw:' + S.currentUser().id) || ''}</div>
-    <p class="muted small">Account + Thấu chi + Tiết kiệm − nợ Thẻ tín dụng của cả User, tính ở cuối mỗi tháng (12 tháng gần nhất, tháng này tính đến hôm nay). Ví cũ không tính.</p></section>
+    <p class="muted small">Thanh Toán + Thấu chi + Tiết kiệm − nợ Thẻ tín dụng của cả User, tính ở cuối mỗi tháng (12 tháng gần nhất, tháng này tính đến hôm nay). Ví cũ không tính.</p></section>
   `;
 }
 
@@ -2445,7 +2445,7 @@ const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả n
 
 /**
  * Kế hoạch là màn hình chung của User (mở từ mục Thông báo ở màn hình nút góc phải), không còn ở thanh dưới của mục.
- * Mỗi khoản vẫn lưu trong sổ của Ngân hàng (mục Account/Thấu chi/Tiết kiệm) đã chọn lúc tạo; màn hình gom của mọi mục.
+ * Mỗi khoản vẫn lưu trong sổ của Ngân hàng (mục Thanh Toán/Thấu chi/Tiết kiệm) đã chọn lúc tạo; màn hình gom của mọi mục.
  */
 const planBooks = (tab, userId = S.currentUser().id) => S.userBooks(userId).filter((b) => {
   const k = S.kindOfBook(b);
@@ -2542,7 +2542,7 @@ const planTabOf = (t) => (t === 'emergency' ? 'goals' : t);
 actions['plan-add'] = async (el) => {
   const t = el.dataset.tab;
   const list = planBooks(planTabOf(t));
-  if (!list.length) return toast('Chưa có Account nào. Tạo Account trong một Bank trước.', 3500);
+  if (!list.length) return toast('Chưa có Thanh Toán nào. Tạo Thanh Toán trong một Bank trước.', 3500);
   if (!list.some((b) => b.id === S.currentProfile().id)) await S.switchProfile(list[0].id);
   PLAN_ADD[t]();
 };
@@ -2792,7 +2792,7 @@ actions['debt-edit'] = async (el) => {
     body: `<form class="form">
       ${planBank(d ? null : planBooks('debts'), 'Trích nợ từ Ngân hàng')}
       ${field('Chủ nợ (Ngân hàng / Công ty tài chính)', `<input id="df-bank" list="bank-list" required value="${esc(f.bank)}" placeholder="vd: Vietcombank"><datalist id="bank-list">${BANKS.map((b) => `<option value="${esc(b)}">`).join('')}</datalist>`)}
-      ${field('Nội dung khoản nợ', `<input id="df-title" value="${esc(f.title)}" placeholder="vd: Vay mua xe, Thẻ tín dụng, Trả transfer iPhone">`)}
+      ${field('Nội dung khoản nợ', `<input id="df-title" value="${esc(f.title)}" placeholder="vd: Vay mua xe, Thẻ tín dụng, Trả góp iPhone">`)}
       ${amountField('df-amt', f.amount, 'Số tiền mỗi kỳ')}
       ${datePick('df-date', f.dueDate, 'Ngày đến hạn')}
       <div class="two">${field('Nhắc trước (ngày)', `<input type="number" id="df-rem" min="0" max="30" value="${esc(f.remindDays ?? 3)}">`)}
@@ -2924,11 +2924,11 @@ function debtQuickPay(d) {
   });
 }
 
-/** Màn hình thanh toán thường: chọn Ngân hàng (mọi Account/Thấu chi của User) và tài khoản, số tiền sửa được. */
+/** Màn hình thanh toán thường: chọn Ngân hàng (mọi Thanh Toán/Thấu chi của User) và tài khoản, số tiền sửa được. */
 function debtPay(d, amount = d.amount) {
   const debtBook = S.currentProfile();
   const books = planBooks('debts');
-  if (!books.length) return toast('Chưa có Account nào để trả');
+  if (!books.length) return toast('Chưa có Thanh Toán nào để trả');
   let whoId = books.some((b) => b.id === debtBook.id) ? debtBook.id : books[0].id;
   const formId = 'dp-' + Date.now();
   openSheet({
@@ -3122,11 +3122,11 @@ function recRow(r, bookId) {
     <span class="amt ${t.type}">${fmtCur(t.amount, t.currency)}</span></button>`;
 }
 
-// ----- Khoản định kỳ: Chi / Thu / Transfer / Get In, chọn ngày bắt đầu, giờ thông báo, tự động hoặc chờ xác nhận -----
+// ----- Khoản định kỳ: Chi / Thu / Chuyển / Nhận, chọn ngày bắt đầu, giờ thông báo, tự động hoặc chờ xác nhận -----
 /** Khoản tạo từ bản cũ (chuyển giữa 2 tài khoản trong mục, hoặc ngoại tệ) vẫn dùng form cũ. */
 const legacyRec = (r) => r.template.type === 'transfer' || (r.template.currency && r.template.currency !== 'VND');
 const recKindOf = (t) => t.flow || t.type;
-/** Loại định kỳ mục đang mở được tạo, theo quyền của mục (Tiết kiệm chỉ Transfer / Get In). */
+/** Loại định kỳ mục đang mở được tạo, theo quyền của mục (Tiết kiệm chỉ Chuyển / Nhận). */
 function recKinds() {
   const b = S.currentProfile();
   const out = [];
@@ -3202,7 +3202,7 @@ function recurringForm(r) {
         sh.querySelectorAll('#rc-mode [data-m]').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
         $(sh, '#rc-cat-wrap').hidden = isFlow;
         $(sh, '#rc-peer-wrap').hidden = !isFlow;
-        $(sh, '#rc-peer-l').textContent = kind === 'gop' ? 'Transfer đến mục' : 'Get In từ mục';
+        $(sh, '#rc-peer-l').textContent = kind === 'gop' ? 'Chuyển đến mục' : 'Nhận từ mục';
         $(sh, '#rc-pacc-l').textContent = kind === 'gop' ? 'Vào tài khoản' : 'Lấy từ tài khoản';
         $(sh, '#rc-route').innerHTML = recRoute(kind, me, myAcc, isFlow ? curPeer() : null, paccSel.selectedOptions[0]?.dataset.name);
         $(sh, '#rc-time-wrap').hidden = mode !== 'confirm';
@@ -3443,8 +3443,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       <div class="bank-route" id="tf-route"></div>
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).filter(typeAllowed).map((t) => `<button type="button" data-v="${t}">${{ expense: '💸 ', income: '💰 ', transfer: '⇄ ' }[t] || ''}${TYPE_LABEL[t]}</button>`).join('')}
-        ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Transfer</button>' : ''}
-        ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Get In</button>' : ''}</div>
+        ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Chuyển</button>' : ''}
+        ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Nhận</button>' : ''}</div>
       ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc" data-acc>${accOptions(f.accountId, true)}</select>`)}
       <em class="hint" id="tf-bal"></em>
       ${amountLine({ dateId: 'tf-date', date: f.date, amtId: 'tf-amt', amount: f.amount ? fmtNum(f.amount) : '', big: true, editDate: isEdit, after: pfField() })}
@@ -3546,7 +3546,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       }));
 
       // --- danh mục ---
-      // Danh mục dạng danh sách thả xuống (danh mục Transfer/Get In chỉ tạo qua chức năng riêng nên không hiện ở đây).
+      // Danh mục dạng danh sách thả xuống (danh mục Chuyển/Nhận chỉ tạo qua chức năng riêng nên không hiện ở đây).
       function renderCats() {
         if (f.type === 'transfer') return;
         $(sh, '#tf-cat').innerHTML = S.catsOf(f.type).filter((c) => !/^(gop|trich)/.test(c.sys || '')).map((c) =>
@@ -3715,7 +3715,7 @@ function viewImage(src) {
   openSheet({ title: 'Ảnh hóa đơn', body: `<img src="${src}" class="full-img" alt="">`, wide: true });
 }
 
-/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Transfer/Get In); Tiết kiệm chỉ có Transfer/Get In. */
+/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Chuyển/Nhận); Tiết kiệm chỉ có Chuyển/Nhận. */
 actions.add = async (el) => {
   let pick = null;
   if (current.route === 'home') {
@@ -3739,7 +3739,7 @@ function openAddForm(pick, { type = 'expense', repeat = 'none' } = {}) {
 // ----- Dòng logo Bank của tài khoản chi và nhận, hiện ở mọi form giao dịch -----
 /** Logo của Bank/Ví chứa mục (NEOBANK, mục chưa có Bank thì dùng icon của mục). */
 const bankIconOf = (b) => S.groupOf(b)?.icon || b?.icon || '🏦';
-/** Một bên của dòng từ → đến: logo Bank rồi tên mục (Account, Thấu chi, Tiết kiệm, Thẻ tín dụng). */
+/** Một bên của dòng từ → đến: logo Bank rồi tên mục (Thanh Toán, Thấu chi, Tiết kiệm, Thẻ tín dụng). */
 /** dir: 'out' = mục bị trừ tiền (tên đỏ), 'in' = mục nhận tiền (tên xanh lá), trống = không tô màu. */
 function bankSide(b, label, dir = '') {
   if (!b) return '';
@@ -3775,8 +3775,8 @@ function gopTrichChooser(pick = null) {
   openSheet({
     title: 'Chọn thao tác',
     body: `${bookPick(pick)}<div class="actions col">
-      ${g ? '<button type="button" class="btn primary" data-x="gop">🤝 Transfer cho mục khác</button>' : ''}
-      ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Get In</button>' : ''}</div>`,
+      ${g ? '<button type="button" class="btn primary" data-x="gop">🤝 Chuyển cho mục khác</button>' : ''}
+      ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Nhận</button>' : ''}</div>`,
     onMount(sh, close) {
       bindBookPick(sh, close, '', () => gopTrichChooser(pick));
       sh.addEventListener('click', (e) => {
@@ -3790,13 +3790,13 @@ function gopTrichChooser(pick = null) {
 }
 
 // ================= Mẫu nhập nhanh =================
-// Mỗi mục Ngân hàng/Đầu tư có 4 mẫu (Chi, Thu, Transfer, Get In); thẻ trả trước có 1 mẫu.
+// Mỗi mục Ngân hàng/Đầu tư có 4 mẫu (Chi, Thu, Chuyển, Nhận); thẻ trả trước có 1 mẫu.
 // Thiết lập trong Cài đặt; bật "Hiện" thì có nút ⚡ ở Tổng quan, bấm vào chỉ cần nhập số tiền rồi OK.
 const QUICK_KINDS = {
   expense: { get icon() { return S.txIcons().expense; }, label: 'Chi' },
   income: { get icon() { return S.txIcons().income; }, label: 'Thu' },
-  gop: { get icon() { return S.txIcons().gop; }, label: 'Transfer' },
-  trich: { get icon() { return S.txIcons().trich; }, label: 'Get In' },
+  gop: { get icon() { return S.txIcons().gop; }, label: 'Chuyển' },
+  trich: { get icon() { return S.txIcons().trich; }, label: 'Nhận' },
   card: { get icon() { return S.txIcons().expense; }, label: 'Chi' },
 };
 /** Cài đặt chung: mỗi loại giao dịch một icon, tên chức năng cố định. */
@@ -3832,7 +3832,7 @@ actions['tx-icon'] = (el) => {
   });
 };
 const saveQuicks = (list) => S.setSetting('quicks', list);
-/** Nút nhanh luôn xếp theo Chi, Thu, Transfer, Get In; cùng loại giữ thứ tự tạo. */
+/** Nút nhanh luôn xếp theo Chi, Thu, Chuyển, Nhận; cùng loại giữ thứ tự tạo. */
 const QUICK_ORDER = ['expense', 'card', 'income', 'gop', 'trich'];
 const sortQuicks = (list) => [...list].sort((a, b) => QUICK_ORDER.indexOf(a.type) - QUICK_ORDER.indexOf(b.type));
 const myAccount = () => S.activeAccounts()[0];
@@ -3842,8 +3842,8 @@ function quickDesc(k, q) {
   if (!q) return 'Chưa thiết lập';
   const cat = q.categoryId && S.catById(q.categoryId);
   const peer = peerOf(q);
-  if (k === 'gop') return peer ? `Transfer cho ${S.bookLabel(peer)}` : 'Chưa chọn người nhận';
-  if (k === 'trich') return peer ? `Get In từ ${S.bookLabel(peer)}` : 'Chưa chọn nguồn';
+  if (k === 'gop') return peer ? `Chuyển cho ${S.bookLabel(peer)}` : 'Chưa chọn người nhận';
+  if (k === 'trich') return peer ? `Nhận từ ${S.bookLabel(peer)}` : 'Chưa chọn nguồn';
   return [cat ? `${cat.icon} ${cat.name}` : 'Chưa chọn danh mục', q.note].filter(Boolean).join(' · ');
 }
 
@@ -3875,7 +3875,7 @@ actions['quick-run'] = async (el) => {
       const curId = S.currentProfile().id;
       const pfc = bindPf(sh, q.pf || null, k !== 'card' && S.pfNeeded(curId, peer ? peer.id : null));
       const debtH = bindDebtHint(sh, amt, () => (k === 'gop' ? peer : k === 'trich' ? S.currentProfile() : null));
-      // Số dư của tài khoản bị trừ tiền: mục này (Chi, Transfer) hoặc mục nguồn (Get In).
+      // Số dư của tài khoản bị trừ tiền: mục này (Chi, Chuyển) hoặc mục nguồn (Nhận).
       let sourceHave = null;
       const upd = () => {
         const el = $(sh, '#qr-bal'), need = Math.round(readMoney(amt.value) || 0);
@@ -3986,7 +3986,7 @@ actions['quick-edit'] = (el) => {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên nút (tối đa 12 ký tự)', `<input id="qe-name" required maxlength="12" value="${esc(q.name || '')}" placeholder="vd: Ăn trưa">`)}
-      ${isPeer ? `${field(k === 'gop' ? 'Transfer cho' : 'Get In từ', `<select id="qe-peer">${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + p.name)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
+      ${isPeer ? `${field(k === 'gop' ? 'Chuyển cho' : 'Nhận từ', `<select id="qe-peer">${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + p.name)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
         ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản nguồn', '<select id="qe-pacc" data-acc><option></option></select>')}
         ${flowCatField('qe-fcat', q.flowCat || '')}`
         : field('Danh mục', `<select id="qe-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === q.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
@@ -4027,12 +4027,12 @@ actions['quick-edit'] = (el) => {
 };
 
 // ================= Secrecy: NEOBANK & Cash Outflow =================
-// NEOBANK: tài khoản ảo có số dư chỉnh tay, các mục Ngân hàng có thể Get In tiền về.
-// Cash Outflow: nơi nhận tiền Transfer từ các mục Ngân hàng. Ẩn thì không hiện thông tin, nhưng Transfer/Get In vẫn dùng được.
+// NEOBANK: tài khoản ảo có số dư chỉnh tay, các mục Ngân hàng có thể Nhận tiền về.
+// Cash Outflow: nơi nhận tiền Chuyển từ các mục Ngân hàng. Ẩn thì không hiện thông tin, nhưng Chuyển/Nhận vẫn dùng được.
 function secrecyHtml() {
   const hidden = S.secrecyHidden();
   const head = sectionTitle('🔐 Secrecy', `<label class="switch" title="Hiện mục Secrecy"><input type="checkbox" data-secrecy-toggle ${hidden ? '' : 'checked'}><i></i></label>`);
-  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Transfer/Get In. Các mẫu nhanh đã thiết lập với NEOBANK vẫn hoạt động. Bật công tắc để xem.</p>`;
+  if (hidden) return `${head}<p class="muted small">Đang ẩn: không hiện ở đây và trong form Chuyển/Nhận. Các mẫu nhanh đã thiết lập với NEOBANK vẫn hoạt động. Bật công tắc để xem.</p>`;
   return `${head}${['neo'].map((kind) => {
     const k = S.BOOK_KINDS[kind];
     const list = S.secrecyBooks(kind);
@@ -4040,14 +4040,14 @@ function secrecyHtml() {
     <section class="card list">${list.map((b) => `
       <div class="row book-row">
         <button type="button" class="grow-btn" data-act="secrecy-edit" data-id="${esc(b.id)}">${avatar(b)}
-          <span class="grow"><b>${esc(b.name)}</b><small>${kind === 'neo' ? 'Bấm để chỉnh số dư' : 'Tổng tiền đã nhận transfer'}</small></span>
+          <span class="grow"><b>${esc(b.name)}</b><small>${kind === 'neo' ? 'Bấm để chỉnh số dư' : 'Tổng tiền đã nhận tiền chuyển'}</small></span>
           <span class="psum" data-psum="${esc(b.id)}">…</span></button>
         <button type="button" class="icon-btn" data-act="secrecy-del" data-id="${esc(b.id)}" aria-label="Xóa">${DEL_ICON}</button>
       </div>`).join('') || `<p class="muted small" style="padding:8px 14px">Chưa có NEOBANK.</p>`}
       ${list.length < k.max ? `<button type="button" class="row add-row" data-act="secrecy-add" data-kind="${kind}"><span class="ci">＋</span><span class="grow"><b>Thêm ${k.label}</b></span></button>` : ''}
     </section>`;
   }).join('')}
-  <p class="muted small">🏧 NEOBANK: chỉ Account của User đặc biệt giao dịch được, dùng <b>Transfer</b> để gửi tiền vào và <b>Get In</b> để lấy tiền về.</p>`;
+  <p class="muted small">🏧 NEOBANK: chỉ Thanh Toán của User đặc biệt giao dịch được, dùng <b>Chuyển</b> để gửi tiền vào và <b>Nhận</b> để lấy tiền về.</p>`;
 }
 
 actions['secrecy-add'] = (el) => secrecyForm(null, el.dataset.kind);
@@ -4068,8 +4068,8 @@ async function secrecyForm(b, kind) {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">${b ? 'Lưu' : 'Tạo'}</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên', `<input id="sc-name" required maxlength="24" value="${esc(b ? b.name : '')}" placeholder="${neo ? 'vd: Cake, Timo, Ví ảo' : 'vd: Biếu bố mẹ, Chi ngoài'}">`)}
-      ${neo ? amountField('sc-bal', cur, 'Số dư hiện tại') : b ? `<p class="muted">Đã nhận transfer: <b>${fmt(cur)}</b></p>` : ''}
-      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Account của User đặc biệt transfer vào sẽ cộng, Get In về sẽ trừ vào số dư này.' : 'Nhận tiền Transfer từ các mục Ngân hàng, không có chức năng khác.'}</p>
+      ${neo ? amountField('sc-bal', cur, 'Số dư hiện tại') : b ? `<p class="muted">Đã nhận tiền chuyển: <b>${fmt(cur)}</b></p>` : ''}
+      <p class="muted small">${neo ? 'Số dư chỉnh tay bất kỳ lúc nào. Thanh Toán của User đặc biệt chuyển vào sẽ cộng, Nhận về sẽ trừ vào số dư này.' : 'Nhận tiền Chuyển từ các mục Ngân hàng, không có chức năng khác.'}</p>
     </form>`,
     onMount(sh, close) {
       const bal = neo ? bindMoney(sh, 'sc-bal') : null;
@@ -4191,15 +4191,15 @@ function txPermHtml(p) {
   </section>` : '';
   const neo = S.kindOfBook(p) === 'bank' && !p.overdraft ? `${sectionTitle('NEOBANK (Secrecy)')}
   <section class="card form">
-    <div class="row-between"><span>Cho phép Transfer / Get In với NEOBANK</span>
+    <div class="row-between"><span>Cho phép Chuyển / Nhận với NEOBANK</span>
       <label class="switch"><input type="checkbox" data-neo-ok ${p.neoOk ? 'checked' : ''}><i></i></label></div>
-    <p class="muted small">Bật thì các NEOBANK trong Secrecy hiện trong Transfer và Get In của mục này.</p>
+    <p class="muted small">Bật thì các NEOBANK trong Secrecy hiện trong Chuyển và Nhận của mục này.</p>
   </section>` : '';
   return `${features}${neo}${sectionTitle('Tiền ra')}
   <section class="card form">
     <div class="row-between"><span>Cho phép trừ tiền khỏi tài khoản</span>
       <label class="switch"><input type="checkbox" data-allow-out ${p.locked ? '' : 'checked'}><i></i></label></div>
-    <p class="muted small">Tắt thì không chi, transfer, trả nợ, trả thẻ hay bị Get In từ mục này được. Tiền vào vẫn nhận bình thường.</p>
+    <p class="muted small">Tắt thì không chi, chuyển, trả nợ, trả thẻ hay bị Nhận từ mục này được. Tiền vào vẫn nhận bình thường.</p>
   </section>`;
 }
 
@@ -4879,7 +4879,7 @@ function paintMain(main, html, route) {
 /** Mục bị ẩn theo cài đặt của người dùng hiện tại. */
 const hiddenTabs = () => {
   // Thẻ trả trước: chỉ Giao dịch + ⚙️ Cài đặt riêng. Kế hoạch không còn ở thanh dưới (là màn hình chung của User).
-  // Báo cáo luôn hiện với Account/Thấu chi/Tiết kiệm (đã bỏ công tắc ẩn trong Cài đặt riêng).
+  // Báo cáo luôn hiện với Thanh Toán/Thấu chi/Tiết kiệm (đã bỏ công tắc ẩn trong Cài đặt riêng).
   if (S.isCard()) return new Set(['reports']);
   return new Set();
 };
@@ -4900,7 +4900,7 @@ export function render(route, sub) {
   const v = VIEWS[current.route];
   const main = document.getElementById('main');
   const y = window.scrollY;
-  // Màu của loại tài khoản đang xem (Account cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ).
+  // Màu của loại tài khoản đang xem (Thanh Toán cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ).
   document.body.dataset.tab = current.route === 'home' ? overKindNow() : current.route === 'settings' ? '' : tabOfBook(S.currentProfile());
   paintMain(main, v.html(sub), current.route);
   restoreTop(main);
