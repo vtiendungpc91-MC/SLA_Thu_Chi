@@ -1,6 +1,6 @@
 // Service worker: lưu toàn bộ app vào bộ nhớ đệm để chạy offline.
 // Khi sửa code, tăng VERSION để điện thoại tải bản mới.
-const VERSION = 'v7.43.0';
+const VERSION = 'v7.45.0';
 const CACHE = 'sothuchi-' + VERSION;
 const ASSETS = [
   './',
@@ -28,6 +28,17 @@ const ASSETS = [
   './icons/pic/tui.png',
   './icons/pic/tang.png',
   './icons/pic/trao.png',
+  './icons/pic/ck1.png',
+  './icons/pic/trao2.png',
+  './icons/pic/ck2.png',
+  './icons/pic/vay.png',
+  './icons/pic/hu.png',
+  './icons/pic/dautu.png',
+  './icons/pic/tien3d.png',
+  './icons/pic/ket.png',
+  './icons/pic/the.png',
+  './icons/pic/the2.png',
+  './icons/pic/ky.png',
 ];
 
 // cache: 'reload' = luôn tải từ máy chủ, bỏ qua bộ nhớ tạm 10 phút của trình duyệt (GitHub Pages max-age=600).

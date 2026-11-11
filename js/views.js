@@ -1676,6 +1676,15 @@ function quickRows(cells, bookId, cats = state.categories) {
 const canRecall = (t) => Date.now() - (t.createdAt || 0) < S.RECALL_MS && t.status !== 'done' && !t.debtId;
 const txTypeKey = (t) => (t.gop ? (t.gop.mode === 'trich' ? 'trich' : 'gop') : t.type === 'income' ? 'income' : 'expense');
 const txRowName = (t) => (isPlainGop(t) ? gopLabel(t.gop) : t.quick?.name || t.note || t.catName || (t.gop ? gopLabel(t.gop) : 'Giao dịch'));
+/**
+ * Khoản Chuyển trong Giao dịch gần đây: "Chuyển đến [biểu tượng Bank] [tên tài khoản]" / "Nhận từ [biểu tượng Bank] [tên tài khoản]".
+ * Biểu tượng Bank là logo/icon của Bank chứa tài khoản bên kia (chưa có Bank thì icon của tài khoản); tài khoản đã xóa thì dùng tên đã lưu.
+ */
+function recentGopText(t) {
+  const p = S.getProfiles().find((x) => x.id === t.gop.peer);
+  const who = p ? `${bankIconOf(p)} ${p.name}` : t.gop.peerName;
+  return `${t.gop.dir === 'out' ? 'Chuyển đến' : 'Nhận từ'} ${who}`;
+}
 /** 5 giao dịch gần nhất: khoản mới trong 5 phút có nút Recall; có nút ẩn/hiện. */
 function recentRows(list, b) {
   if (!list.length) return '';
@@ -1684,7 +1693,7 @@ function recentRows(list, b) {
     const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
     // Thứ tự: tên · (nút Recall) · số tiền · ô icon danh mục rộng cố định → số tiền mọi dòng thẳng cột bên phải.
-    return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
+    return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(isPlainGop(t) ? recentGopText(t) : txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
       ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
       <span class="rc-cat" aria-hidden="true">${esc(t.catIcon || '')}</span></div>`;
@@ -4354,10 +4363,33 @@ function bookSettingsView() {
       <p class="muted small">Gán nhóm 50/30/20 hoặc lọ JARS cho từng danh mục Chi trong <b>Cài đặt chung › Danh mục</b>.</p>
     </section>`;
   }
+  // Reset lịch sử giao dịch: có ở mọi loại mục.
+  const legacyCard = S.isCard();
+  body += `${sectionTitle('Reset')}
+    <section class="card form">
+      <button type="button" class="btn danger block" data-act="book-reset">🧹 Reset: xóa lịch sử giao dịch</button>
+      <p class="muted small">${legacyCard
+    ? 'Xóa các khoản đã thanh toán của thẻ, giữ các khoản chưa thanh toán.'
+    : 'Xóa hết giao dịch của mục này nhưng <b>giữ đúng số dư hiện tại</b> (số dư hiện tại thành số dư ban đầu).'} Giao dịch Chuyển ở mục bên kia không bị xóa. Không hoàn tác được — nên bấm 💾 Save sao lưu trước.</p>
+    </section>`;
   return `${topBar(`⚙️ Cài đặt riêng của ${esc(kindOf(p).label)}`)}${body}`;
 }
 
 actions['close-settings'] = () => { location.hash = '#/home'; };
+actions['book-reset'] = async () => {
+  const p = S.currentProfile();
+  const legacyCard = S.isCard();
+  const n = legacyCard ? state.transactions.filter((t) => t.status === 'done').length : state.transactions.length;
+  if (!n) return toast('Không có giao dịch nào để xóa');
+  const bal = legacyCard ? '' : `\nSố dư hiện tại ${fmtBal(S.totalBalance())} được giữ nguyên.`;
+  if (!confirm(`Reset "${S.bookLabel(p)}"?\n\nXóa ${n} giao dịch${legacyCard ? ' đã thanh toán' : ''} của mục này.${bal}\nKhông hoàn tác được.`)) return;
+  if (!confirm('Chắc chắn xóa? Nên Save sao lưu trước khi Reset.')) return;
+  try {
+    const d = await S.resetBookHistory();
+    toast(`🧹 Đã xóa ${d} giao dịch${legacyCard ? '' : ', số dư giữ nguyên'}`, 3500);
+  } catch (err) { toast('⛔ ' + err.message, 4500); }
+  refresh();
+};
 
 const pinInput = (id, label) => field(label, `<input id="${id}" type="password" inputmode="numeric" autocomplete="off" maxlength="12" pattern="[0-9]*" class="pin-input">`);
 

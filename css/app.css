@@ -1258,3 +1258,23 @@ html.dark .quick-btn.qk-btn, html.dark .quick-btn.qk-btn.q-expense, html.dark .q
 .cat-row .cat-del, .cat-row .cat-del-ph { flex: 0 0 34px; height: 34px; }
 .cat-row .cat-del { display: grid; place-items: center; border: 0; border-radius: 10px; background: none; color: var(--expense); padding: 0; }
 .cat-row.dragging { opacity: .85; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); position: relative; z-index: 2; border-radius: 10px; }
+/* v7.44: màu các loại tài khoản đậm hơn một chút (Thanh Toán / Thấu chi / Tiết Kiệm / Credit Card / Thẻ trả trước) */
+.fab[data-tab="bank"], .fab[data-tab="wallet"] { background: #ffc078; color: #7a2e05; box-shadow: 0 6px 18px rgba(253, 126, 20, .42); }
+.fab[data-tab="od"] { background: #a5d8ff; color: #0f3d6b; box-shadow: 0 6px 18px rgba(77, 171, 247, .42); }
+.fab[data-tab="saving"] { background: #8ce99a; color: #134a1f; box-shadow: 0 6px 18px rgba(64, 192, 87, .38); }
+.fab[data-tab="credit"] { background: #ffa8a8; color: #7a1414; box-shadow: 0 6px 18px rgba(250, 82, 82, .38); }
+.fab[data-tab="prepaid"] { background: #d0bfff; color: #35206a; box-shadow: 0 6px 18px rgba(132, 94, 247, .38); }
+body[data-tab="bank"], body[data-tab="wallet"] { --kc: #ffc078; --kc-ink: #e8590c; --kc-on: #7a2e05; }
+body[data-tab="od"] { --kc: #a5d8ff; --kc-ink: #1c7ed6; --kc-on: #0f3d6b; }
+body[data-tab="saving"] { --kc: #8ce99a; --kc-ink: #2f9e44; --kc-on: #134a1f; }
+body[data-tab="credit"] { --kc: #ffa8a8; --kc-ink: #e03131; --kc-on: #7a1414; }
+body[data-tab="prepaid"] { --kc: #d0bfff; --kc-ink: #7950f2; --kc-on: #35206a; }
+html.dark body[data-tab="bank"], html.dark body[data-tab="wallet"] { --kc-ink: #ffa94d; }
+html.dark body[data-tab="od"] { --kc-ink: #74c0fc; }
+html.dark body[data-tab="saving"] { --kc-ink: #69db7c; }
+html.dark body[data-tab="credit"] { --kc-ink: #ff8787; }
+html.dark body[data-tab="prepaid"] { --kc-ink: #b197fc; }.seg.tabs > [data-act="over-tab"][data-v="bank"].on, .seg.tabs > [data-act="over-tab"][data-v="wallet"].on { background: #ffc078; color: #7a2e05; }
+.seg.tabs > [data-act="over-tab"][data-v="od"].on { background: #a5d8ff; color: #0f3d6b; }
+.seg.tabs > [data-act="over-tab"][data-v="saving"].on { background: #8ce99a; color: #134a1f; }
+.seg.tabs > [data-act="over-tab"][data-v="credit"].on { background: #ffa8a8; color: #7a1414; }
+.seg.tabs > [data-act="over-tab"][data-v="prepaid"].on { background: #d0bfff; color: #35206a; }

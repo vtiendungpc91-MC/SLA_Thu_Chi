@@ -1833,6 +1833,40 @@ export function pfNeeded(aId, bId = null) {
 }
 export const pfDelta = (t) => (t.type === 'income' ? t.amountVnd : t.type === 'expense' ? -t.amountVnd : 0);
 
+/**
+ * Reset lịch sử của mục đang mở: xóa mọi giao dịch nhưng giữ đúng số dư hiện tại (số dư ban đầu của từng tài khoản
+ * = số dư hiện tại). Chỉ xóa trong sổ này: giao dịch Chuyển ở sổ bên kia giữ nguyên. Thẻ trả trước kiểu cũ (không có
+ * số dư) chỉ xóa các khoản đã thanh toán, giữ khoản chưa thanh toán. User đặc biệt: giữ nguyên phần Personal.
+ * Trả về số giao dịch đã xóa.
+ */
+export async function resetBookHistory() {
+  const b = currentProfile();
+  const legacyCard = b.kind === 'card' && !b.credit;
+  const keep = legacyCard ? state.transactions.filter((t) => t.status !== 'done') : [];
+  const drop = state.transactions.filter((t) => !keep.includes(t));
+  if (!drop.length) return 0;
+  if (!legacyCard) {
+    for (const a of state.accounts) {
+      const bal = accountBalance(a);
+      if (bal !== (Number(a.initial) || 0)) await db.put('accounts', { ...a, initial: bal, updatedAt: Date.now() });
+    }
+  }
+  // Personal/Family tính từ giao dịch có nhãn: dồn phần Personal của các giao dịch sắp xóa vào mức gốc.
+  if (isSpecialBook(b)) {
+    const u = userOf(b);
+    const moved = drop.filter((t) => t.pf === 'personal').reduce((s, t) => s + pfDelta(t), 0);
+    if (u && moved) saveUser({ id: u.id, pfBase: (Number(u.pfBase) || 0) + moved });
+  }
+  for (const t of drop) {
+    for (const pid of t.photoIds || []) await db.del('photos', pid);
+    await db.del('transactions', t.id);
+  }
+  state.accounts = await db.getAll('accounts');
+  state.transactions = keep;
+  emit();
+  return drop.length;
+}
+
 export async function pfBalances(userId = specialUser()?.id) {
   const u = getUsers().find((x) => x.id === userId);
   if (!u?.special) return null;

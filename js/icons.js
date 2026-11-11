@@ -94,7 +94,8 @@ export const bankColorOf = (icon) => {
 };
 ICONS.push(...BANK_LOGOS.map((l) => ({ icon: bankIcon(l.code), kw: `logo ngan hang bank ${plain(l.name)} ${l.code.toLowerCase()}` })));
 
-const TOKEN_RE = /(🏦|🤑|💰|📈|💸)\u2063([A-Z]{2,6})/gu;
+// Mẫu nhận diện token: 🏦 (huy hiệu ngân hàng) hoặc emoji của icon ảnh, rồi U+2063 + mã (tạo sau PIC_ICONS).
+let TOKEN_RE = null;
 const SKIP = 'option, select, textarea, input, script, style, title';
 
 // ---------- Icon hình ảnh (file trong icons/pic) ----------
@@ -104,10 +105,23 @@ export const PIC_ICONS = [
   ['💰', 'TUI', 'tui', 'anh tui tien money bag'],
   ['📈', 'TANG', 'tang', 'anh tang truong tien vao loi nhuan growth'],
   ['💸', 'TRAO', 'trao', 'anh trao tien dua tien tra no cho vay give money'],
+  // v7.45: thêm 11 icon ảnh
+  ['🌐', 'CK', 'ck1', 'anh chuyen khoan ngan hang quoc te ck transfer bank'],
+  ['💸', 'TRAOB', 'trao2', 'anh trao tien dua tien tra cam give money'],
+  ['🌐', 'CKM', 'ck2', 'anh chuyen khoan ngan hang mau ck transfer bank'],
+  ['💰', 'VAY', 'vay', 'anh vay tien lai suat phan tram tui tien loan'],
+  ['🪙', 'HU', 'hu', 'anh hu tien tiet kiem dong xu jar saving'],
+  ['🌱', 'DT', 'dautu', 'anh dau tu cay tien tui tien sinh loi invest'],
+  ['💰', 'TIEN', 'tien3d', 'anh tien vang dong xu tui tien 3d money coin'],
+  ['🔐', 'KET', 'ket', 'anh ket sat tiet kiem an toan safe'],
+  ['💳', 'THE', 'the', 'anh the ngan hang the tin dung card'],
+  ['💳', 'THEB', 'the2', 'anh the tin dung credit card'],
+  ['📝', 'KY', 'ky', 'anh ky hop dong chu ky dien tu esign online'],
 ].map(([emoji, code, file, kw]) => ({ emoji, code, file, kw, icon: emoji + BANK_SEP + code }));
 const picOf = (code) => PIC_ICONS.find((p) => p.code === code);
 // Đặt ảnh lên đầu lưới để dễ thấy.
 ICONS.unshift(...PIC_ICONS.map((p) => ({ icon: p.icon, kw: p.kw })));
+TOKEN_RE = new RegExp(`(${[...new Set(['🏦', ...PIC_ICONS.map((p) => p.emoji)])].join('|')})\\u2063([A-Z]{2,6})`, 'gu');
 function convertText(node) {
   const text = node.data;
   if (!text.includes(BANK_SEP)) return;
