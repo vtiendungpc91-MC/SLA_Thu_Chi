@@ -1243,3 +1243,6 @@ html.dark .quick-btn.qk-btn, html.dark .quick-btn.qk-btn.q-expense, html.dark .q
 .qk-btn:has(.qk-cat) { padding-right: 24px !important; }
 .qk-btn .qk-cat { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); line-height: 1; font-size: 15px; }
 @media (max-width: 380px) { .qk-btn:has(.qk-cat) { padding-right: 21px !important; } .qk-btn .qk-cat { right: 3px; font-size: 14px; } }
+/* v7.40: icon danh mục cuối dòng Giao dịch gần đây; ô rộng cố định để số tiền thẳng cột */
+.rc-cat { flex: 0 0 22px; width: 22px; text-align: center; font-size: 14px; line-height: 1; }
+.rc-cat .bank-badge.ib { font-size: 9px; }

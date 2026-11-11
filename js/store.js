@@ -1555,16 +1555,28 @@ export async function userAlerts(userId) {
 
 /**
  * Nhắc thanh toán Credit Card / Thẻ trả trước: đặt ngày (và giờ) trong Cài đặt riêng của thẻ (b.payRemind).
- * Từ ngày giờ đó mỗi tháng, thẻ còn nợ thì hiện thông báo đến khi trả hết. Tháng thiếu ngày thì nhắc ngày cuối tháng.
+ * Ngày đã chọn tính từ THÁNG SAU tháng lưu thiết lập (payRemind.start = 'YYYY-MM'): vd lưu ngày 5 vào 11/11 thì nhắc
+ * lần đầu 05/12, rồi ngày 5 mỗi tháng. Thẻ còn nợ thì hiện đến khi thanh toán kỳ đó qua thông báo (kể cả trả 0 ₫ —
+ * ghi payRemind.paidFor = ngày đến hạn của kỳ). Tháng thiếu ngày thì nhắc ngày cuối tháng.
  */
+export const markCreditPaid = (cardId, due) => {
+  const b = getProfiles().find((x) => x.id === cardId);
+  if (b?.payRemind) saveProfile({ id: b.id, payRemind: { ...b.payRemind, paidFor: due } });
+  emit();
+};
 export async function creditPayAlerts(userId) {
   const today = todayISO();
+  const month = today.slice(0, 7);
   const out = [];
   for (const b of userBooks(userId)) {
-    const cfg = b.payRemind;
+    let cfg = b.payRemind;
     if (!b.credit || !cfg?.day) continue;
+    // Thiết lập từ bản trước chưa có tháng bắt đầu: coi như lưu trong tháng này (nhắc từ tháng sau).
+    if (!cfg.start) { cfg = { ...cfg, start: month }; saveProfile({ id: b.id, payRemind: cfg }); }
+    if (month <= cfg.start) continue;
     const due = addMonths(today.slice(0, 8) + '01', 0, Number(cfg.day));
     const time = cfg.time || ALERT_TIME;
+    if (cfg.paidFor === due) continue;
     if (today < due || (today === due && fmtTimeVN(Date.now()) < time)) continue;
     let debt = 0;
     try { debt = -((await profileSummary(b)).balance || 0); } catch { continue; }
@@ -1643,7 +1655,12 @@ export async function bookOverview(b, range) {
     }
   }
   const recent = [...txs].sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : (y.createdAt || 0) - (x.createdAt || 0)))
-    .slice(0, RECALL_LINES).map((t) => ({ ...t, catName: cats.find((c) => c.id === t.categoryId)?.name || '' }));
+    .slice(0, RECALL_LINES).map((t) => {
+      // Icon danh mục cho dòng giao dịch gần đây: Chuyển lấy danh mục Chuyển (nếu chọn), khoản chia nhiều danh mục lấy danh mục đầu.
+      const cat = cats.find((c) => c.id === (t.categoryId || t.splits?.[0]?.categoryId));
+      const flow = t.gop?.flowCat ? flowCatById(t.gop.flowCat) : null;
+      return { ...t, catName: cats.find((c) => c.id === t.categoryId)?.name || '', catIcon: flow?.icon || cat?.icon || '' };
+    });
   return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent, cats };
 }
 

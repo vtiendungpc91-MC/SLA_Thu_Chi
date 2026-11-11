@@ -333,7 +333,7 @@ function startTicker(el, alerts) {
       line.hidden = !texts[i];
       const pay = line.querySelector('.tk-pay'), a = items[i];
       pay.hidden = a?.kind !== 'creditpay';
-      if (a?.kind === 'creditpay') Object.assign(pay.dataset, { notif: 'creditpay', book: a.bookId, id: a.id });
+      if (a?.kind === 'creditpay') Object.assign(pay.dataset, { notif: 'creditpay', book: a.bookId, id: a.id, due: a.date });
     });
     el.classList.remove('tick');
     void el.offsetWidth; // Chạy lại hiệu ứng hiện dần.
@@ -531,7 +531,7 @@ function notifRow(a) {
   const tone = (a.kind === 'budget' ? a.level >= 100 : a.days < 0) ? 'over' : a.kind === 'recurring' ? '' : 'warn';
   return `<div class="notif-row ${tone}"><span class="n-ic">${NOTIF[a.kind].icon}</span>
     <span class="grow"><b>${esc(a.title)}</b><small>${esc(a.bookName)} · ${esc(sub)}</small></span>
-    <button type="button" class="btn small n-btn" data-notif="${a.kind}" data-book="${esc(a.bookId)}" data-id="${esc(a.id)}">${NOTIF[a.kind].btn}</button></div>`;
+    <button type="button" class="btn small n-btn" data-notif="${a.kind}" data-book="${esc(a.bookId)}" data-id="${esc(a.id)}"${a.kind === 'creditpay' ? ` data-due="${esc(a.date)}"` : ''}>${NOTIF[a.kind].btn}</button></div>`;
 }
 
 async function fillNotifications(sh) {
@@ -545,14 +545,14 @@ async function fillNotifications(sh) {
 }
 
 /** Mở đúng mục rồi thực hiện thao tác của thông báo. */
-async function runNotif({ notif, book, id }) {
+async function runNotif({ notif, book, id, due }) {
   if (notif === 'reminder') { S.doneReminder(S.currentUser().id, id); return toast('Đã Done'); }
   if (notif === 'backup') return actions.backup();
   if (notif === 'creditpay') { // Thanh toán thẻ ngay trên màn hình hiện tại: chọn tài khoản Thanh Toán của Bank để trả.
     const card = S.getProfiles().find((p) => p.id === (book || id));
     if (!card) return toast('Không tìm thấy thẻ');
     await inBook(card.id);
-    return creditPaySheet();
+    return creditPaySheet(due ? { due } : {});
   }
   if (notif === 'debt') { // Thanh toán ngay trên màn hình hiện tại, không chuyển về Tổng quan.
     await inBook(book);
@@ -1488,8 +1488,13 @@ actions['over-pay'] = async (el) => {
 actions['credit-pay'] = () => creditPaySheet();
 
 /** Thanh toán Thẻ tín dụng: một phần hoặc toàn bộ số đang nợ. */
-function creditPaySheet() {
+/**
+ * opts.due: mở từ thông báo nhắc thanh toán (ngày đến hạn của kỳ). Khi đó số tiền điền sẵn 10% dư nợ, sửa được,
+ * và nhập 0 ₫ vẫn tính là đã thanh toán kỳ đó (không ghi giao dịch, chỉ tắt thông báo của kỳ).
+ */
+function creditPaySheet(opts = {}) {
   const card = S.currentProfile();
+  const fromNotif = !!opts.due;
   const debt = -S.accountBalance(S.activeAccounts()[0]);
   if (debt <= 0) return toast('Thẻ không còn nợ');
   // Trả từ các tài khoản Thanh Toán của Bank (không gồm thẻ trả trước và chính thẻ này).
@@ -1504,7 +1509,8 @@ function creditPaySheet() {
       <div class="field"><span>Trả từ</span>${userChips('cr-who', users, (p) => `<button type="button" class="chip ${p.id === users[0].id ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>
       ${field('Từ tài khoản', '<select id="cr-acc" data-acc><option></option></select>')}
       <em class="hint" id="cr-bal"></em>
-      ${amountLine({ dateId: 'cr-date', date: todayISO(), amtId: 'cr-amt', amount: fmtNum(debt), label: 'Ngày', after: pfField() })}
+      ${amountLine({ dateId: 'cr-date', date: todayISO(), amtId: 'cr-amt', amount: fromNotif ? fmtNum(Math.round(debt * 0.1)) : fmtNum(debt), label: 'Ngày', after: pfField() })}
+      ${fromNotif ? `<p class="muted small">Kỳ thanh toán ${fmtDate(opts.due)} · điền sẵn 10% dư nợ, sửa được. Nhập <b>0 ₫</b> vẫn tính là đã thanh toán kỳ này.</p>` : ''}
       <button type="button" class="btn ghost small" data-full>Trả toàn bộ ${fmtBal(debt)}</button>
     </form>`,
     onMount(sh, close) {
@@ -1537,14 +1543,18 @@ function creditPaySheet() {
       load();
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const v = Math.round(readMoney(amt.value));
-        if (!(v > 0)) return toast('Nhập số tiền thanh toán');
+        const v = Math.round(readMoney(amt.value) || 0);
+        if (v < 0 || (!fromNotif && !(v > 0))) return toast('Nhập số tiền thanh toán');
         if (v > debt) return toast(`Chỉ đang nợ ${fmt(debt)}`, 3500);
-        try {
-          await S.payCredit({ payerId: whoId, amount: v, fromAccountId: $(sh, '#cr-acc').value, date: $(sh, '#cr-date').value || todayISO(), pf: pfc.value() });
-        } catch (err) { return toast('⛔ ' + err.message, 4500); }
+        if (v > 0) {
+          try {
+            await S.payCredit({ payerId: whoId, amount: v, fromAccountId: $(sh, '#cr-acc').value, date: $(sh, '#cr-date').value || todayISO(), pf: pfc.value() });
+          } catch (err) { return toast('⛔ ' + err.message, 4500); }
+        }
+        // Thanh toán từ thông báo (kể cả 0 ₫): tính là đã thanh toán kỳ này, thông báo của kỳ biến mất.
+        if (fromNotif) S.markCreditPaid(card.id, opts.due);
         close();
-        toast(`✅ Đã thanh toán ${fmt(v)}${v < debt ? `, còn nợ ${fmt(debt - v)}` : ', đã hết nợ'}`);
+        toast(v > 0 ? `✅ Đã thanh toán ${fmt(v)}${v < debt ? `, còn nợ ${fmt(debt - v)}` : ', đã hết nợ'}` : `✅ Đã ghi nhận thanh toán 0 ₫ cho kỳ ${fmtDate(opts.due)}`);
       });
     },
   });
@@ -1666,9 +1676,11 @@ function recentRows(list, b) {
   const rows = list.map((t) => {
     const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
+    // Thứ tự: tên · (nút Recall) · số tiền · ô icon danh mục rộng cố định → số tiền mọi dòng thẳng cột bên phải.
     return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
+      ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
-      ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}</div>`;
+      <span class="rc-cat" aria-hidden="true">${esc(t.catIcon || '')}</span></div>`;
   }).join('');
   return `<div class="rc-box">
     <div class="rc-head"><small>Giao dịch gần đây</small><button type="button" class="link rc-toggle" data-act="recent-toggle" data-id="${esc(b.id)}">${b.hideRecent ? 'Hiện' : 'Ẩn'}</button></div>
@@ -4256,7 +4268,7 @@ function creditRemindHtml(p) {
     <div class="two">${field('Ngày trong tháng', `<input type="number" id="pr-day" min="1" max="31" inputmode="numeric" placeholder="Đang tắt" value="${esc(r.day || '')}">`)}
     ${alertTimeField('pr-time', r.time)}</div>
     <button type="button" class="btn primary" data-act="credit-remind-save">Lưu</button>
-    <p class="muted small">Từ ngày giờ này mỗi tháng, nếu thẻ còn nợ thì có thông báo kèm nút <b>💸 Thanh toán</b> (ở Tổng quan và trong danh sách thông báo), hiện đến khi trả hết. Tháng không đủ ngày thì nhắc vào ngày cuối tháng. Để trống ngày là tắt.</p>
+    <p class="muted small">Ngày đã chọn tính từ <b>tháng sau</b> (vd lưu ngày 5 trong tháng 11 thì nhắc lần đầu 05/12, rồi ngày 5 mỗi tháng). Đến ngày giờ đó, nếu thẻ còn nợ thì có thông báo kèm nút <b>💸 Thanh toán</b>: số tiền điền sẵn 10% dư nợ, sửa được, nhập 0 ₫ vẫn tính là đã thanh toán kỳ đó. Tháng không đủ ngày thì nhắc vào ngày cuối tháng. Để trống ngày là tắt.</p>
   </section>`;
 }
 actions['credit-remind-save'] = () => {
@@ -4266,9 +4278,10 @@ actions['credit-remind-save'] = () => {
   if (!raw) { S.saveProfile({ id: p.id, payRemind: null }); refresh(); return toast('Đã tắt nhắc thanh toán thẻ'); }
   const day = Number(raw);
   if (!Number.isInteger(day) || day < 1 || day > 31) return toast('Ngày phải từ 1 đến 31');
-  S.saveProfile({ id: p.id, payRemind: { day, time } });
+  // Ngày đã chọn tính từ tháng sau tháng lưu (start), nên tháng này không nhắc.
+  S.saveProfile({ id: p.id, payRemind: { day, time, start: todayISO().slice(0, 7) } });
   refresh();
-  toast(`Sẽ nhắc thanh toán lúc ${time} ngày ${day} hằng tháng`);
+  toast(`Sẽ nhắc thanh toán lúc ${time} ngày ${day} hằng tháng, bắt đầu từ tháng sau`);
 };
 
 /** Cài đặt riêng: bật/tắt 4 tính năng (Bank, Thấu chi) và cho phép trừ tiền (Bank, Thấu chi, Tiết kiệm). */
