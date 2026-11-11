@@ -876,7 +876,8 @@ export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') =
 /** Các mục ghi được Thu/Chi: Bank và Thấu chi của mọi User. */
 export const txBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && (featureOn(p, 'expense') || featureOn(p, 'income')));
 /** Tính năng giao dịch của Bank/Thấu chi: mặc định bật, tắt riêng trong Cài đặt của mục. */
-export const TX_FEATURES = ['expense', 'income', 'gop', 'trich'];
+// v7.38: bỏ loại giao dịch Nhận (trich) — không tạo mới được; giao dịch Nhận đã ghi vẫn giữ và xóa được.
+export const TX_FEATURES = ['expense', 'income', 'gop'];
 export const featureOn = (b, f) => (b.kind || 'bank') !== 'bank' || b.features?.[f] !== false;
 export function setFeature(bookId, f, on) {
   const b = getProfiles().find((x) => x.id === bookId);
@@ -892,7 +893,8 @@ export const kindOfBook = (p) => p.kind || 'bank';
  */
 export function transferTargets(mode, from = currentProfile(), { includeHidden = false } = {}) {
   const k = kindOfBook(from);
-  if (!featureOn(from, mode === 'trich' ? 'trich' : 'gop')) return [];
+  if (mode === 'trich') return []; // Đã bỏ loại giao dịch Nhận.
+  if (!featureOn(from, 'gop')) return [];
   // Thẻ tín dụng: nhận Chuyển từ Bank/Thấu chi và Nhận từ Bank/Thấu chi; không chuyển tiền ra, không bị Nhận.
   const allowed = mode === 'trich'
     ? (k === 'bank' ? ['bank', 'neo'] : k === 'saving' || from.credit ? ['bank'] : [])
@@ -1477,16 +1479,16 @@ export function reminderAlerts(userId) {
   }
   return out;
 }
-// ---------- Nhắc sao lưu: quá 7 ngày chưa sao lưu (hoặc chưa sao lưu lần nào) thì hiện trong thông báo ----------
+// ---------- Nhắc sao lưu: mỗi ngày 1 lần, chỉ trong khung 20:00–24:00, hôm nay đã sao lưu thì thôi ----------
 const LAST_BACKUP_KEY = 'stc-last-backup';
-export const BACKUP_REMIND_DAYS = 7;
+export const BACKUP_REMIND_FROM = '20:00';
 export const markBackup = () => localStorage.setItem(LAST_BACKUP_KEY, todayISO());
 export const lastBackupDate = () => localStorage.getItem(LAST_BACKUP_KEY) || state.settings.lastBackup || null;
 export function backupAlerts() {
   const today = todayISO();
   const last = lastBackupDate();
   const days = last ? diffDays(last, today) : null;
-  if (last && days < BACKUP_REMIND_DAYS) return [];
+  if (last === today || fmtTimeVN(Date.now()) < BACKUP_REMIND_FROM) return [];
   return [{ key: `backup:${today}`, kind: 'backup', id: 'backup', days: 0, title: last ? `${days} ngày chưa sao lưu` : 'Chưa sao lưu lần nào', amount: 0, date: today, bookId: '', bookName: 'Sao lưu', bookIcon: '💾' }];
 }
 
@@ -1547,8 +1549,29 @@ export async function userAlerts(userId) {
     if (oldReminders?.length) await adoptOldReminders(userId, b.id, oldReminders);
     out.push(...list.map((a) => ({ ...a, bookId: b.id, bookName: b.name, bookIcon: b.icon })));
   }
-  out.push(...reminderAlerts(userId), ...backupAlerts());
+  out.push(...await creditPayAlerts(userId), ...reminderAlerts(userId), ...backupAlerts());
   return out.sort((a, b) => a.days - b.days);
+}
+
+/**
+ * Nhắc thanh toán Credit Card / Thẻ trả trước: đặt ngày (và giờ) trong Cài đặt riêng của thẻ (b.payRemind).
+ * Từ ngày giờ đó mỗi tháng, thẻ còn nợ thì hiện thông báo đến khi trả hết. Tháng thiếu ngày thì nhắc ngày cuối tháng.
+ */
+export async function creditPayAlerts(userId) {
+  const today = todayISO();
+  const out = [];
+  for (const b of userBooks(userId)) {
+    const cfg = b.payRemind;
+    if (!b.credit || !cfg?.day) continue;
+    const due = addMonths(today.slice(0, 8) + '01', 0, Number(cfg.day));
+    const time = cfg.time || ALERT_TIME;
+    if (today < due || (today === due && fmtTimeVN(Date.now()) < time)) continue;
+    let debt = 0;
+    try { debt = -((await profileSummary(b)).balance || 0); } catch { continue; }
+    if (debt <= 0) continue;
+    out.push({ key: `creditpay:${b.id}:${due}`, kind: 'creditpay', id: b.id, days: diffDays(today, due), title: `Thanh toán ${b.name}`, amount: debt, date: due, time, bookId: b.id, bookName: b.name, bookIcon: b.icon });
+  }
+  return out;
 }
 
 /** Tổng tiền của một nhóm mục trong User: Ngân hàng/Tiết kiệm = số dư; Thẻ = tiền chưa thanh toán. */
@@ -1574,8 +1597,8 @@ export const RECALL_LINES = 5;
 /** Loại nút nhanh mỗi mục được tạo. */
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
-  if (k === 'card') return b.credit ? ['expense', 'income', 'trich'] : ['card'];
-  if (k === 'saving') return ['gop', 'trich'];
+  if (k === 'card') return b.credit ? ['expense', 'income'] : ['card'];
+  if (k === 'saving') return ['gop'];
   return TX_FEATURES.filter((f) => featureOn(b, f));
 }
 /** Danh sách nút nhanh; dữ liệu kiểu cũ (mỗi loại 1 mẫu) được đọc thành danh sách. */
@@ -1585,10 +1608,10 @@ export function quicksOf(st = state.settings) {
     .map(([k, q]) => ({ ...q, id: k, type: /^card/.test(k) ? 'card' : k, name: String(q.name || '').slice(0, 12) }));
 }
 /** Danh sách thống kê; dữ liệu kiểu cũ (statFlow, statTrack) được đọc thành danh sách. */
+// v7.38: chỉ còn thống kê Thu/Chi; thống kê Chuyển/Nhận (type 'flow') đã bỏ nên không đọc nữa.
 export function statsOf(st = state.settings) {
-  if (Array.isArray(st.stats)) return st.stats;
+  if (Array.isArray(st.stats)) return st.stats.filter((x) => x.type === 'track');
   const out = [];
-  if (st.statFlow) out.push({ ...st.statFlow, id: 'flow', type: 'flow' });
   if (st.statTrack) out.push({ ...st.statTrack, id: 'track', type: 'track' });
   return out;
 }

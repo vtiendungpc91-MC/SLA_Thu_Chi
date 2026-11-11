@@ -68,14 +68,18 @@ async function notifyAlerts() {
   // Nhắc nhở thuộc User, không thuộc mục: nhớ riêng để đổi mục không báo lại.
   let remSent = {};
   try { remSent = JSON.parse(localStorage.getItem('stc-rem-notified')) || {}; } catch {}
-  for (const a of [...S.getAlerts(), ...S.reminderAlerts(S.currentUser().id)]) {
-    const log = a.kind === 'reminder' ? remSent : sent;
+  const uid = S.currentUser().id;
+  // Nhắc nhở, thanh toán thẻ, sao lưu thuộc User (không thuộc mục đang mở): ghi vào nhật ký riêng.
+  const userKinds = new Set(['reminder', 'creditpay', 'backup']);
+  for (const a of [...S.getAlerts(), ...S.reminderAlerts(uid), ...await S.creditPayAlerts(uid), ...S.backupAlerts()]) {
+    const log = userKinds.has(a.kind) ? remSent : sent;
     if (log[a.key]) continue;
     const body = a.kind === 'budget'
       ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách`
       : a.kind === 'reminder' ? fmtDue(a.days)
+        : a.kind === 'backup' ? 'Mở app và bấm Save để lưu file .json'
         : a.kind === 'cardpay' ? `${a.count} khoản chưa thanh toán · ${fmt(a.amount)}` : `${fmt(a.amount)} · ${fmtDue(a.days)}`;
-    const title = { debt: '🏦 Trả nợ: ', pending: '⏳ Cần xác nhận: ', recurring: '🔁 Sắp đến hạn: ', budget: '⚠️ Ngân sách: ', reminder: '🔔 Nhắc nhở: ', cardpay: '💳 ' }[a.kind] + a.title;
+    const title = { debt: '🏦 Trả nợ: ', pending: '⏳ Cần xác nhận: ', recurring: '🔁 Sắp đến hạn: ', budget: '⚠️ Ngân sách: ', reminder: '🔔 Nhắc nhở: ', cardpay: '💳 ', creditpay: '💳 ', backup: '💾 ' }[a.kind] + a.title;
     try {
       if (reg) await reg.showNotification(title, { body, tag: a.key, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: './#/home' } });
       else new Notification(title, { body, tag: a.key });

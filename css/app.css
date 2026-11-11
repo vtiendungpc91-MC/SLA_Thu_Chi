@@ -582,9 +582,6 @@ html.dark .quick-btn.q-income { background: #113222; color: #4ee39b; }
 html.dark .quick-btn.q-gop, html.dark .quick-btn.q-card { background: #0f2e2b; color: #4fd1c1; }
 html.dark .quick-btn.q-trich { background: #2a1d40; color: #c4a5f2; }
 .quick-row { gap: 8px; }
-/* Ô chọn thứ tự hiển thị nút nhanh (chữ 16px để iPhone không phóng to) */
-.quick-row .qk-pos { flex: 0 0 auto; width: 54px; height: 34px; min-height: 34px; padding: 0 4px; font-size: 16px; font-weight: 700; text-align: center; text-align-last: center; border-radius: 10px; }
-.qk-pos-note { margin: 0; padding: 8px 14px 0; }
 .quick-row .grow-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; text-align: left; padding: 0; }
 .quick-info { text-align: center; margin: 0; font-weight: 600; }
 .quick-info small { font-weight: 400; color: var(--muted); }
@@ -1198,3 +1195,44 @@ html.dark .sheet-body input.money, html.dark .sheet-body input.amount-input { -w
 .field select#gf-from, .field select#gf-toacc, .field select#tr-facc, .field select#tr-to {
   min-height: 0; height: 30px; padding: 2px 10px; font-size: 13px; border-radius: 9px; line-height: 1.2;
 }
+/* ===== v7.38 ===== */
+/* Có thông báo: nút User góc trên trái nền 7 màu cầu vồng (trái → phải) */
+.profile-chip.rainbow {
+  background: linear-gradient(90deg, #ff0000, #ff8a00, #ffd600, #00b341, #0080ff, #4b0082, #8f00ff) !important;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, .25);
+}
+.profile-chip.rainbow span.chip-name, .profile-chip.rainbow i, .profile-chip.rainbow .chip-star { text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }
+
+/* Nút nhanh: viền cơ bản, nền Chi đỏ nhạt / Thu xanh lá nhạt / Chuyển xanh dương nhạt */
+.quick-btn.qk-btn { border: 1px solid var(--line) !important; box-shadow: none; }
+.quick-btn.qk-btn.q-expense, .quick-btn.qk-btn.q-card { background: #fde4e5 !important; }
+.quick-btn.qk-btn.q-income { background: #dff5e7 !important; }
+.quick-btn.qk-btn.q-gop { background: #e0ecff !important; }
+html.dark .quick-btn.qk-btn.q-expense, html.dark .quick-btn.qk-btn.q-card { background: #3d1a1f !important; }
+html.dark .quick-btn.qk-btn.q-income { background: #133523 !important; }
+html.dark .quick-btn.qk-btn.q-gop { background: #172a4a !important; }
+/* Ô trống ở Tổng quan: giữ chỗ như một nút */
+.qk-blank { flex: 1 1 0; min-width: 0; }
+
+/* Dòng thông báo ở Tổng quan: chữ + nút Thanh toán cuối dòng */
+.over-ticker-box > .over-ticker { display: flex; align-items: center; gap: 6px; }
+.over-ticker-box > .over-ticker[hidden] { display: none; }
+.over-ticker .tk-txt { flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.over-ticker .tk-pay { flex: 0 0 auto; padding: 2px 8px; border: 1px solid #e5484d; border-radius: 999px; background: #fde4e5; color: #c62f35; font-size: 11px; font-weight: 700; line-height: 1.4; }
+.over-ticker .tk-pay[hidden] { display: none; }
+html.dark .over-ticker .tk-pay { background: #3d1a1f; color: #ff8a8f; }
+
+/* Cài đặt: lưới sắp xếp nút nhanh giống Tổng quan, kéo thả */
+.qk-editor { padding: 12px; }
+.qk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.qk-cell { position: relative; min-width: 0; height: 42px; border-radius: 12px; }
+.qk-cell.filled { touch-action: none; -webkit-user-select: none; user-select: none; }
+.qk-cell .qk-btn { width: 100%; height: 42px; min-height: 0; margin: 0; }
+.qk-cell.off .qk-btn { opacity: .45; }
+.qk-cell .qk-eye { position: absolute; top: -7px; right: -5px; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--card); font-size: 11px; line-height: 1; display: grid; place-items: center; }
+.qk-cell.vacant .qk-add { display: block; margin: 0; padding: 0; width: 100%; height: 42px; min-height: 0; border: 1.5px dashed var(--line); border-radius: 12px; background: none; color: var(--muted); font-size: 20px; }
+.qk-cell.dragging { opacity: .3; }
+.qk-cell.over { outline: 2px dashed var(--primary); outline-offset: 2px; }
+.qk-ghost { position: fixed; left: 0; top: 0; z-index: 9999; pointer-events: none; opacity: .9; transform-origin: center; }
+.qk-ghost .qk-btn { box-shadow: 0 6px 18px rgba(0, 0, 0, .25) !important; }
+.qk-ghost .qk-eye { display: none; }

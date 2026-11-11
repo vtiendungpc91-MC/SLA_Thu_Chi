@@ -239,7 +239,7 @@ function topBar(sub = '', right = '', title = '') {
   if (title) {
     return `<header class="top topbar">
     <div class="chip-col">
-      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
+      <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span> <i>▾</i></button>
       <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
@@ -252,7 +252,7 @@ function topBar(sub = '', right = '', title = '') {
   }
   return `<header class="top topbar">
     <div class="chip-col">
-      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
+      <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
       <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
@@ -307,9 +307,13 @@ const TICKER_LINES = 2;
 let tickerTimer = null, tickerIdx = 0;
 function tickerText(a) {
   if (a.kind === 'backup') return `${NOTIF.backup.icon} ${a.title}`;
+  if (a.kind === 'creditpay') return `${NOTIF.creditpay.icon} ${fmtDue(a.days)} · ${a.title} · ${fmtShort(a.amount)}`;
   const when = a.kind === 'budget' ? `${Math.round(a.ratio * 100)}%` : fmtDue(a.days);
   return `${NOTIF[a.kind].icon} ${when} · ${a.title}`;
 }
+/** Một dòng thông báo ở Tổng quan: chữ (bấm mở danh sách thông báo) + nút thanh toán cuối dòng nếu là nhắc trả thẻ. */
+const TICKER_LINE = '<div class="over-ticker" hidden><button type="button" class="tk-txt" data-act="users"></button><button type="button" class="tk-pay" data-act="notif-run" hidden>💸 Thanh toán</button></div>';
+actions['notif-run'] = (el) => runNotif(el.dataset);
 function startTicker(el, alerts) {
   if (!el?.isConnected) return;
   clearInterval(tickerTimer);
@@ -320,9 +324,17 @@ function startTicker(el, alerts) {
   const show = () => {
     if (!el.isConnected) return clearInterval(tickerTimer);
     tickerIdx %= alerts.length;
-    const texts = lines.map((_, i) => (i < count ? tickerText(alerts[(tickerIdx + i) % alerts.length]) : ''));
-    if (lines.every((line, i) => line.textContent === texts[i])) return; // Vẽ lại mà vẫn các thông báo đó thì không chạy lại hiệu ứng.
-    lines.forEach((line, i) => { line.textContent = texts[i]; line.hidden = !texts[i]; });
+    const items = lines.map((_, i) => (i < count ? alerts[(tickerIdx + i) % alerts.length] : null));
+    const texts = items.map((a) => (a ? tickerText(a) : ''));
+    const txt = (line) => line.querySelector('.tk-txt');
+    if (lines.every((line, i) => txt(line)?.textContent === texts[i])) return; // Vẽ lại mà vẫn các thông báo đó thì không chạy lại hiệu ứng.
+    lines.forEach((line, i) => {
+      txt(line).textContent = texts[i];
+      line.hidden = !texts[i];
+      const pay = line.querySelector('.tk-pay'), a = items[i];
+      pay.hidden = a?.kind !== 'creditpay';
+      if (a?.kind === 'creditpay') Object.assign(pay.dataset, { notif: 'creditpay', book: a.bookId, id: a.id });
+    });
     el.classList.remove('tick');
     void el.offsetWidth; // Chạy lại hiệu ứng hiện dần.
     el.classList.add('tick');
@@ -345,6 +357,13 @@ async function bankTotal(userId) {
   return total;
 }
 
+/** Có thông báo thì nút User (góc trên trái) có nền 7 màu cầu vồng; nhớ theo User để vẽ lại không bị chớp. */
+const rainbowOn = new Map();
+function setRainbow(root, userId, on) {
+  rainbowOn.set(userId, on);
+  root.querySelectorAll('.profile-chip[data-act="users"]').forEach((el) => el.classList.toggle('rainbow', on));
+}
+
 /** Điền số thông báo và tổng tiền dưới 2 nút đầu trang (đọc nhiều mục nên làm sau khi vẽ). */
 async function fillTopBar(root) {
   fillPfVals(root);
@@ -356,11 +375,13 @@ async function fillTopBar(root) {
     const alerts = await S.userAlerts(u.id);
     count.hidden = !alerts.length;
     count.textContent = `🔔 ${alerts.length} thông báo`;
+    setRainbow(root, u.id, alerts.length > 0);
     return;
   }
   const [alerts, sum] = await Promise.all([S.userAlerts(u.id), onHome ? bankTotal(u.id) : S.kindTotal(u.id, kind)]);
   count.hidden = !alerts.length;
   count.textContent = `🔔 ${alerts.length} thông báo`;
+  setRainbow(root, u.id, alerts.length > 0);
   startTicker(root.querySelector('[data-over-ticker]'), alerts);
   total.innerHTML = (onHome ? '<small>Tổng</small> ' : kind === 'card' ? '<small>Chưa TT</small> ' : '') + fmtBal(sum);
   // Số tiền rất lớn hoặc màn hình hẹp: thu nhỏ vừa đủ để không đè lên nút + giữa màn hình.
@@ -494,6 +515,7 @@ const NOTIF = {
   budget: { icon: '⚠️', btn: 'Xem' },
   reminder: { icon: '🔔', btn: 'Done' },
   cardpay: { icon: '💳', btn: 'Trích trả' },
+  creditpay: { icon: '💳', btn: '💸 Thanh toán' },
   backup: { icon: '💾', btn: 'Sao lưu' },
 };
 function notifRow(a) {
@@ -501,7 +523,8 @@ function notifRow(a) {
     ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách (${fmtShort(a.amount)} / ${fmtShort(a.limit)})`
     : a.kind === 'pending'
       ? `${fmtShort(a.amount)} · kỳ ${fmtDate(a.date)}${a.noFunds ? ' · chưa ghi được vì thiếu số dư' : ' · chờ xác nhận'}`
-      : a.kind === 'backup' ? 'Dữ liệu chỉ nằm trên máy này, nên sao lưu ít nhất mỗi tuần'
+      : a.kind === 'backup' ? 'Dữ liệu chỉ nằm trên máy này, nên lưu file .json mỗi ngày'
+      : a.kind === 'creditpay' ? `Đang nợ ${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}`
       : a.kind === 'cardpay' ? `${a.count} khoản chưa thanh toán đến hết ${fmtDate(addDays(a.before, -1))} · ${fmt(a.amount)}`
       : a.kind === 'reminder' ? `${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}${a.note ? ' · ' + a.note : ''}`
         : `${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}`;
@@ -525,6 +548,12 @@ async function fillNotifications(sh) {
 async function runNotif({ notif, book, id }) {
   if (notif === 'reminder') { S.doneReminder(S.currentUser().id, id); return toast('Đã Done'); }
   if (notif === 'backup') return actions.backup();
+  if (notif === 'creditpay') { // Thanh toán thẻ ngay trên màn hình hiện tại: chọn tài khoản Thanh Toán của Bank để trả.
+    const card = S.getProfiles().find((p) => p.id === (book || id));
+    if (!card) return toast('Không tìm thấy thẻ');
+    await inBook(card.id);
+    return creditPaySheet();
+  }
   if (notif === 'debt') { // Thanh toán ngay trên màn hình hiện tại, không chuyển về Tổng quan.
     await inBook(book);
     const d = state.debts.find((x) => x.id === id);
@@ -1098,73 +1127,6 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
 // ================= Thống kê của mục Ngân hàng: thiết lập nguồn =================
 const moneyBookList = () => S.getProfiles().filter((p) => ['bank', 'saving', 'neo'].includes(p.kind || 'bank'));
 
-/** Thống kê Chuyển/Nhận: các luồng "từ mục → đến mục" + danh mục cần lấy. */
-function statFlowForm(item = null) {
-  const books = moneyBookList();
-  if (books.length < 2) return toast('Cần ít nhất 2 mục có tài khoản để tạo luồng Chuyển/Nhận');
-  const src = item || {};
-  const has = (id) => books.some((b) => b.id === id);
-  let rules = (src.rules || []).filter((r) => has(r.from) && has(r.to)).map((r) => ({ ...r }));
-  if (!rules.length) rules = [{ from: books[0].id, to: books[1].id, as: 'expense' }];
-  const picked = new Set(src.flowCats || []);
-  const opts = (sel) => books.map((p) => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.icon + ' ' + S.bookLabel(p))}</option>`).join('');
-  const formId = 'is-' + Date.now();
-  openSheet({
-    title: '🔁 Thống kê Chuyển/Nhận',
-    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
-    body: `<form class="form" id="${formId}">
-      ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Đầu tư chứng khoán">`)}
-      ${statIconField(src.icon || STATS.flow.icon)}
-      ${statPeriodField(src)}
-      <p class="muted small">Chỉ lấy các khoản <b>Chuyển / Nhận</b> chuyển tiền <b>từ mục → đến mục</b> bạn chỉ định (Chuyển từ A cho B, hoặc B Nhận từ A đều tính là A → B). Xóa giao dịch thì ở đây cũng mất theo.</p>
-      <div class="field"><span>🔁 Luồng tiền lấy vào</span><div id="is-rules"></div>
-        <button type="button" class="btn ghost small" data-add-rule>＋ Thêm luồng</button></div>
-      <div class="field"><span>🏷️ Danh mục Chuyển/Nhận lấy vào <small class="muted">(không chọn = lấy tất cả)</small></span>
-        <div class="check-list" id="is-cats"></div>
-        <button type="button" class="btn ghost small" data-add-cat>＋ Thêm danh mục</button></div>
-      ${statDelBtn(item)}
-    </form>`,
-    onMount(sh, close) {
-      bindStatDel(sh, item, close);
-      const getIcon = bindStatIcon(sh, src.icon || STATS.flow.icon);
-      const getPeriod = bindStatPeriod(sh, src);
-      const renderRules = () => {
-        $(sh, '#is-rules').innerHTML = rules.map((r, i) => `<div class="rule-row" data-i="${i}">
-          <select data-k="from">${opts(r.from)}</select><span class="rule-arrow">→</span><select data-k="to">${opts(r.to)}</select>
-          <select data-k="as" class="rule-as"><option value="expense" ${r.as !== 'income' ? 'selected' : ''}>Tính là Chi</option><option value="income" ${r.as === 'income' ? 'selected' : ''}>Tính là Thu</option></select>
-          ${rules.length > 1 ? '<button type="button" class="icon-btn" data-rm aria-label="Bỏ">✕</button>' : ''}</div>`).join('');
-      };
-      const renderCats = () => {
-        $(sh, '#is-cats').innerHTML = S.flowCats().map((c) => `<label class="check"><input type="checkbox" value="${esc(c.id)}" ${picked.has(c.id) ? 'checked' : ''}> ${esc(c.icon + ' ' + c.name)}</label>`).join('');
-      };
-      renderRules(); renderCats();
-      $(sh, '#is-rules').addEventListener('change', (e) => {
-        const row = e.target.closest('.rule-row');
-        if (row && e.target.dataset.k) rules[row.dataset.i][e.target.dataset.k] = e.target.value;
-      });
-      $(sh, '#is-rules').addEventListener('click', (e) => {
-        if (!e.target.closest('[data-rm]')) return;
-        rules.splice(Number(e.target.closest('.rule-row').dataset.i), 1);
-        renderRules();
-      });
-      $(sh, '#is-cats').addEventListener('change', (e) => {
-        if (e.target.checked) picked.add(e.target.value); else picked.delete(e.target.value);
-      });
-      $(sh, '[data-add-rule]').addEventListener('click', () => { rules.push({ from: books[0].id, to: books[1].id, as: 'expense' }); renderRules(); });
-      $(sh, '[data-add-cat]').addEventListener('click', () => flowCatSheet((c) => {
-        if (c) { picked.add(c.id); renderCats(); }
-      }));
-      $(sh, 'form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (rules.some((r) => r.from === r.to)) return toast('Mục nguồn và mục đích phải khác nhau');
-        await saveStat(item, { type: 'flow', name: $(sh, '#st-name').value.trim(), icon: getIcon(), period: getPeriod(), rules, flowCats: [...picked] });
-        close();
-        toast('Đã lưu thiết lập thống kê');
-      });
-    },
-  });
-}
-
 /** Thống kê Thu/Chi: chọn các mục (Ngân hàng / Tiết kiệm) + danh mục thu, chi cần lấy (theo tên danh mục). */
 function statTrackForm(item = null) {
   const books = S.getProfiles().filter((p) => ['bank', 'saving'].includes(p.kind || 'bank'));
@@ -1178,8 +1140,7 @@ function statTrackForm(item = null) {
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Chi tiêu gia đình">`)}
       ${statIconField(src.icon || STATS.track.icon)}
-      ${statPeriodField(src)}
-      <p class="muted small">Lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, thuộc các danh mục bạn tích. Xóa giao dịch thì ở đây cũng mất theo.</p>
+      <p class="muted small">Lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, thuộc các danh mục bạn tích. Số liệu tính theo kỳ đang chọn ở Tổng quan (Ngày / Tuần / Tháng / Last Month). Xóa giao dịch thì ở đây cũng mất theo.</p>
       <div class="field"><span>📒 Lấy từ các mục</span><div class="check-list one" id="ts-books">${books.map((b) =>
         `<label class="check"><input type="checkbox" value="${esc(b.id)}" ${pickedBooks.has(b.id) ? 'checked' : ''}> ${esc(b.icon + ' ' + S.bookLabel(b))}</label>`).join('')}</div></div>
       <div id="ts-cats"><p class="muted small">Đang tải danh mục…</p></div>
@@ -1188,7 +1149,6 @@ function statTrackForm(item = null) {
     onMount(sh, close) {
       bindStatDel(sh, item, close);
       const getIcon = bindStatIcon(sh, src.icon || STATS.track.icon);
-      const getPeriod = bindStatPeriod(sh, src);
       const load = async () => {
         const names = await S.categoryNamesOf([...pickedBooks]);
         const box = (type, title, set) => `<div class="field"><span>${title}</span><div class="check-list">${names[type].map(([n, ic]) =>
@@ -1208,7 +1168,7 @@ function statTrackForm(item = null) {
         e.preventDefault();
         if (!pickedBooks.size) return toast('Chọn ít nhất 1 mục');
         if (!inc.size && !exp.size) return toast('Chọn ít nhất 1 danh mục thu hoặc chi');
-        await saveStat(item, { type: 'track', name: $(sh, '#st-name').value.trim(), icon: getIcon(), period: getPeriod(), books: [...pickedBooks], income: [...inc], expense: [...exp] });
+        await saveStat(item, { type: 'track', name: $(sh, '#st-name').value.trim(), icon: getIcon(), books: [...pickedBooks], income: [...inc], expense: [...exp] });
         close();
         toast('Đã lưu thiết lập thống kê');
       });
@@ -1261,9 +1221,8 @@ function cardView() {
   <button type="button" class="fab" data-act="card-add" aria-label="Thêm khoản chi">+</button>`;
 }
 
-// ================= Thống kê Chuyển/Nhận và Thu/Chi ở Tổng quan =================
+// ================= Thống kê Thu/Chi ở Tổng quan (v7.38: đã bỏ thống kê Chuyển/Nhận) =================
 const STATS = {
-  flow: { icon: '🔁', label: 'Chuyển/Nhận', load: S.loadFlowStats, form: (item) => statFlowForm(item) },
   track: { icon: '📊', label: 'Thu/Chi', load: S.loadTrackStats, form: (item) => statTrackForm(item) },
 };
 const statName = (st) => st.name || STATS[st.type].label;
@@ -1275,32 +1234,9 @@ function bindStatIcon(sh, start) {
   bindIconPicker($(sh, '#st-icons'), (v) => { icon = v; $(sh, '#st-icon-now').textContent = v; }, () => icon);
   return () => icon;
 }
-/**
- * Kỳ của thống kê: đặt riêng trong thiết lập, không theo ô chọn Ngày/Tuần/Tháng ở Tổng quan.
- * Thống kê tạo trước khi có lựa chọn này tính theo Tháng.
- */
-const STAT_PERIODS = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['all', 'ALL']];
-const STAT_PERIOD_DEFAULT = 'month';
-const statPeriod = (st) => (STAT_PERIODS.some(([k]) => k === st.period) ? st.period : STAT_PERIOD_DEFAULT);
-const statPeriodLabel = (st) => STAT_PERIODS.find(([k]) => k === statPeriod(st))[1];
-function statRange(st) {
-  const p = statPeriod(st);
-  if (p === 'all') return { start: '0000-01-01', end: '9999-12-31', label: 'Tất cả thời gian' };
-  return getRange(p, todayISO(), state.settings.weekStart);
-}
-const statPeriodField = (st) => `<div class="field"><span>🗓️ Thống kê theo</span><div class="seg" id="st-period">${STAT_PERIODS.map(([k, l]) =>
-  `<button type="button" data-p="${k}" class="${statPeriod(st) === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-  <small class="muted">ALL = tất cả thời gian. Ô chọn Ngày/Tuần/Tháng ở Tổng quan không đổi số liệu của thống kê này.</small></div>`;
-function bindStatPeriod(sh, st) {
-  let p = statPeriod(st);
-  $(sh, '#st-period').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-p]');
-    if (!b) return;
-    p = b.dataset.p;
-    sh.querySelectorAll('#st-period [data-p]').forEach((x) => x.classList.toggle('on', x === b));
-  });
-  return () => p;
-}
+/** Kỳ của thống kê: theo ô chọn Ngày / Tuần / Tháng / Last Month ở Tổng quan (không đặt riêng nữa). */
+const statPeriodLabel = () => (OVER_PERIODS.find(([k]) => k === (ui.overPeriod || 'day')) || OVER_PERIODS[0])[1];
+const statRange = () => overRange();
 const statDelBtn = (item) => (item ? '<div class="actions"><button type="button" class="btn danger" data-stat-del>Xóa thống kê</button></div>' : '');
 function bindStatDel(sh, item, close) {
   $(sh, '[data-stat-del]')?.addEventListener('click', async () => {
@@ -1357,16 +1293,7 @@ actions['stat-setup'] = (el) => {
 };
 actions['stat-new'] = () => {
   if (S.statsOf().length >= S.STAT_MAX) return toast(`Tối đa ${S.STAT_MAX} thống kê`);
-  openSheet({
-    title: 'Tạo thống kê',
-    body: `<div class="card list">${Object.entries(STATS).map(([k, st]) => `<button type="button" class="row" data-new="${k}"><span class="ci">${st.icon}</span><span class="grow"><b>${st.label}</b></span>›</button>`).join('')}</div>`,
-    onMount(sh, close) {
-      sh.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-new]');
-        if (b) { close(); STATS[b.dataset.new].form(null); }
-      });
-    },
-  });
+  return STATS.track.form(null); // Chỉ còn 1 loại thống kê (Thu/Chi): mở thẳng form.
 };
 
 /** Phần Thống kê trong Cài đặt riêng của mục: công tắc ẩn/hiện, danh sách, nút tạo. */
@@ -1376,7 +1303,7 @@ function statSettingsHtml() {
   return `${sectionTitle(`📊 Thống kê <small class="muted">(${list.length}/${S.STAT_MAX})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="statListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
   ${open ? `<section class="card list">${list.map((st) => `<div class="row quick-row">
       <button type="button" class="grow-btn" data-act="stat-setup" data-id="${esc(st.id)}"><span class="ci">${esc(statIcon(st))}</span>
-        <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label} · theo ${esc(statPeriodLabel(st))}</small></span><span>✎</span></button>
+        <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label} · theo kỳ chọn ở Tổng quan</small></span><span>✎</span></button>
       <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-stat-show="${esc(st.id)}" ${st.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
     ${list.length < S.STAT_MAX ? '<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b></span></button>' : ''}
   </section>` : ''}`;
@@ -1565,7 +1492,8 @@ function creditPaySheet() {
   const card = S.currentProfile();
   const debt = -S.accountBalance(S.activeAccounts()[0]);
   if (debt <= 0) return toast('Thẻ không còn nợ');
-  const users = sortByUser(S.moneyBooks().filter((p) => S.canTransfer(card, p)));
+  // Trả từ các tài khoản Thanh Toán của Bank (không gồm thẻ trả trước và chính thẻ này).
+  const users = sortByUser(S.moneyBooks().filter((p) => p.id !== card.id && !p.prepaid && S.canTransfer(card, p)));
   if (!users.length) return toast('Chưa có mục Thanh Toán để thanh toán');
   const formId = 'cr-' + Date.now();
   openSheet({
@@ -1680,7 +1608,7 @@ function homeView() {
   const kind = overKindNow();
   return `<header class="top topbar">
     <div class="chip-col">
-      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
+      <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
       <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
@@ -1693,7 +1621,7 @@ function homeView() {
     <div><small class="chip-sub over-saving" data-over-saving></small><small class="chip-sub over-r" data-kind-total></small></div>
     <div><small class="chip-sub over-debt" data-over-debt hidden></small><small class="chip-sub over-r pf-p" data-pf-top="personal" hidden></small></div>
     <div><small class="chip-sub over-card" data-over-card hidden></small><small class="chip-sub over-r pf-f" data-pf-top="family" hidden></small></div>
-    <div class="over-ticker-box" data-over-ticker hidden>${'<button type="button" class="over-ticker" data-act="users" hidden></button>'.repeat(TICKER_LINES)}</div>
+    <div class="over-ticker-box" data-over-ticker hidden>${TICKER_LINE.repeat(TICKER_LINES)}</div>
   </div>
   <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div><div class="title-acts"><button type="button" class="icon-btn" data-act="search-all" title="Tìm trong mọi tài khoản" aria-label="Tìm trong mọi tài khoản">🔎</button>${maskBtn()}</div></div>
   <div class="over-date"><small>📅 ${ui.overPeriod === 'lastmonth' ? `Last Month · ${esc(overRange().label)}` : fmtDayHeader(todayISO())}</small>
@@ -1705,20 +1633,21 @@ function homeView() {
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
 
 /** Nút nhanh: mỗi dòng tối đa 3 nút, chia đều các dòng (thường tối đa 2 dòng, User đặc biệt tối đa 4 dòng). */
-function quickRows(list, bookId) {
-  if (!list.length) return '';
-  const rowCount = Math.ceil(list.length / 3);
+/**
+ * Nút nhanh ở Tổng quan theo đúng ô đã xếp trong Cài đặt (3 ô mỗi dòng, trái → phải rồi xuống dòng).
+ * cells: mảng theo ô, null = ô trống (vẫn chừa chỗ). Bỏ các dòng trống ở cuối.
+ */
+function quickRows(cells, bookId) {
   const rows = [];
-  for (let i = 0, start = 0; i < rowCount; i++) {
-    const size = Math.ceil((list.length - start) / (rowCount - i));
-    rows.push(list.slice(start, start + size));
-    start += size;
-  }
-  const btn = (q) => `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span></button>`;
-  const row = (arr) => (arr.length ? `<div class="qk-row">${arr.map(btn).join('')}</div>` : '');
-  const types = [...new Set(list.map((q) => q.type))];
+  for (let i = 0; i < cells.length; i += QUICK_COLS) rows.push(cells.slice(i, i + QUICK_COLS));
+  while (rows.length && rows[rows.length - 1].every((q) => !q)) rows.pop();
+  if (!rows.length) return '';
+  const btn = (q) => (q
+    ? `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span></button>`
+    : '<span class="qk-blank"></span>');
+  const types = [...new Set(cells.filter(Boolean).map((q) => q.type))].sort((a, b) => QUICK_ORDER.indexOf(a) - QUICK_ORDER.indexOf(b));
   return `<div class="qk-legend">${types.map((t) => `<span>${kIcon(t)} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
-    ${rows.map(row).join('')}`;
+    ${rows.map((r) => `<div class="qk-row">${r.map(btn).join('')}</div>`).join('')}`;
 }
 
 /** Còn được Recall không: mới ghi trong 5 phút, chưa thanh toán (thẻ), không phải khoản trả nợ (có Hoàn tác riêng). */
@@ -1767,7 +1696,8 @@ async function overCard(b) {
   overExpiry = Math.min(overExpiry, ...o.recent.filter(canRecall).map((t) => t.createdAt + S.RECALL_MS));
   const isCard = b.kind === 'card' && !b.credit;
   const st = o.settings;
-  const quicks = sortQuicks(S.quicksOf(st).filter((q) => q.show !== false && S.quickTypesFor(b).includes(q.type))).slice(0, S.quickMax(b));
+  // Ô nút nhanh như đã xếp trong Cài đặt; nút đang ẩn để trống ô của nó.
+  const quicks = quickSlots(S.quicksOf(st).filter((q) => S.quickTypesFor(b).includes(q.type)), S.quickMax(b)).map((q) => (q && q.show !== false ? q : null));
   let stats = '';
   if (!isCard) {
     for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
@@ -2110,7 +2040,7 @@ function openGopForm(pick = null) {
   const formId = 'gf-' + Date.now();
   openSheet({
     title: 'Chuyển tiền cho người khác',
-    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">🤝 Chuyển</button>`,
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">${esc(S.txIcons().gop)} Chuyển</button>`,
     body: `<form class="form" id="${formId}">
       ${bookPick(pick)}
       ${bankRoute('gf-route', me, others[0])}
@@ -3466,8 +3396,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${bookPick(pick, 'tf-who', 'data-who')}
       <div class="bank-route" id="tf-route"></div>
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
-      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).filter(typeAllowed).map((t) => `<button type="button" data-v="${t}">${{ expense: '💸 ', income: '💰 ', transfer: '⇄ ' }[t] || ''}${TYPE_LABEL[t]}</button>`).join('')}
-        ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? '<button type="button" class="seg-gop" id="tf-gop">🤝 Chuyển</button>' : ''}
+      <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).filter(typeAllowed).map((t) => `<button type="button" data-v="${t}">${t === 'transfer' ? '⇄' : esc(S.txIcons()[t])} ${TYPE_LABEL[t]}</button>`).join('')}
+        ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? `<button type="button" class="seg-gop" id="tf-gop">${esc(S.txIcons().gop)} Chuyển</button>` : ''}
         ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Nhận</button>' : ''}</div>
       ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc" data-acc>${accOptions(f.accountId, true)}</select>`)}
       <em class="hint" id="tf-bal"></em>
@@ -3799,7 +3729,7 @@ function gopTrichChooser(pick = null) {
   openSheet({
     title: 'Chọn thao tác',
     body: `${bookPick(pick)}<div class="actions col">
-      ${g ? '<button type="button" class="btn primary" data-x="gop">🤝 Chuyển cho mục khác</button>' : ''}
+      ${g ? `<button type="button" class="btn primary" data-x="gop">${esc(S.txIcons().gop)} Chuyển cho mục khác</button>` : ''}
       ${t ? '<button type="button" class="btn ghost" data-x="trich">🔄 Nhận</button>' : ''}</div>`,
     onMount(sh, close) {
       bindBookPick(sh, close, '', () => gopTrichChooser(pick));
@@ -3824,7 +3754,7 @@ const QUICK_KINDS = {
   card: { get icon() { return S.txIcons().expense; }, label: 'Chi' },
 };
 /** Cài đặt chung: mỗi loại giao dịch một icon, tên chức năng cố định. */
-const TX_ICON_ROWS = ['expense', 'income', 'gop', 'trich'];
+const TX_ICON_ROWS = ['expense', 'income', 'gop'];
 function txIconSettingsHtml() {
   return `${sectionTitle('Icon giao dịch')}
   <section class="card list">${TX_ICON_ROWS.map((t) => `<button type="button" class="row" data-act="tx-icon" data-t="${t}"><span class="ci">${kIcon(t)}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span><span>✎</span></button>`).join('')}</section>
@@ -3857,11 +3787,45 @@ actions['tx-icon'] = (el) => {
 };
 const saveQuicks = (list) => S.setSetting('quicks', list);
 /**
- * Thứ tự nút nhanh: theo "Thứ tự hiển thị" (pos 1, 2, 3…) đặt trong Cài đặt; ở Tổng quan xếp trái → phải rồi xuống dòng.
- * Nút chưa có thứ tự đứng sau, xếp theo Chi, Thu, Chuyển, Nhận; cùng loại giữ thứ tự tạo.
+ * Vị trí nút nhanh: mỗi nút nằm ở một ô (slot 0, 1, 2…; 3 ô mỗi dòng), kéo thả trong Cài đặt để đổi ô.
+ * Nút chưa có ô (dữ liệu cũ) được xếp vào ô trống đầu tiên theo thứ tự cũ (pos của bản 7.36, rồi Chi, Thu, Chuyển).
  */
+const QUICK_COLS = 3;
 const QUICK_ORDER = ['expense', 'card', 'income', 'gop', 'trich'];
 const sortQuicks = (list) => [...list].sort((a, b) => (a.pos ?? Infinity) - (b.pos ?? Infinity) || QUICK_ORDER.indexOf(a.type) - QUICK_ORDER.indexOf(b.type));
+function quickSlots(list, max) {
+  const cells = new Array(max).fill(null);
+  const rest = [];
+  for (const q of sortQuicks(list)) {
+    if (Number.isInteger(q.slot) && q.slot >= 0 && q.slot < max && !cells[q.slot]) cells[q.slot] = q;
+    else rest.push(q);
+  }
+  for (const q of rest) {
+    const i = cells.indexOf(null);
+    if (i < 0) break;
+    cells[i] = q;
+  }
+  return cells;
+}
+/** Các nút nhanh của mục đang mở theo ô, và danh sách đầy đủ đã ghi ô cố định cho từng nút (để lưu). */
+function quickLayout() {
+  const b = S.currentProfile();
+  const types = S.quickTypesFor(b);
+  const cells = quickSlots(S.quicksOf().filter((q) => types.includes(q.type)), S.quickMax(b));
+  const slotOf = new Map(cells.map((q, i) => [q?.id, i]).filter(([id]) => id));
+  const fixed = () => S.quicksOf().map((q) => (slotOf.has(q.id) ? { ...q, slot: slotOf.get(q.id) } : q));
+  return { b, types, cells, slotOf, fixed };
+}
+/** Kéo nút sang ô khác: ô đích đang có nút thì 2 nút đổi chỗ. */
+async function moveQuick(id, to) {
+  const { cells } = quickLayout();
+  const from = cells.findIndex((q) => q?.id === id);
+  if (from < 0 || to === from || to < 0 || to >= cells.length) return;
+  [cells[from], cells[to]] = [cells[to], cells[from]];
+  const slotOf = new Map(cells.map((q, i) => [q?.id, i]).filter(([k]) => k));
+  await saveQuicks(S.quicksOf().map((q) => (slotOf.has(q.id) ? { ...q, slot: slotOf.get(q.id) } : q)));
+  refresh();
+}
 const myAccount = () => S.activeAccounts()[0];
 const peerOf = (q) => q && q.peerId && S.getProfiles().find((p) => p.id === q.peerId && p.kind !== 'outflow');
 
@@ -3964,38 +3928,105 @@ actions['quick-run'] = async (el) => {
   });
 };
 
-/** Phần nút nhanh trong Cài đặt: công tắc ẩn/hiện, danh sách, nút tạo. */
+/**
+ * Phần nút nhanh trong Cài đặt: lưới ô giống hệt Tổng quan (3 ô mỗi dòng).
+ * Ô trống có nút ＋ để tạo nút ngay tại ô đó; kéo thả nút để đổi ô; 👁 bật/tắt hiện ở Tổng quan (tắt thì ô để trống).
+ */
 function quickSettingsHtml() {
-  const b = S.currentProfile();
+  const { b, cells } = quickLayout();
   const max = S.quickMax(b);
-  const list = sortQuicks(S.quicksOf().filter((q) => S.quickTypesFor(b).includes(q.type)));
+  const n = cells.filter(Boolean).length;
   const open = state.settings.quickListOpen !== false;
-  return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${list.length}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
-  ${open ? `<section class="card list">${list.length > 1 ? '<p class="muted small qk-pos-note">Ô số bên phải: thứ tự hiển thị ở Tổng quan (trái → phải, hết dòng thì xuống dòng dưới).</p>' : ''}${list.map((q, i) => `<div class="row quick-row">
-      <button type="button" class="grow-btn" data-act="quick-edit" data-id="${esc(q.id)}"><span class="ci">${kIcon(q.type)}</span>
-        <span class="grow"><b>${esc(q.name)}</b><small>${QUICK_KINDS[q.type].label} · ${esc(quickDesc(q.type, q))}</small></span><span>✎</span></button>
-      ${list.length > 1 ? `<select class="qk-pos" data-quick-pos="${esc(q.id)}" aria-label="Thứ tự hiển thị" title="Thứ tự hiển thị">${list.map((_, j) => `<option value="${j + 1}" ${j === i ? 'selected' : ''}>${j + 1}</option>`).join('')}</select>` : ''}
-      <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-quick-show="${esc(q.id)}" ${q.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
-    ${list.length < max ? '<button type="button" class="row add-row" data-act="quick-new"><span class="ci">＋</span><span class="grow"><b>Tạo nút nhanh</b></span></button>' : ''}
+  const cell = (q, i) => (q
+    ? `<div class="qk-cell filled${q.show === false ? ' off' : ''}" data-slot="${i}" data-qid="${esc(q.id)}">
+        <button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-edit" data-id="${esc(q.id)}" title="${esc(q.name + ' · ' + quickDesc(q.type, q))}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span></button>
+        <button type="button" class="qk-eye" data-act="quick-eye" data-id="${esc(q.id)}" aria-label="${q.show === false ? 'Hiện' : 'Ẩn'} ở Tổng quan">${q.show === false ? '🙈' : '👁'}</button></div>`
+    : `<div class="qk-cell vacant" data-slot="${i}"><button type="button" class="qk-add" data-act="quick-new" data-slot="${i}" aria-label="Thêm nút nhanh ở ô ${i + 1}">＋</button></div>`);
+  return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${n}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
+  ${open ? `<section class="card qk-editor">
+    <div class="qk-grid" data-qk-grid>${cells.map(cell).join('')}</div>
+    <p class="muted small">Xếp giống hệt ở Tổng quan. Bấm <b>＋</b> để tạo nút ở ô đó, bấm nút để sửa, <b>giữ và kéo</b> nút sang ô khác để đổi chỗ. 👁 / 🙈: hiện / ẩn ở Tổng quan (ẩn thì ô để trống).</p>
   </section>` : ''}`;
 }
 
-actions['quick-new'] = () => {
-  const b = S.currentProfile();
-  const types = S.quickTypesFor(b);
-  if (S.quicksOf().filter((q) => types.includes(q.type)).length >= S.quickMax(b)) return toast('Đã đủ số nút nhanh tối đa');
-  if (types.length === 1) return actions['quick-edit']({ dataset: { type: types[0] } });
+actions['quick-eye'] = async (el) => {
+  const q = S.quicksOf().find((x) => x.id === el.dataset.id);
+  if (!q) return;
+  const { fixed } = quickLayout();
+  await saveQuicks(fixed().map((x) => (x.id === q.id ? { ...x, show: q.show === false } : x)));
+  toast(q.show === false ? 'Đã hiện nút ở Tổng quan' : 'Đã ẩn nút khỏi Tổng quan');
+  refresh();
+};
+
+/** Tạo nút nhanh: el.dataset.slot = ô được bấm ＋ (không có thì ô trống đầu tiên). */
+actions['quick-new'] = (el) => {
+  const { types, cells } = quickLayout();
+  const free = cells.indexOf(null);
+  if (free < 0) return toast('Đã đủ số nút nhanh tối đa');
+  const slot = el?.dataset?.slot != null && cells[Number(el.dataset.slot)] === null ? el.dataset.slot : String(free);
+  if (types.length === 1) return actions['quick-edit']({ dataset: { type: types[0], slot } });
   openSheet({
     title: 'Tạo nút nhanh',
     body: `<div class="card list">${types.map((t) => `<button type="button" class="row" data-new="${t}"><span class="ci">${kIcon(t)}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span>›</button>`).join('')}</div>`,
     onMount(sh, close) {
       sh.addEventListener('click', (e) => {
         const x = e.target.closest('[data-new]');
-        if (x) { close(); actions['quick-edit']({ dataset: { type: x.dataset.new } }); }
+        if (x) { close(); actions['quick-edit']({ dataset: { type: x.dataset.new, slot } }); }
       });
     },
   });
 };
+
+/** Kéo thả nút trong lưới ở Cài đặt (chuột và cảm ứng): kéo quá 6px mới tính là kéo, không thì là bấm để sửa. */
+function bindQuickGrid(root) {
+  const grid = root.querySelector('[data-qk-grid]');
+  if (!grid) return;
+  let drag = null, suppress = false;
+  const clearOver = () => grid.querySelectorAll('.qk-cell.over').forEach((c) => c.classList.remove('over'));
+  const cellAt = (x, y) => document.elementFromPoint(x, y)?.closest('.qk-cell');
+  grid.addEventListener('pointerdown', (e) => {
+    const cell = e.target.closest('.qk-cell.filled');
+    if (!cell || e.target.closest('.qk-eye') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag = { cell, id: cell.dataset.qid, x: e.clientX, y: e.clientY, on: false };
+  });
+  grid.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (!drag.on) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+      drag.on = true;
+      try { drag.cell.setPointerCapture(e.pointerId); } catch { /* bỏ qua */ }
+      const r = drag.cell.getBoundingClientRect();
+      const g = drag.cell.cloneNode(true);
+      g.classList.add('qk-ghost');
+      Object.assign(g.style, { width: r.width + 'px', height: r.height + 'px' });
+      document.body.append(g);
+      Object.assign(drag, { ghost: g, dx: drag.x - r.left, dy: drag.y - r.top });
+      drag.cell.classList.add('dragging');
+    }
+    e.preventDefault();
+    drag.ghost.style.transform = `translate(${e.clientX - drag.dx}px, ${e.clientY - drag.dy}px)`;
+    clearOver();
+    const t = cellAt(e.clientX, e.clientY);
+    if (t && t !== drag.cell && grid.contains(t)) t.classList.add('over');
+  });
+  const end = async (e, cancel) => {
+    const d = drag;
+    drag = null;
+    if (!d?.on) return;
+    suppress = true;
+    setTimeout(() => { suppress = false; }, 350);
+    d.ghost.remove();
+    d.cell.classList.remove('dragging');
+    clearOver();
+    if (cancel) return;
+    const t = cellAt(e.clientX, e.clientY);
+    if (t && grid.contains(t) && t !== d.cell) await moveQuick(d.id, Number(t.dataset.slot));
+  };
+  grid.addEventListener('pointerup', (e) => end(e, false));
+  grid.addEventListener('pointercancel', (e) => end(e, true));
+  // Vừa kéo xong thì không tính là bấm (không mở form sửa).
+  grid.addEventListener('click', (e) => { if (suppress) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
 
 actions['quick-edit'] = (el) => {
   const existing = S.quicksOf().find((x) => x.id === el.dataset.id);
@@ -4042,7 +4073,10 @@ actions['quick-edit'] = (el) => {
         const out = { id: q.id || 'q' + Date.now(), type: k, pf: pfc.value(), name, note: $(sh, '#qe-note').value.trim(), show: q.show !== false };
         if (isPeer) { out.peerId = $(sh, '#qe-peer').value; out.peerAccountId = $(sh, '#qe-pacc').value || null; out.flowCat = $(sh, '#qe-fcat').value || null; }
         else out.categoryId = $(sh, '#qe-cat').value;
-        const list = S.quicksOf();
+        // Giữ ô của nút: nút cũ giữ ô đang đứng, nút mới vào ô đã bấm ＋. Ghi ô cố định cho mọi nút để không xô lệch.
+        const { fixed, slotOf } = quickLayout();
+        const list = fixed();
+        if (existing) { if (slotOf.has(out.id)) out.slot = slotOf.get(out.id); } else if (el.dataset.slot != null) out.slot = Number(el.dataset.slot);
         await saveQuicks(existing ? list.map((x) => (x.id === out.id ? out : x)) : [...list, out]);
         close(); toast('Đã lưu nút nhanh');
       });
@@ -4209,6 +4243,29 @@ actions['card-remind-save'] = async () => {
   toast(`Sẽ nhắc lúc ${time} ngày ${day} hằng tháng`);
 };
 
+/** Credit Card / Thẻ trả trước: ngày (và giờ) mỗi tháng hiện thông báo thanh toán thẻ. */
+function creditRemindHtml(p) {
+  const r = p.payRemind || {};
+  return `${sectionTitle('🔔 Nhắc thanh toán thẻ')}
+  <section class="card form">
+    <div class="two">${field('Ngày trong tháng', `<input type="number" id="pr-day" min="1" max="31" inputmode="numeric" placeholder="Đang tắt" value="${esc(r.day || '')}">`)}
+    ${alertTimeField('pr-time', r.time)}</div>
+    <button type="button" class="btn primary" data-act="credit-remind-save">Lưu</button>
+    <p class="muted small">Từ ngày giờ này mỗi tháng, nếu thẻ còn nợ thì có thông báo kèm nút <b>💸 Thanh toán</b> (ở Tổng quan và trong danh sách thông báo), hiện đến khi trả hết. Tháng không đủ ngày thì nhắc vào ngày cuối tháng. Để trống ngày là tắt.</p>
+  </section>`;
+}
+actions['credit-remind-save'] = () => {
+  const p = S.currentProfile();
+  const raw = document.querySelector('#pr-day').value.trim();
+  const time = document.querySelector('#pr-time').value || S.ALERT_TIME;
+  if (!raw) { S.saveProfile({ id: p.id, payRemind: null }); refresh(); return toast('Đã tắt nhắc thanh toán thẻ'); }
+  const day = Number(raw);
+  if (!Number.isInteger(day) || day < 1 || day > 31) return toast('Ngày phải từ 1 đến 31');
+  S.saveProfile({ id: p.id, payRemind: { day, time } });
+  refresh();
+  toast(`Sẽ nhắc thanh toán lúc ${time} ngày ${day} hằng tháng`);
+};
+
 /** Cài đặt riêng: bật/tắt 4 tính năng (Bank, Thấu chi) và cho phép trừ tiền (Bank, Thấu chi, Tiết kiệm). */
 function txPermHtml(p) {
   if (p.credit) return '';
@@ -4219,15 +4276,15 @@ function txPermHtml(p) {
   </section>` : '';
   const neo = S.kindOfBook(p) === 'bank' && !p.overdraft ? `${sectionTitle('NEOBANK (Secrecy)')}
   <section class="card form">
-    <div class="row-between"><span>Cho phép Chuyển / Nhận với NEOBANK</span>
+    <div class="row-between"><span>Cho phép Chuyển với NEOBANK</span>
       <label class="switch"><input type="checkbox" data-neo-ok ${p.neoOk ? 'checked' : ''}><i></i></label></div>
-    <p class="muted small">Bật thì các NEOBANK trong Secrecy hiện trong Chuyển và Nhận của mục này.</p>
+    <p class="muted small">Bật thì các NEOBANK trong Secrecy hiện trong Chuyển của mục này.</p>
   </section>` : '';
   return `${features}${neo}${sectionTitle('Tiền ra')}
   <section class="card form">
     <div class="row-between"><span>Cho phép trừ tiền khỏi tài khoản</span>
       <label class="switch"><input type="checkbox" data-allow-out ${p.locked ? '' : 'checked'}><i></i></label></div>
-    <p class="muted small">Tắt thì không chi, chuyển, trả nợ, trả thẻ hay bị Nhận từ mục này được. Tiền vào vẫn nhận bình thường.</p>
+    <p class="muted small">Tắt thì không chi, chuyển, trả nợ hay trả thẻ từ mục này được. Tiền vào vẫn nhận bình thường.</p>
   </section>`;
 }
 
@@ -4249,6 +4306,7 @@ function bookSettingsView() {
     ${quickSettingsHtml()}`;
   } else {
     body = `${txPermHtml(p)}
+    ${p.credit ? creditRemindHtml(p) : ''}
 
     ${quickSettingsHtml()}
 
@@ -4340,23 +4398,7 @@ async function mountSettings(root) {
     toast(e.target.checked ? 'Đã cho phép trừ tiền' : 'Đã tắt trừ tiền khỏi tài khoản này');
   });
   root.querySelectorAll('[data-list-toggle]').forEach((el) => el.addEventListener('change', () => S.setSetting(el.dataset.listToggle, el.checked)));
-  root.querySelectorAll('[data-quick-show]').forEach((el) => el.addEventListener('change', async () => {
-    await S.setSetting('quicks', S.quicksOf().map((q) => (q.id === el.dataset.quickShow ? { ...q, show: el.checked } : q)));
-    toast(el.checked ? 'Đã hiện nút ở Tổng quan' : 'Đã ẩn nút khỏi Tổng quan');
-  }));
-  // Đổi thứ tự hiển thị: đưa nút về vị trí đã chọn, các nút khác dồn lại, rồi đánh số lại 1, 2, 3…
-  root.querySelectorAll('[data-quick-pos]').forEach((el) => el.addEventListener('change', async () => {
-    const types = S.quickTypesFor(S.currentProfile());
-    const list = sortQuicks(S.quicksOf().filter((q) => types.includes(q.type)));
-    const moved = list.find((q) => q.id === el.dataset.quickPos);
-    if (!moved) return;
-    const rest = list.filter((q) => q !== moved);
-    rest.splice(Number(el.value) - 1, 0, moved);
-    const pos = new Map(rest.map((q, i) => [q.id, i + 1]));
-    await S.setSetting('quicks', S.quicksOf().map((q) => (pos.has(q.id) ? { ...q, pos: pos.get(q.id) } : q)));
-    toast(`Đã đặt "${moved.name}" ở vị trí ${el.value}`);
-    refresh();
-  }));
+  bindQuickGrid(root);
   root.querySelectorAll('[data-tab-toggle]').forEach((el) => el.addEventListener('change', async () => {
     await S.setSetting(el.dataset.tabToggle, el.checked);
     toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');
