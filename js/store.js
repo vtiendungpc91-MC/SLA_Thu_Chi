@@ -1644,7 +1644,7 @@ export async function bookOverview(b, range) {
   }
   const recent = [...txs].sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : (y.createdAt || 0) - (x.createdAt || 0)))
     .slice(0, RECALL_LINES).map((t) => ({ ...t, catName: cats.find((c) => c.id === t.categoryId)?.name || '' }));
-  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent };
+  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent, cats };
 }
 
 // ---------- User đặc biệt: Personal / Family ----------

@@ -1633,17 +1633,22 @@ function homeView() {
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
 
 /** Nút nhanh: mỗi dòng tối đa 3 nút, chia đều các dòng (thường tối đa 2 dòng, User đặc biệt tối đa 4 dòng). */
+/** Icon danh mục của nút nhanh (sát lề phải nút): Chi/Thu theo danh mục của mục đó, Chuyển theo danh mục Chuyển; chưa chọn thì không hiện. */
+function quickCatIcon(q, cats = state.categories) {
+  const c = q.type === 'gop' ? (q.flowCat && S.flowCatById(q.flowCat)) : (q.categoryId && cats?.find((x) => x.id === q.categoryId));
+  return c?.icon ? `<span class="qk-cat">${esc(c.icon)}</span>` : '';
+}
 /**
  * Nút nhanh ở Tổng quan theo đúng ô đã xếp trong Cài đặt (3 ô mỗi dòng, trái → phải rồi xuống dòng).
  * cells: mảng theo ô, null = ô trống (vẫn chừa chỗ). Bỏ các dòng trống ở cuối.
  */
-function quickRows(cells, bookId) {
+function quickRows(cells, bookId, cats = state.categories) {
   const rows = [];
   for (let i = 0; i < cells.length; i += QUICK_COLS) rows.push(cells.slice(i, i + QUICK_COLS));
   while (rows.length && rows[rows.length - 1].every((q) => !q)) rows.pop();
   if (!rows.length) return '';
   const btn = (q) => (q
-    ? `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span></button>`
+    ? `<button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-run" data-id="${esc(q.id)}" data-book="${esc(bookId)}" title="${esc(q.name)}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span>${quickCatIcon(q, cats)}</button>`
     : '<span class="qk-blank"></span>');
   const types = [...new Set(cells.filter(Boolean).map((q) => q.type))].sort((a, b) => QUICK_ORDER.indexOf(a) - QUICK_ORDER.indexOf(b));
   return `<div class="qk-legend">${types.map((t) => `<span>${kIcon(t)} ${QUICK_KINDS[t].label}</span>`).join('')}</div>
@@ -1723,21 +1728,21 @@ async function overCard(b) {
       <span class="ol ol-sm"><small>${esc([grpName && grpName !== b.name ? grpName : null, sub].filter(Boolean).join(' · '))}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
-    ${quickRows(quicks, b.id)}
+    ${quickRows(quicks, b.id, o.cats)}
     ${recentRows(o.recent, b)}
     ${stats ? `<div class="home-stats">${stats}</div>` : ''}
   </section>`;
 }
 
-/** Tên nút nhanh (tối đa 12 ký tự) luôn hiện đủ: thu nhỏ chữ cho vừa nút; nhỏ đến 9px vẫn chưa vừa thì xuống 2 dòng. */
+/** Tên nút nhanh (tối đa 12 ký tự) luôn hiện đủ trên 1 dòng: thu nhỏ chữ cho vừa nút (nhỏ nhất 8px); vẫn chưa vừa thì xuống 2 dòng. */
 function fitQuickNames(root = document) {
   root.querySelectorAll('.qk-name').forEach((el) => {
     el.style.fontSize = '';
     el.classList.remove('wrap');
     let size = parseFloat(getComputedStyle(el).fontSize) || 12.5;
-    while (el.scrollWidth > el.clientWidth + 0.5 && size > 9.5) { size -= 0.5; el.style.fontSize = size + 'px'; }
+    while (el.scrollWidth > el.clientWidth + 0.5 && size > 8) { size -= 0.5; el.style.fontSize = size + 'px'; }
     // Vẫn chưa vừa 1 dòng: xuống 2 dòng với cỡ chữ dễ đọc.
-    if (el.scrollWidth > el.clientWidth + 0.5) { el.classList.add('wrap'); el.style.fontSize = '11px'; }
+    if (el.scrollWidth > el.clientWidth + 0.5) { el.classList.add('wrap'); el.style.fontSize = '10px'; }
   });
 }
 let fitTimer = null;
@@ -3939,7 +3944,7 @@ function quickSettingsHtml() {
   const open = state.settings.quickListOpen !== false;
   const cell = (q, i) => (q
     ? `<div class="qk-cell filled${q.show === false ? ' off' : ''}" data-slot="${i}" data-qid="${esc(q.id)}">
-        <button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-edit" data-id="${esc(q.id)}" title="${esc(q.name + ' · ' + quickDesc(q.type, q))}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span></button>
+        <button type="button" class="btn quick-btn qk-btn q-${q.type}" data-act="quick-edit" data-id="${esc(q.id)}" title="${esc(q.name + ' · ' + quickDesc(q.type, q))}"><span class="qk-ic">${kIcon(q.type)}</span><span class="qk-name">${esc(q.name)}</span>${quickCatIcon(q)}</button>
         <button type="button" class="qk-eye" data-act="quick-eye" data-id="${esc(q.id)}" aria-label="${q.show === false ? 'Hiện' : 'Ẩn'} ở Tổng quan">${q.show === false ? '🙈' : '👁'}</button></div>`
     : `<div class="qk-cell vacant" data-slot="${i}"><button type="button" class="qk-add" data-act="quick-new" data-slot="${i}" aria-label="Thêm nút nhanh ở ô ${i + 1}">＋</button></div>`);
   return `${sectionTitle(`⚡ Mẫu nhập nhanh <small class="muted">(${n}/${max})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="quickListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
@@ -4399,6 +4404,7 @@ async function mountSettings(root) {
   });
   root.querySelectorAll('[data-list-toggle]').forEach((el) => el.addEventListener('change', () => S.setSetting(el.dataset.listToggle, el.checked)));
   bindQuickGrid(root);
+  fitQuickNames(root);
   root.querySelectorAll('[data-tab-toggle]').forEach((el) => el.addEventListener('change', async () => {
     await S.setSetting(el.dataset.tabToggle, el.checked);
     toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');

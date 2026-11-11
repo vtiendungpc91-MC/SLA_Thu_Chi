@@ -1236,3 +1236,10 @@ html.dark .over-ticker .tk-pay { background: #3d1a1f; color: #ff8a8f; }
 .qk-ghost { position: fixed; left: 0; top: 0; z-index: 9999; pointer-events: none; opacity: .9; transform-origin: center; }
 .qk-ghost .qk-btn { box-shadow: 0 6px 18px rgba(0, 0, 0, .25) !important; }
 .qk-ghost .qk-eye { display: none; }
+/* v7.39: chữ nút nhanh màu đen, không đậm; icon danh mục sát lề phải */
+.quick-btn.qk-btn, .quick-btn.qk-btn.q-expense, .quick-btn.qk-btn.q-card, .quick-btn.qk-btn.q-income, .quick-btn.qk-btn.q-gop { color: #111 !important; font-weight: 400 !important; }
+html.dark .quick-btn.qk-btn, html.dark .quick-btn.qk-btn.q-expense, html.dark .quick-btn.qk-btn.q-card, html.dark .quick-btn.qk-btn.q-income, html.dark .quick-btn.qk-btn.q-gop { color: #f2f2f2 !important; }
+.qk-btn .qk-name { font-weight: 400; }
+.qk-btn:has(.qk-cat) { padding-right: 24px !important; }
+.qk-btn .qk-cat { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); line-height: 1; font-size: 15px; }
+@media (max-width: 380px) { .qk-btn:has(.qk-cat) { padding-right: 21px !important; } .qk-btn .qk-cat { right: 3px; font-size: 14px; } }
