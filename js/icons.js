@@ -117,6 +117,16 @@ export const PIC_ICONS = [
   ['💳', 'THE', 'the', 'anh the ngan hang the tin dung card'],
   ['💳', 'THEB', 'the2', 'anh the tin dung credit card'],
   ['📝', 'KY', 'ky', 'anh ky hop dong chu ky dien tu esign online'],
+  // v7.46: thêm 6 icon ảnh
+  ['🤝', 'BAT', 'bat1', 'anh bat tay hop tac thoa thuan chuyen handshake'],
+  ['🤝', 'BATB', 'bat2', 'anh bat tay hop tac thoa thuan tron handshake'],
+  ['🪙', 'XU', 'xu1', 'anh tay cam dong xu tien coin hand'],
+  ['🪙', 'XUV', 'xu2', 'anh dong xu vang tien gold coin'],
+  ['😓', 'NO', 'no1', 'anh no ganh no tui no vay debt'],
+  ['🔗', 'NOB', 'no2', 'anh no xich no qua ta no vay debt'],
+  // v7.47: thêm 2 icon ảnh
+  ['💰', 'TUID', 'tuido', 'anh tay cam tui tien do money bag red'],
+  ['💰', 'TUIX', 'tuixanh', 'anh tay cam tui tien xanh dong xu money bag green'],
 ].map(([emoji, code, file, kw]) => ({ emoji, code, file, kw, icon: emoji + BANK_SEP + code }));
 const picOf = (code) => PIC_ICONS.find((p) => p.code === code);
 // Đặt ảnh lên đầu lưới để dễ thấy.
