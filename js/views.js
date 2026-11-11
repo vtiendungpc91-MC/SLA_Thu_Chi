@@ -66,8 +66,12 @@ function txWhen(t) {
 function gopLabel(g) {
   if (g.mode === 'pay') return g.dir === 'in' ? `Thanh toán từ ${g.peerName}` : `Thanh toán ${g.peerName}`;
   if (g.mode === 'trich') return g.dir === 'in' ? `Nhận từ ${g.peerName}` : `Chuyển (Nhận) cho ${g.peerName}`;
-  return g.dir === 'out' ? `Chuyển cho ${g.peerName}` : `Nhận tiền chuyển từ ${g.peerName}`;
+  return g.dir === 'out' ? `Chuyển đến ${g.peerName}` : `Nhận từ ${g.peerName}`;
 }
+/** Khoản Chuyển thường (không phải trả thẻ / Nhận cũ): nội dung luôn là "Chuyển đến …" / "Nhận từ …". */
+const isPlainGop = (t) => !!t.gop && !t.gop.mode;
+/** Ghi chú tự gõ của khoản Chuyển (bỏ ghi chú tự sinh của app) để hiện thêm ở dòng phụ. */
+const gopCustomNote = (t) => (t.note && !/^(Chuyển (cho|đến) |Nhận (tiền chuyển )?từ )/.test(t.note) ? t.note : '');
 
 /** Lý do không được xóa giao dịch: làm Thẻ tín dụng thành số dương hoặc Personal/Family bị âm. */
 async function removeBlock(t) {
@@ -104,8 +108,11 @@ function txRow(t, balAfter) {
   const icon = isTr ? `<span class="ci" style="--c:#6f6e77">⇄</span>` : catIcon(cat);
   const catText = t.gop ? gopLabel(t.gop)
     : parts.length > 1 ? `${parts.length} danh mục` : (cat || UNKNOWN_CAT).name;
-  const title = t.note || (isTr ? 'Chuyển tiền' : catText);
-  const sub = [isTr ? `${accName(t.accountId)} → ${accName(t.toAccountId)}` : (t.note && t.note !== catText ? catText + ' · ' : '') + accName(t.accountId)];
+  const plainGop = isPlainGop(t);
+  const title = plainGop ? catText : t.note || (isTr ? 'Chuyển tiền' : catText);
+  const sub = [isTr ? `${accName(t.accountId)} → ${accName(t.toAccountId)}`
+    : plainGop ? (gopCustomNote(t) ? gopCustomNote(t) + ' · ' : '') + accName(t.accountId)
+    : (t.note && t.note !== catText ? catText + ' · ' : '') + accName(t.accountId)];
   if (t.tags && t.tags.length) sub.push(t.tags.map((g) => '#' + g).join(' '));
   if (t.pf && S.isSpecialBook(S.currentProfile())) sub.push(S.PF_LABEL[t.pf]);
   const flags = (t.photoIds && t.photoIds.length ? '📎' : '') + (t.recurringId ? '🔁' : '') + (t.debtId ? '🏦' : '') + (t.cardPay ? '💳' : '');
@@ -1668,7 +1675,7 @@ function quickRows(cells, bookId, cats = state.categories) {
 /** Còn được Recall không: mới ghi trong 5 phút, chưa thanh toán (thẻ), không phải khoản trả nợ (có Hoàn tác riêng). */
 const canRecall = (t) => Date.now() - (t.createdAt || 0) < S.RECALL_MS && t.status !== 'done' && !t.debtId;
 const txTypeKey = (t) => (t.gop ? (t.gop.mode === 'trich' ? 'trich' : 'gop') : t.type === 'income' ? 'income' : 'expense');
-const txRowName = (t) => t.quick?.name || t.note || t.catName || (t.gop ? gopLabel(t.gop) : 'Giao dịch');
+const txRowName = (t) => (isPlainGop(t) ? gopLabel(t.gop) : t.quick?.name || t.note || t.catName || (t.gop ? gopLabel(t.gop) : 'Giao dịch'));
 /** 5 giao dịch gần nhất: khoản mới trong 5 phút có nút Recall; có nút ẩn/hiện. */
 function recentRows(list, b) {
   if (!list.length) return '';
@@ -1960,7 +1967,7 @@ function flowCatField(id, selected = state.settings.lastFlowCat || '') {
   return field('🏷️ Danh mục Chuyển/Nhận', `<select id="${id}" data-flowcat>${flowCatOptions(selected)}</select>`);
 }
 const flowCatOptions = (selected) => `<option value="">— Không phân loại —</option>`
-  + S.flowCats().map((c) => `<option value="${esc(c.id)}" ${c.id === selected ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')
+  + [...S.flowCats(), ...(selected && !S.flowCats().some((c) => c.id === selected) && S.flowCatById(selected) ? [S.flowCatById(selected)] : [])].map((c) => `<option value="${esc(c.id)}" ${c.id === selected ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')
   + '<option value="__new">＋ Thêm danh mục…</option>';
 
 document.addEventListener('change', (e) => {
@@ -3850,7 +3857,7 @@ function quickDesc(k, q) {
   if (!q) return 'Chưa thiết lập';
   const cat = q.categoryId && S.catById(q.categoryId);
   const peer = peerOf(q);
-  if (k === 'gop') return peer ? `Chuyển cho ${S.bookLabel(peer)}` : 'Chưa chọn người nhận';
+  if (k === 'gop') return peer ? `Chuyển đến ${S.bookLabel(peer)}` : 'Chưa chọn người nhận';
   if (k === 'trich') return peer ? `Nhận từ ${S.bookLabel(peer)}` : 'Chưa chọn nguồn';
   return [cat ? `${cat.icon} ${cat.name}` : 'Chưa chọn danh mục', q.note].filter(Boolean).join(' · ');
 }
@@ -4186,7 +4193,7 @@ function settingsView() {
   const notifState = !('Notification' in window) ? 'unsupported' : Notification.permission;
   return `
   <header class="top settings-head"><h1>⚙️ Cài đặt chung</h1><button type="button" class="icon-btn close-settings" data-act="close-settings" aria-label="Đóng cài đặt">✕</button></header>
-  <p class="muted small">Cài đặt riêng của từng mục (hiển thị, mẫu nhập nhanh, tài khoản, danh mục, phân bổ…) nằm ở tab <b>⚙️ Cài đặt</b> ở thanh dưới cùng của mục đó.</p>
+  <p class="muted small">Cài đặt riêng của từng mục (hiển thị, mẫu nhập nhanh, tài khoản, phân bổ…) nằm ở tab <b>⚙️ Cài đặt</b> ở thanh dưới cùng của mục đó.</p>
 
   ${sectionTitle(`User`, `<button type="button" class="link" data-act="users">Quản lý</button>`)}
   <section class="card list">${S.getUsers().map((u) => `
@@ -4212,6 +4219,11 @@ function settingsView() {
   <p class="muted small">Thẻ trả trước bị khóa thì không ghi khoản chi mới.</p>
 
   ${txIconSettingsHtml()}
+
+  ${sectionTitle('Danh mục')}
+  <section class="card list">
+    <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục Thu, Chi, Chuyển</b><small>Dùng chung cho mọi tài khoản · ${catTabList('income').length} Thu · ${catTabList('expense').length} Chi · ${S.flowCats().length} Chuyển</small></span>›</button>
+  </section>
 
   ${secrecyHtml()}
 
@@ -4310,11 +4322,7 @@ function bookSettingsView() {
   const s = state.settings;
   const p = S.currentProfile();
   let body;
-  if (S.isCard()) {    body = `${sectionTitle('Danh mục của thẻ')}
-    <section class="card list">
-      <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục chi</b><small>${state.categories.filter((c) => !c.archived && c.type === 'expense').length} danh mục</small></span>›</button>
-    </section>
-    ${sectionTitle('🔔 Nhắc trích trả nợ')}
+  if (S.isCard()) {    body = `${sectionTitle('🔔 Nhắc trích trả nợ')}
     <section class="card form">
       <div class="two">${field('Ngày trong tháng', `<input type="number" id="cr-day" min="1" max="31" inputmode="numeric" placeholder="Đang tắt" value="${esc(s.cardRemind?.day || '')}">`)}
       ${alertTimeField('cr-time', s.cardRemind?.time)}</div>
@@ -4338,17 +4346,12 @@ function bookSettingsView() {
     }).join('')}
     ${canAddAccount() ? `<button type="button" class="row add-row" data-act="acc-edit"><span class="ci">＋</span><span class="grow"><b>Thêm tài khoản ngân hàng</b></span></button>` : ''}</section>
 
-    ${sectionTitle('Dữ liệu nền')}
-    <section class="card list">
-      <button type="button" class="row" data-act="categories"><span class="ci">🗂️</span><span class="grow"><b>Danh mục thu chi</b><small>${state.categories.filter((c) => !c.archived).length} danh mục</small></span>›</button>
-    </section>
-
     ${sectionTitle('Phân bổ thu nhập & quỹ dự phòng')}
     <section class="card form">
       ${field('Phương pháp', `<select data-set="method"><option value="none" ${s.method === 'none' ? 'selected' : ''}>Không dùng</option>${Object.entries(S.METHODS).map(([k, m]) => `<option value="${k}" ${s.method === k ? 'selected' : ''}>${m.name}</option>`).join('')}</select>`)}
       ${field('Thu nhập dự kiến/tháng (dùng khi chưa ghi khoản thu)', moneyBox(`<input class="money" inputmode="decimal" data-set="expectedIncome" data-money value="${s.expectedIncome ? fmtNum(s.expectedIncome) : ''}" placeholder="vd: 15tr">`))}
       ${field('Quỹ dự phòng = số tháng chi tiêu', `<select data-set="emergencyMonths" data-num>${[3, 4, 6, 9, 12].map((n) => `<option value="${n}" ${Number(s.emergencyMonths) === n ? 'selected' : ''}>${n} tháng</option>`).join('')}</select>`)}
-      <p class="muted small">Gán nhóm 50/30/20 hoặc lọ JARS cho từng danh mục trong "Danh mục thu chi".</p>
+      <p class="muted small">Gán nhóm 50/30/20 hoặc lọ JARS cho từng danh mục Chi trong <b>Cài đặt chung › Danh mục</b>.</p>
     </section>`;
   }
   return `${topBar(`⚙️ Cài đặt riêng của ${esc(kindOf(p).label)}`)}${body}`;
@@ -4737,43 +4740,109 @@ function accountForm(a) {
   });
 }
 
-// ----- Danh mục -----
+// ----- Danh mục dùng chung (Cài đặt chung): 3 thẻ Thu / Chi / Chuyển, thêm, sửa, xóa, kéo thả sắp xếp -----
+const CAT_TABS = [['income', 'Thu'], ['expense', 'Chi'], ['flow', 'Chuyển']];
+/** Danh mục hiện trong thẻ: Thu/Chi bỏ danh mục hệ thống của khoản Chuyển (tự gán khi Chuyển). */
+const catTabList = (tab) => (tab === 'flow' ? S.flowCats() : S.catsOf(tab).filter((c) => !/^(gop|trich)/.test(c.sys || '')));
 actions.categories = () => {
-  let tab = 'expense';
-  const render = () => `<div class="seg small">${['expense', 'income'].map((t) => `<button type="button" data-tab="${t}" class="${tab === t ? 'on' : ''}">${TYPE_LABEL[t]}</button>`).join('')}</div>
-    <div class="list">${state.categories.filter((c) => c.type === tab).sort((a, b) => (!!a.archived - !!b.archived) || (a.order ?? 0) - (b.order ?? 0)).map((c) => {
-      const m = S.METHODS[state.settings.method];
-      const grp = m && tab === 'expense' ? m.groups.find((g) => g.key === c[m.field])?.name || 'Chưa gán nhóm' : '';
-      return `<button type="button" class="row ${c.archived ? 'off' : ''}" data-cat="${c.id}">${catIcon(c)}<span class="grow"><b>${esc(c.name)}</b><small>${esc(grp)}${c.archived ? ' · đã ẩn' : ''}</small></span>›</button>`;
-    }).join('')}</div>
-    <button type="button" class="btn primary block" data-cat="">+ Thêm danh mục</button>`;
+  let tab = ui.catTab || 'expense';
+  const label = () => CAT_TABS.find(([k]) => k === tab)[1];
+  const row = (c) => {
+    const m = S.METHODS[state.settings.method];
+    const sub = c.sys ? 'Danh mục hệ thống · không xóa được'
+      : m && tab === 'expense' ? m.groups.find((g) => g.key === c[m.field])?.name || 'Chưa gán nhóm' : '';
+    const ic = tab === 'flow' ? `<span class="ci">${esc(c.icon || '🏷️')}</span>` : catIcon(c);
+    return `<div class="cat-row" data-id="${esc(c.id)}">
+      <span class="cat-drag" role="button" aria-label="Giữ và kéo để sắp xếp">☰</span>
+      <button type="button" class="cat-main" data-edit="${esc(c.id)}">${ic}<span class="grow"><b>${esc(c.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span><span class="muted">✎</span></button>
+      ${c.sys ? '<span class="cat-del-ph"></span>' : `<button type="button" class="cat-del" data-del="${esc(c.id)}" aria-label="Xóa ${esc(c.name)}">${DEL_ICON}</button>`}</div>`;
+  };
+  const render = () => `<div class="seg small">${CAT_TABS.map(([k, l]) => `<button type="button" data-ctab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="card cat-list" data-cat-list>${catTabList(tab).map(row).join('') || '<p class="muted small center">Chưa có danh mục nào.</p>'}</div>
+    <button type="button" class="btn primary block" data-add>＋ Thêm danh mục ${label()}</button>
+    <p class="muted small">Dùng chung cho mọi tài khoản. Giữ <b>☰</b> rồi kéo lên / xuống để sắp xếp thứ tự hiện khi chọn danh mục trong màn hình giao dịch. Xóa danh mục thì giao dịch cũ vẫn giữ tên và icon.</p>`;
   openSheet({
-    title: 'Danh mục', body: `<div id="cat-mgr">${render()}</div>`,
+    title: '🗂️ Danh mục',
+    body: `<div id="cat-mgr">${render()}</div>`,
     onMount(sh, close) {
       const box = $(sh, '#cat-mgr');
-      box.addEventListener('click', (e) => {
-        // Chỉ nút Chi/Thu trong khung này (body cũng có data-tab để tô màu loại tài khoản).
-        const t = e.target.closest('#cat-mgr [data-tab]');
-        if (t) { tab = t.dataset.tab; box.innerHTML = render(); return; }
-        const b = e.target.closest('[data-cat]');
-        if (b) { close(); categoryForm(state.categories.find((c) => c.id === b.dataset.cat), tab); }
+      const reopen = () => actions.categories();
+      const rerender = () => { box.innerHTML = render(); bindCatDrag($(box, '[data-cat-list]'), async (ids) => {
+        if (tab === 'flow') S.reorderFlowCats(ids); else await S.reorderCats(tab, ids);
+        toast('Đã sắp xếp');
+      }); };
+      rerender();
+      box.addEventListener('click', async (e) => {
+        const t = e.target.closest('[data-ctab]');
+        if (t) { tab = ui.catTab = t.dataset.ctab; rerender(); return; }
+        const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
+        if (ed) {
+          const c = tab === 'flow' ? S.flowCatById(ed.dataset.edit) : S.catById(ed.dataset.edit);
+          close();
+          if (tab === 'flow') flowCatForm(c, reopen); else categoryForm(c, tab, reopen);
+        } else if (del) {
+          const c = tab === 'flow' ? S.flowCatById(del.dataset.del) : S.catById(del.dataset.del);
+          if (!c || !confirm(`Xóa danh mục "${c.name}"?\nGiao dịch cũ vẫn giữ tên và icon, chỉ không chọn được danh mục này nữa.`)) return;
+          if (tab === 'flow') S.deleteFlowCat(c.id); else await S.deleteCat(c.id);
+          toast('Đã xóa danh mục');
+          rerender();
+        } else if (e.target.closest('[data-add]')) {
+          close();
+          if (tab === 'flow') flowCatForm(null, reopen); else categoryForm(null, tab, reopen);
+        }
       });
     },
   });
 };
 
-function categoryForm(c, type) {
-  const f = c ? { ...c } : { type, name: '', icon: '🏷️', color: S.PALETTE[state.categories.length % S.PALETTE.length], rule: 'wants', jar: 'PLAY', order: state.categories.length };
-  const used = c && state.transactions.some((t) => S.txParts(t).some((p) => p.categoryId === c.id));
+/** Kéo thả sắp xếp danh sách dọc: giữ nút ☰ rồi kéo; thả ra thì onDrop(mã theo thứ tự mới). */
+function bindCatDrag(list, onDrop) {
+  if (!list) return;
+  let drag = null;
+  list.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest('.cat-drag');
+    if (!h) return;
+    e.preventDefault();
+    const row = h.closest('.cat-row');
+    drag = { row, moved: false };
+    try { h.setPointerCapture(e.pointerId); } catch { /* bỏ qua */ }
+    row.classList.add('dragging');
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    e.preventDefault();
+    const rows = [...list.querySelectorAll('.cat-row')].filter((r) => r !== drag.row);
+    const before = rows.find((r) => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; });
+    if (before) { if (drag.row.nextElementSibling !== before) { list.insertBefore(drag.row, before); drag.moved = true; } }
+    else if (list.lastElementChild !== drag.row) { list.append(drag.row); drag.moved = true; }
+  });
+  const end = () => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    d.row.classList.remove('dragging');
+    if (d.moved) onDrop([...list.querySelectorAll('.cat-row')].map((r) => r.dataset.id));
+  };
+  list.addEventListener('pointerup', end);
+  list.addEventListener('pointercancel', end);
+}
+
+/** Thêm / sửa danh mục Thu hoặc Chi (dùng chung mọi tài khoản). onDone: mở lại danh sách sau khi đóng. */
+function categoryForm(c, type, onDone = null) {
+  const all = S.globalCats();
+  const f = c ? { ...c } : { type, name: '', icon: '🏷️', color: S.PALETTE[all.length % S.PALETTE.length], rule: 'wants', jar: 'PLAY' };
   const grpSelect = (m, key, val) => `<select id="cf-${key}">${S.METHODS[m].groups.map((g) => `<option value="${g.key}" ${val === g.key ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>`;
+  const formId = 'cf-' + Date.now();
   openSheet({
-    title: c ? 'Sửa danh mục' : 'Thêm danh mục',
-    body: `<form class="form">
-      ${field('Tên', `<input id="cf-name" required value="${esc(f.name)}">`)}
+    title: `${c ? 'Sửa' : 'Thêm'} danh mục ${TYPE_LABEL[f.type]}`,
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    onClose: () => onDone?.(),
+    body: `<form class="form" id="${formId}">
+      ${field('Tên', `<input id="cf-name" required maxlength="30" value="${esc(f.name)}">`)}
       <div class="field"><span>Biểu tượng <b id="cf-icon-now">${esc(f.icon)}</b></span>${iconPickerHtml('cf-icons', f.icon)}</div>
       <div class="field"><span>Màu</span><div class="colors">${S.PROFILE_COLORS.map((col) => `<button type="button" class="color ${col === f.color ? 'on' : ''}" data-color="${col}" style="--c:${col}" aria-label="${col}"></button>`).join('')}</div></div>
       ${f.type === 'expense' ? `<div class="two">${field('Nhóm 50/30/20', grpSelect('503020', 'rule', f.rule))}${field('Lọ JARS', grpSelect('jars', 'jar', f.jar))}</div>` : ''}
-      <div class="actions">${c && !c.sys ? `<button type="button" class="btn danger" data-del>${used ? (c.archived ? 'Hiện lại' : 'Ẩn') : 'Xóa'}</button>` : ''}<button class="btn primary">Lưu</button></div>
+      ${c && !c.sys ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa danh mục</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
       bindIconPicker($(sh, '#cf-icons'), (icon) => { f.icon = icon; $(sh, '#cf-icon-now').textContent = icon; }, () => f.icon);
@@ -4785,18 +4854,49 @@ function categoryForm(c, type) {
       });
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        await S.put('categories', { ...f, name: $(sh, '#cf-name').value.trim(), icon: f.icon || '🏷️', rule: $(sh, '#cf-rule')?.value || f.rule, jar: $(sh, '#cf-jar')?.value || f.jar });
+        const name = $(sh, '#cf-name').value.trim();
+        if (!name) return toast('Nhập tên danh mục');
+        if (all.some((x) => x.id !== f.id && !x.deleted && x.type === f.type && x.name.toLowerCase() === name.toLowerCase())) return toast('Danh mục này đã có');
+        await S.saveCat({ ...f, name, icon: f.icon || '🏷️', rule: $(sh, '#cf-rule')?.value || f.rule, jar: $(sh, '#cf-jar')?.value || f.jar });
         close(); toast('Đã lưu danh mục');
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
-        if (used) { await S.put('categories', { ...c, archived: !c.archived }); close(); return; }
-        if (!confirm('Xóa danh mục này?')) return;
-        await S.remove('categories', c.id); close();
+        if (!confirm(`Xóa danh mục "${c.name}"?\nGiao dịch cũ vẫn giữ tên và icon, chỉ không chọn được danh mục này nữa.`)) return;
+        await S.deleteCat(c.id); close(); toast('Đã xóa danh mục');
       });
     },
   });
 }
 
+/** Thêm / sửa danh mục Chuyển (dùng chung mọi tài khoản). */
+function flowCatForm(c, onDone = null) {
+  let icon = c?.icon || '🏷️';
+  const formId = 'fcf-' + Date.now();
+  openSheet({
+    title: `${c ? 'Sửa' : 'Thêm'} danh mục Chuyển`,
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    onClose: () => onDone?.(),
+    body: `<form class="form" id="${formId}">
+      ${field('Tên danh mục', `<input id="fcf-name" required maxlength="30" value="${esc(c?.name || '')}" placeholder="vd: Đầu tư, Học phí">`)}
+      <div class="field"><span>Biểu tượng <b id="fcf-now">${esc(icon)}</b></span>${iconPickerHtml('fcf-icons', icon)}</div>
+      ${c ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa danh mục</button></div>' : ''}
+    </form>`,
+    onMount(sh, close) {
+      bindIconPicker($(sh, '#fcf-icons'), (x) => { icon = x; $(sh, '#fcf-now').textContent = x; }, () => icon);
+      $(sh, 'form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = $(sh, '#fcf-name').value.trim();
+        if (!name) return toast('Nhập tên danh mục');
+        try { if (c) S.saveFlowCat({ id: c.id, name, icon }); else S.addFlowCat(name, icon); } catch (err) { return toast(err.message); }
+        close(); toast('Đã lưu danh mục');
+      });
+      $(sh, '[data-del]')?.addEventListener('click', () => {
+        if (!confirm(`Xóa danh mục "${c.name}"?\nGiao dịch cũ vẫn giữ tên và icon, chỉ không chọn được danh mục này nữa.`)) return;
+        S.deleteFlowCat(c.id); close(); toast('Đã xóa danh mục');
+      });
+    },
+  });
+}
 // ----- Tiền tệ -----
 actions.currencies = () => {
   const list = state.settings.currencies.map((c) => ({ ...c }));

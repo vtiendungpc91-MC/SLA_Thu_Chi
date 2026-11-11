@@ -1246,3 +1246,15 @@ html.dark .quick-btn.qk-btn, html.dark .quick-btn.qk-btn.q-expense, html.dark .q
 /* v7.40: icon danh mục cuối dòng Giao dịch gần đây; ô rộng cố định để số tiền thẳng cột */
 .rc-cat { flex: 0 0 22px; width: 22px; text-align: center; font-size: 14px; line-height: 1; }
 .rc-cat .bank-badge.ib { font-size: 9px; }
+/* v7.43: quản lý danh mục chung — kéo ☰ để sắp xếp */
+.cat-list { padding: 4px 0; margin: 10px 0; }
+.cat-row { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-bottom: 1px solid var(--line); background: var(--card); }
+.cat-row:last-child { border-bottom: 0; }
+.cat-row .cat-drag { flex: 0 0 34px; height: 40px; display: grid; place-items: center; color: var(--muted); font-size: 18px; cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
+.cat-row .cat-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px 0; border: 0; background: none; text-align: left; color: inherit; font: inherit; }
+.cat-row .cat-main .grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.cat-row .cat-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-row .cat-main small { color: var(--muted); font-size: 12px; }
+.cat-row .cat-del, .cat-row .cat-del-ph { flex: 0 0 34px; height: 34px; }
+.cat-row .cat-del { display: grid; place-items: center; border: 0; border-radius: 10px; background: none; color: var(--expense); padding: 0; }
+.cat-row.dragging { opacity: .85; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); position: relative; z-index: 2; border-radius: 10px; }

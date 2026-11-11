@@ -87,6 +87,141 @@ function seedRows() {
   };
 }
 
+// ---------- Danh mục Thu / Chi dùng chung mọi mục (v7.43) ----------
+// Danh sách chung lưu ở localStorage "stc-cats". Sổ của từng mục vẫn giữ một bản sao (để các hàm đọc sổ chạy như cũ),
+// được đồng bộ mỗi lần mở sổ (syncBookCats). Lần đầu: gộp danh mục của mọi mục theo loại + tên, đổi mã ở giao dịch cũ.
+// Xóa danh mục = đánh dấu deleted (ẩn khỏi danh sách chọn) để giao dịch cũ vẫn hiện đúng tên, icon.
+const CATS_KEY = 'stc-cats';
+const catKey = (c) => (c.sys ? 'sys:' + c.sys : `${c.type}|${String(c.name || '').trim().toLowerCase()}`);
+export const globalCats = () => readJSON(CATS_KEY) || [];
+const writeGlobalCats = (list) => localStorage.setItem(CATS_KEY, JSON.stringify(list));
+const sameCats = (a, b) => a.length === b.length && JSON.stringify([...a].sort((x, y) => (x.id < y.id ? -1 : 1))) === JSON.stringify([...b].sort((x, y) => (x.id < y.id ? -1 : 1)));
+
+/** Đổi mã danh mục (map cũ → mới) ở mọi nơi trong một sổ: giao dịch, định kỳ, ngân sách, nút nhanh. */
+async function remapBookCats(peer, map) {
+  if (!map.size) return;
+  const m = (id) => (map.has(id) ? map.get(id) : id);
+  const fixParts = (arr) => (Array.isArray(arr) ? arr.map((p) => ({ ...p, categoryId: m(p.categoryId) })) : arr);
+  for (const t of await peer.getAll('transactions')) {
+    const hit = map.has(t.categoryId) || (t.splits || []).some((p) => map.has(p.categoryId));
+    if (hit) await peer.put('transactions', { ...t, categoryId: m(t.categoryId), splits: fixParts(t.splits) });
+  }
+  for (const r of await peer.getAll('recurring')) {
+    const tp = r.template || {};
+    if (map.has(tp.categoryId) || (tp.splits || []).some((p) => map.has(p.categoryId))) {
+      await peer.put('recurring', { ...r, template: { ...tp, categoryId: m(tp.categoryId), splits: fixParts(tp.splits) } });
+    }
+  }
+  for (const b of await peer.getAll('budgets')) if (map.has(b.categoryId)) await peer.put('budgets', { ...b, categoryId: m(b.categoryId) });
+  for (const row of await peer.getAll('settings')) {
+    if (row.key === 'quicks' && Array.isArray(row.value) && row.value.some((q) => map.has(q.categoryId))) {
+      await peer.put('settings', { key: 'quicks', value: row.value.map((q) => (map.has(q.categoryId) ? { ...q, categoryId: m(q.categoryId) } : q)) });
+    }
+  }
+}
+
+/** Mã danh mục đang được dùng trong một sổ (giao dịch, định kỳ, ngân sách, nút nhanh). */
+async function usedCatIds(peer) {
+  const used = new Set();
+  for (const t of await peer.getAll('transactions')) { used.add(t.categoryId); for (const p of t.splits || []) used.add(p.categoryId); }
+  for (const r of await peer.getAll('recurring')) { used.add(r.template?.categoryId); for (const p of r.template?.splits || []) used.add(p.categoryId); }
+  for (const b of await peer.getAll('budgets')) used.add(b.categoryId);
+  for (const row of await peer.getAll('settings')) if (row.key === 'quicks' && Array.isArray(row.value)) for (const q of row.value) used.add(q.categoryId);
+  return used;
+}
+
+/**
+ * Đưa danh mục của một sổ về đúng danh sách chung. Danh mục lạ trong sổ: cùng loại + tên với danh mục chung thì đổi
+ * mã sang danh mục chung; không trùng mà đang được dùng thì thêm vào danh sách chung; không dùng thì bỏ.
+ * Trả về danh sách chung (đã cập nhật).
+ */
+async function syncBookCats(peer) {
+  const master = globalCats();
+  const cats = await peer.getAll('categories');
+  const ids = new Set(master.map((c) => c.id));
+  const strays = cats.filter((c) => !ids.has(c.id));
+  if (strays.length) {
+    const byKey = new Map(master.map((c) => [catKey(c), c]));
+    const used = await usedCatIds(peer);
+    const map = new Map();
+    let added = false;
+    for (const c of strays) {
+      let target = byKey.get(catKey(c));
+      if (!target) {
+        if (!used.has(c.id)) continue;
+        target = { ...c, order: master.filter((x) => x.type === c.type).length };
+        master.push(target); byKey.set(catKey(target), target); ids.add(target.id); added = true;
+      }
+      if (target.id !== c.id) map.set(c.id, target.id);
+    }
+    if (added) writeGlobalCats(master);
+    await remapBookCats(peer, map);
+    for (const c of strays) if (!ids.has(c.id)) await peer.del('categories', c.id);
+  }
+  const now = strays.length ? await peer.getAll('categories') : cats;
+  if (!sameCats(now, master)) {
+    for (const c of now) if (!ids.has(c.id)) await peer.del('categories', c.id);
+    await peer.bulkPut('categories', master);
+  }
+  return master.map((c) => ({ ...c }));
+}
+
+/** Lần đầu (chưa có danh sách chung): gộp danh mục của mọi mục theo loại + tên, rồi đồng bộ từng sổ. */
+async function ensureGlobalCats() {
+  if (localStorage.getItem(CATS_KEY)) return;
+  const master = [];
+  const byKey = new Map();
+  for (const p of getProfiles()) {
+    let cats = [];
+    try { cats = await dbOf(p.id).getAll('categories'); } catch { continue; }
+    for (const c of [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+      const k = catKey(c);
+      const have = byKey.get(k);
+      if (have) { if (have.archived && !c.archived) have.archived = false; continue; }
+      const item = { ...c, order: master.filter((x) => x.type === c.type).length };
+      master.push(item); byKey.set(k, item);
+    }
+  }
+  if (!master.length) master.push(...seedRows().cats);
+  master.push(...missingSysCats(master));
+  // Tên cũ của danh mục hệ thống (Withdraw, Get In, Transfer) → tên mới.
+  const oldFlowNames = {
+    'trich-in': ['Withdraw từ người nhà', 'Get In'], 'trich-out': ['Bị withdraw cho người nhà', 'Chuyển Get In'],
+    'gop-out': ['Transfer cho người nhà'], 'gop-in': ['Nhận transfer'],
+  };
+  for (const c of master) if (oldFlowNames[c.sys]?.includes(c.name)) c.name = SYS_CATS[c.sys].name;
+  writeGlobalCats(master);
+  for (const p of getProfiles()) { try { await syncBookCats(dbOf(p.id)); } catch (err) { console.warn('Gộp danh mục', p.id, err); } }
+}
+
+/** Lưu một danh mục Thu/Chi chung (thêm hoặc sửa), ghi vào sổ đang mở; các sổ khác cập nhật khi được mở. */
+export async function saveCat(c) {
+  const list = globalCats();
+  const item = { ...c, id: c.id || uid(), updatedAt: Date.now() };
+  if (!c.id) item.order = list.filter((x) => x.type === item.type && !x.deleted).length;
+  const i = list.findIndex((x) => x.id === item.id);
+  if (i >= 0) list[i] = item; else list.push(item);
+  writeGlobalCats(list);
+  await db.put('categories', item);
+  state.categories = list.map((x) => ({ ...x }));
+  emit();
+  return item;
+}
+/** Xóa danh mục Thu/Chi: ẩn khỏi mọi danh sách chọn, giao dịch cũ vẫn giữ tên và icon. */
+export async function deleteCat(id) {
+  const c = globalCats().find((x) => x.id === id);
+  if (!c || c.sys) return;
+  await saveCat({ ...c, deleted: true, archived: true });
+}
+/** Sắp xếp lại danh mục của một loại theo danh sách mã (kéo thả). */
+export async function reorderCats(type, ids) {
+  const list = globalCats().map((c) => (c.type === type && ids.includes(c.id) ? { ...c, order: ids.indexOf(c.id) } : c));
+  writeGlobalCats(list);
+  await db.bulkPut('categories', list.filter((c) => c.type === type));
+  state.categories = list.map((x) => ({ ...x }));
+  emit();
+}
+
 /** Bổ sung danh mục hệ thống còn thiếu vào danh sách `cats` của một sổ; trả về các danh mục mới tạo. */
 function missingSysCats(cats) {
   return Object.entries(SYS_CATS)
@@ -487,21 +622,31 @@ export async function deleteProfile(id) {
   await dropProfile(id);
 }
 
-/** v7.35: ghi chú tự động của khoản Transfer / Get In cũ đổi sang Chuyển / Nhận ở mọi mục (ghi chú tự gõ giữ nguyên). */
-const OLD_GOP_NOTES = [[/^Transfer cho /, 'Chuyển cho '], [/^Nhận transfer từ /, 'Nhận tiền chuyển từ '], [/^Chuyển Get In cho /, 'Chuyển (Nhận) cho '], [/^Get In từ /, 'Nhận từ ']];
+/**
+ * Ghi chú tự động của khoản Chuyển ở mọi mục đổi sang mẫu mới (v7.42): bên chuyển "Chuyển đến …", bên nhận "Nhận từ …".
+ * Chỉ đổi đúng ghi chú do app tự sinh (khớp tên mục bên kia hoặc mẫu Transfer / Get In cũ); ghi chú tự gõ giữ nguyên.
+ */
+const OLD_GOP_NOTES = [[/^Transfer cho /, 'Chuyển đến '], [/^Nhận transfer từ /, 'Nhận từ '], [/^Chuyển Get In cho /, 'Chuyển (Nhận) cho '], [/^Get In từ /, 'Nhận từ ']];
+function newGopNote(t) {
+  const n = t.note, p = t.gop.peerName;
+  if (!t.gop.mode && p && n === `Chuyển cho ${p}`) return `Chuyển đến ${p}`;
+  if (!t.gop.mode && p && n === `Nhận tiền chuyển từ ${p}`) return `Nhận từ ${p}`;
+  const rule = OLD_GOP_NOTES.find(([re]) => re.test(n));
+  return rule ? n.replace(rule[0], rule[1]) : null;
+}
 async function migrateGopNotes() {
-  if (localStorage.getItem('stc-note-tt') === '1') return;
+  if (localStorage.getItem('stc-note-v742') === '1') return;
   for (const b of getProfiles()) {
     try {
       const peer = dbOf(b.id);
       for (const t of await peer.getAll('transactions')) {
         if (!t.gop || !t.note) continue;
-        const rule = OLD_GOP_NOTES.find(([re]) => re.test(t.note));
-        if (rule) await peer.put('transactions', { ...t, note: t.note.replace(rule[0], rule[1]) });
+        const note = newGopNote(t);
+        if (note && note !== t.note) await peer.put('transactions', { ...t, note });
       }
     } catch (err) { console.warn('Đổi ghi chú', b.id, err); }
   }
-  localStorage.setItem('stc-note-tt', '1');
+  localStorage.setItem('stc-note-v742', '1');
 }
 
 // ---------- Tải / ghi ----------
@@ -510,33 +655,15 @@ export async function loadAll() {
   await useProfile(currentProfile().id);
   await applyV6Stash();
   await migrateGopNotes();
+  await ensureGlobalCats();
+  // Sổ mới chưa có tài khoản: tạo tài khoản mặc định. Danh mục luôn lấy theo danh sách chung.
+  if (!(await db.getAll('accounts')).length) await db.bulkPut('accounts', seedRows().accs);
+  await syncBookCats(dbOf(currentProfile().id));
   for (const s of LIST) state[s] = await db.getAll(s);
   const rows = await db.getAll('settings');
   state.settings = { ...DEFAULT_SETTINGS };
   for (const r of rows) state.settings[r.key] = r.value;
-  if (!state.categories.length) {
-    const { cats, accs } = seedRows();
-    await db.bulkPut('categories', cats);
-    await db.bulkPut('accounts', accs);
-    state.categories = cats;
-    state.accounts = accs;
-  }
-  // Đổi tên danh mục hệ thống theo tên cũ (Withdraw, Get In, Transfer) sang Chuyển / Nhận; giữ nguyên nếu người dùng đã tự đặt tên khác.
-  const oldFlowNames = {
-    'trich-in': ['Withdraw từ người nhà', 'Get In'], 'trich-out': ['Bị withdraw cho người nhà', 'Chuyển Get In'],
-    'gop-out': ['Transfer cho người nhà'], 'gop-in': ['Nhận transfer'],
-  };
-  for (const c of state.categories) {
-    if (oldFlowNames[c.sys]?.includes(c.name)) {
-      c.name = SYS_CATS[c.sys].name;
-      await db.put('categories', c);
-    }
-  }
-  const extra = missingSysCats(state.categories);
-  if (extra.length) {
-    await db.bulkPut('categories', extra);
-    state.categories.push(...extra);
-  }
+  state.categories = globalCats();
   await migrateCash();
 
 }
@@ -598,17 +725,13 @@ export function fundsError(accountId, amountVnd, ignoreTx = null) {
 /** Đọc sổ của người khác; nếu sổ chưa từng mở thì tạo dữ liệu mặc định. */
 async function openPeerBook(profileId) {
   const peer = dbOf(profileId);
-  let cats = await peer.getAll('categories');
   let accs = await peer.getAll('accounts');
-  if (!cats.length) {
-    const seedData = seedRows();
-    cats = seedData.cats;
-    accs = seedData.accs;
-    await peer.bulkPut('categories', cats);
+  if (!accs.length) {
+    accs = seedRows().accs;
     await peer.bulkPut('accounts', accs);
   }
-  const extra = missingSysCats(cats);
-  if (extra.length) { await peer.bulkPut('categories', extra); cats = cats.concat(extra); }
+  await ensureGlobalCats();
+  const cats = await syncBookCats(peer);
   return { peer, cats, accs };
 }
 
@@ -619,7 +742,7 @@ export async function peerAccounts(profileId) {
 }
 
 /**
- * Chuyển tiền: sổ người chuyển ghi khoản CHI "Chuyển cho …", sổ người nhận ghi khoản THU "Nhận tiền chuyển từ …".
+ * Chuyển tiền: sổ người chuyển ghi khoản CHI "Chuyển đến …", sổ người nhận ghi khoản THU "Nhận từ …".
  * Hai giao dịch liên kết qua gop.id để xóa đồng bộ.
  */
 export async function gop({ toProfileId, amount, fromAccountId, toAccountId, date, note, flowCat = null, pf = null, quick = null }) {
@@ -641,11 +764,11 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
   const { peer, cats } = await openPeerBook(to.id);
   await peer.put('transactions', {
     ...base, id: uid(), type: 'income', categoryId: cats.find((c) => c.sys === 'gop-in').id, accountId: toAccountId,
-    note: note || `Nhận tiền chuyển từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(), ...mark,
+    note: note || `Nhận từ ${bookLabel(me)}`, gop: { id: gid, dir: 'in', peer: me.id, peerName: bookLabel(me), flowCat }, updatedAt: Date.now(), ...mark,
   });
   return put('transactions', {
     ...base, type: 'expense', categoryId: sysCat('gop-out').id, accountId: fromAccountId,
-    note: note || `Chuyển cho ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat }, ...mark, ...(quick ? { quick } : {}),
+    note: note || `Chuyển đến ${bookLabel(to)}`, gop: { id: gid, dir: 'out', peer: to.id, peerName: bookLabel(to), flowCat }, ...mark, ...(quick ? { quick } : {}),
   });
 }
 
@@ -792,7 +915,7 @@ export async function setSetting(key, value, { silent = false } = {}) {
 export const catById = (id) => state.categories.find((c) => c.id === id);
 export const accById = (id) => state.accounts.find((a) => a.id === id);
 export const sysCat = (sys) => state.categories.find((c) => c.sys === sys);
-export const catsOf = (type) => state.categories.filter((c) => c.type === type && !c.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+export const catsOf = (type) => state.categories.filter((c) => c.type === type && !c.archived && !c.deleted).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 export const activeAccounts = () => state.accounts.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 export const rateOf = (code) => (state.settings.currencies.find((c) => c.code === code) || { rate: 1 }).rate;
 
@@ -944,20 +1067,38 @@ const DEFAULT_FLOW_CATS = [
   { id: 'fc-gift', name: 'Biếu tặng', icon: '🎁' },
   { id: 'fc-other', name: 'Khác', icon: '📦' },
 ];
-export function flowCats() {
+/** Mọi danh mục Chuyển kể cả đã xóa (để giao dịch cũ vẫn hiện tên, icon). Thứ tự trong mảng = thứ tự hiển thị. */
+export function allFlowCats() {
   const list = readJSON(FLOW_CATS_KEY);
   if (Array.isArray(list) && list.length) return list;
   localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(DEFAULT_FLOW_CATS));
   return DEFAULT_FLOW_CATS;
 }
+/** Danh mục Chuyển đang dùng (bỏ danh mục đã xóa), theo thứ tự đã sắp xếp. */
+export const flowCats = () => allFlowCats().filter((c) => !c.deleted);
+const writeFlowCats = (list) => { localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(list)); emit(); };
 export function addFlowCat(name, icon = '🏷️') {
-  const list = flowCats();
-  if (list.some((c) => c.name.toLowerCase() === name.toLowerCase())) throw new Error('Danh mục này đã có');
-  const c = { id: 'fc-' + uid().slice(0, 8), name, icon };
-  localStorage.setItem(FLOW_CATS_KEY, JSON.stringify([...list, c]));
+  const list = allFlowCats();
+  const dup = list.find((c) => c.name.toLowerCase() === name.toLowerCase());
+  if (dup && !dup.deleted) throw new Error('Danh mục này đã có');
+  // Thêm lại đúng tên đã xóa: dùng lại danh mục cũ (đưa xuống cuối danh sách).
+  const c = dup ? { ...dup, name, icon, deleted: false } : { id: 'fc-' + uid().slice(0, 8), name, icon };
+  writeFlowCats([...list.filter((x) => x.id !== c.id), c]);
   return c;
 }
-export const flowCatById = (id) => flowCats().find((c) => c.id === id);
+export function saveFlowCat(c) {
+  const list = allFlowCats();
+  if (list.some((x) => x.id !== c.id && !x.deleted && x.name.toLowerCase() === c.name.toLowerCase())) throw new Error('Danh mục này đã có');
+  writeFlowCats(list.map((x) => (x.id === c.id ? { ...x, ...c } : x)));
+}
+export const deleteFlowCat = (id) => writeFlowCats(allFlowCats().map((x) => (x.id === id ? { ...x, deleted: true } : x)));
+/** Sắp xếp lại danh mục Chuyển theo danh sách mã (kéo thả); danh mục đã xóa giữ ở cuối. */
+export function reorderFlowCats(ids) {
+  const list = allFlowCats();
+  const live = ids.map((id) => list.find((c) => c.id === id)).filter(Boolean);
+  writeFlowCats([...live, ...list.filter((c) => !ids.includes(c.id))]);
+}
+export const flowCatById = (id) => allFlowCats().find((c) => c.id === id);
 
 // ---------- Icon của 4 loại giao dịch (cài đặt chung, dùng cho các nút nhanh) ----------
 const TX_ICONS_KEY = 'stc-tx-icons';
@@ -1087,7 +1228,7 @@ export async function loadTrackStats(src = {}) {
   const txs = [];
   for (const id of ids) {
     const peer = dbOf(id);
-    const cats = await peer.getAll('categories');
+    const cats = globalCats(); // Danh mục dùng chung mọi mục.
     const accs = await peer.getAll('accounts');
     const nameOf = (cid) => cats.find((c) => c.id === cid)?.name;
     const b = getProfiles().find((p) => p.id === id);
@@ -1308,6 +1449,7 @@ export async function withBook(b, fn) {
   const { peer } = await openPeerBook(b.id);
   const data = { settings: { ...DEFAULT_SETTINGS } };
   for (const s of LIST) data[s] = await peer.getAll(s);
+  data.categories = globalCats();
   for (const r of await peer.getAll('settings')) data.settings[r.key] = r.value;
   const saved = {};
   for (const k of Object.keys(data)) saved[k] = state[k];
@@ -1539,6 +1681,7 @@ export async function userAlerts(userId) {
       const peer = dbOf(b.id);
       const data = { settings: { ...DEFAULT_SETTINGS } };
       for (const s of LIST) data[s] = await peer.getAll(s);
+      data.categories = globalCats();
       for (const r of await peer.getAll('settings')) data.settings[r.key] = r.value;
       const saved = {};
       for (const k of Object.keys(data)) saved[k] = state[k];
@@ -1794,7 +1937,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: flowCats(), txIcons: txIcons() };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), txIcons: txIcons() };
 }
 
 /**
@@ -1821,6 +1964,8 @@ export async function importAny(data) {
   // Bản sao lưu trước khi có Bank/Ví: bỏ nhóm cũ để lần nạp tới tự xếp lại theo tên ngân hàng.
   if (Array.isArray(data.groups)) saveGroups(data.groups); else localStorage.removeItem(GROUPS_KEY);
   if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
+  // Danh mục chung: bản sao lưu có thì dùng; bản cũ chưa có thì gộp lại từ các sổ vừa khôi phục.
+  if (Array.isArray(data.cats) && data.cats.length) writeGlobalCats(data.cats); else localStorage.removeItem(CATS_KEY);
   if (data.txIcons) localStorage.setItem(TX_ICONS_KEY, JSON.stringify(data.txIcons));
   // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.
   for (const k of ['stc-model', 'stc-model5', 'stc-model6']) localStorage.removeItem(k);
