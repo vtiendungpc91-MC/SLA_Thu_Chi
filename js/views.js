@@ -62,14 +62,25 @@ function txWhen(t) {
     : `🕒 ${fmtDate(t.date)} · ghi lúc ${time} ${fmtDM(createdDay)}${createdDay.slice(0, 4) !== t.date.slice(0, 4) ? '/' + createdDay.slice(0, 4) : ''}`;
 }
 
+/**
+ * Tên mục bên kia của khoản Chuyển, không kèm tên User (v7.49): mục còn thì đọc tên hiện tại;
+ * mục đã xóa thì bỏ phần tên User ở đầu tên đã lưu ("Tôi · VISA" → "VISA").
+ */
+function peerShort(g) {
+  const p = S.getProfiles().find((x) => x.id === g.peer);
+  if (p) return S.bookLabelShort(p);
+  const n = String(g.peerName || '');
+  return n.startsWith('Secrecy · ') || !n.includes(' · ') ? n : n.slice(n.indexOf(' · ') + 3);
+}
 /** Nhãn khoản Chuyển/Nhận theo góc nhìn của sổ đang xem. */
 function gopLabel(g) {
-  if (g.mode === 'pay') return g.dir === 'in' ? `Thanh toán từ ${g.peerName}` : `Thanh toán ${g.peerName}`;
-  if (g.mode === 'trich') return g.dir === 'in' ? `Nhận từ ${g.peerName}` : `Chuyển (Nhận) cho ${g.peerName}`;
-  return g.dir === 'out' ? `Chuyển đến ${g.peerName}` : `Nhận từ ${g.peerName}`;
+  const who = peerShort(g);
+  if (g.mode === 'pay') return g.dir === 'in' ? `Thanh toán từ ${who}` : `Thanh toán ${who}`;
+  if (g.mode === 'trich') return g.dir === 'in' ? `Nhận từ ${who}` : `Chuyển (Nhận) cho ${who}`;
+  return g.dir === 'out' ? `Chuyển đến ${who}` : `Nhận từ ${who}`;
 }
 /** Khoản Chuyển thường (không phải trả thẻ / Nhận cũ): nội dung luôn là "Chuyển đến …" / "Nhận từ …". */
-const isPlainGop = (t) => !!t.gop && !t.gop.mode;
+const isPlainGop = (t) => !!t.gop && t.gop.mode !== 'pay';
 /** Ghi chú tự gõ của khoản Chuyển (bỏ ghi chú tự sinh của app) để hiện thêm ở dòng phụ. */
 const gopCustomNote = (t) => (t.note && !/^(Chuyển (cho|đến) |Nhận (tiền chuyển )?từ )/.test(t.note) ? t.note : '');
 
@@ -232,8 +243,6 @@ const avatarFull = (p, cls) => (p.photo
 
 // --- Đầu trang: trái = User (dưới là số thông báo), phải = mục đang mở (dưới là tổng tiền của nhóm mục) ---
 const kindOf = (b) => (b.overdraft ? { label: 'Thấu chi', icon: '💳' } : b.prepaid ? { label: 'Thẻ trả trước', icon: '🪪' } : S.BOOK_KINDS[b.kind] || S.BOOK_KINDS.bank);
-/** Tiết kiệm chỉ có Chuyển, không ghi thu/chi. */
-const transferOnly = (b = S.currentProfile()) => b.kind === 'saving';
 
 /** Icon XÓA: thùng rác trắng trong hình tròn chuyển màu xanh → tím (nền vẽ bằng CSS .del-ic). */
 const DEL_ICON = '<span class="del-ic" aria-hidden="true"><svg viewBox="0 0 48 48"><g fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">'
@@ -580,7 +589,7 @@ actions.users = () => {
   openSheet({
     title: 'User',
     headAction: '<button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt chung">⚙️</button>',
-    body: `<h4 class="grp-h">👤 User <small>(${users.length}/${S.MAX_USERS})</small></h4>
+    body: `<h4 class="grp-h">👤 User</h4>
       <div class="tile-grid one-col">${users.map((u) => tileHtml({
         attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name + (u.special ? ' ⭐' : ''), on: u.id === cur.id,
         sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: users.length > 1,
@@ -1045,7 +1054,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
   const hint = {
     bank: 'Sổ thu/chi có 1 tài khoản ngân hàng và số dư.',
     card: 'Ghi các khoản chi (MoMo, ZaloPay…), sau đó thanh toán từng khoản từ Ngân hàng.',
-    saving: 'Chỉ Chuyển với các mục Ngân hàng.',
+    saving: 'Có Thu (vd lãi tiết kiệm) và Chuyển với các mục Ngân hàng, không có Chi.',
   }[kind] || '';
   openSheet({
     title: `${b ? 'Sửa' : 'Thêm'} ${grp ? S.slotLabel(grp, S.slotOf({ ...f, overdraft: isOd })) : isOd ? 'Thấu chi' : kind === 'card' ? S.CARD_TYPES[f.cardType] || kindOf(f).label : kindOf(f).label}${grp ? ' · ' + grp.name : ''}`,
@@ -1682,8 +1691,9 @@ const txRowName = (t) => (isPlainGop(t) ? gopLabel(t.gop) : t.quick?.name || t.n
  */
 function recentGopText(t) {
   const p = S.getProfiles().find((x) => x.id === t.gop.peer);
-  const who = p ? `${bankIconOf(p)} ${p.name}` : t.gop.peerName;
-  return `${t.gop.dir === 'out' ? 'Chuyển đến' : 'Nhận từ'} ${who}`;
+  const who = p ? `${bankIconOf(p)} ${p.name}` : peerShort(t.gop);
+  const verb = t.gop.mode === 'trich' ? (t.gop.dir === 'out' ? 'Chuyển (Nhận) cho' : 'Nhận từ') : t.gop.dir === 'out' ? 'Chuyển đến' : 'Nhận từ';
+  return `${verb} ${who}`;
 }
 /** 5 giao dịch gần nhất: khoản mới trong 5 phút có nút Recall; có nút ẩn/hiện. */
 function recentRows(list, b) {
@@ -3113,11 +3123,11 @@ function recRow(r, bookId) {
 /** Khoản tạo từ bản cũ (chuyển giữa 2 tài khoản trong mục, hoặc ngoại tệ) vẫn dùng form cũ. */
 const legacyRec = (r) => r.template.type === 'transfer' || (r.template.currency && r.template.currency !== 'VND');
 const recKindOf = (t) => t.flow || t.type;
-/** Loại định kỳ mục đang mở được tạo, theo quyền của mục (Tiết kiệm chỉ Chuyển / Nhận). */
+/** Loại định kỳ mục đang mở được tạo, theo quyền của mục (Tiết kiệm: Thu và Chuyển). */
 function recKinds() {
   const b = S.currentProfile();
   const out = [];
-  if (!transferOnly(b)) for (const k of ['expense', 'income']) if (S.featureOn(b, k)) out.push(k);
+  for (const k of ['expense', 'income']) if (S.featureOn(b, k)) out.push(k);
   if (S.featureOn(b, 'gop') && S.transferTargets('gop').length) out.push('gop');
   if (S.featureOn(b, 'trich') && S.transferTargets('trich').length) out.push('trich');
   return out;
@@ -3702,7 +3712,7 @@ function viewImage(src) {
   openSheet({ title: 'Ảnh hóa đơn', body: `<img src="${src}" class="full-img" alt="">`, wide: true });
 }
 
-/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Chuyển/Nhận); Tiết kiệm chỉ có Chuyển/Nhận. */
+/** Nút + (giữa trên cùng): Ngân hàng mở form Chi/Thu (có thêm Chuyển); Tiết kiệm mở form Thu (có thêm Chuyển). */
 actions.add = async (el) => {
   let pick = null;
   if (current.route === 'home') {
@@ -3719,7 +3729,7 @@ actions.add = async (el) => {
 function openAddForm(pick, { type = 'expense', repeat = 'none' } = {}) {
   const cur = S.currentProfile();
   if (pick && S.isCard()) return cardItemForm(null, pick);
-  if (transferOnly() || (!S.featureOn(cur, 'expense') && !S.featureOn(cur, 'income'))) return gopTrichChooser(pick);
+  if (!S.featureOn(cur, 'expense') && !S.featureOn(cur, 'income')) return gopTrichChooser(pick);
   openTxForm({ type, repeat, pick });
 }
 

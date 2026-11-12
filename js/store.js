@@ -243,7 +243,8 @@ const USERS_KEY = 'stc-users';
 const CURRENT_KEY = 'stc-current';
 // User (tối đa 3): Bank (3), Thấu chi (2), Tiết kiệm (2), Thẻ tín dụng (5). User đặc biệt: 1 Bank, 1 Thấu chi.
 // Ngoài ra có nhóm "Secrecy" (owner = 'secrecy', quản lý trong Cài đặt chung): NEOBANK.
-export const MAX_USERS = 3;
+// v7.49: chỉ dùng 1 User — bỏ chức năng tạo thêm User (User có sẵn từ trước vẫn giữ, xóa được).
+export const MAX_USERS = 1;
 export const SECRECY = 'secrecy';
 export const USER_KINDS = ['bank', 'saving', 'card'];
 export const PROFILE_COLORS = [
@@ -434,6 +435,12 @@ export function lockError(bookId) {
 }
 
 /** Nhãn đầy đủ của một mục: "Tôi · Techcombank · Thanh Toán" (bỏ tên Bank nếu là tên mặc định "Bank"). */
+/** Tên mục không kèm tên User: "Techcombank · Thanh Toán" (bỏ tên Bank nếu là tên mặc định "Bank"). */
+export const bookLabelShort = (b) => {
+  if (b.owner === SECRECY) return `Secrecy · ${b.name}`;
+  const g = groupOf(b);
+  return `${g && g.name !== 'Bank' && g.name !== b.name ? g.name + ' · ' : ''}${b.name}`;
+};
 export const bookLabel = (b) => {
   if (b.owner === SECRECY) return `Secrecy · ${b.name}`;
   const g = groupOf(b);
@@ -1001,7 +1008,8 @@ export const txBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 
 /** Tính năng giao dịch của Bank/Thấu chi: mặc định bật, tắt riêng trong Cài đặt của mục. */
 // v7.38: bỏ loại giao dịch Nhận (trich) — không tạo mới được; giao dịch Nhận đã ghi vẫn giữ và xóa được.
 export const TX_FEATURES = ['expense', 'income', 'gop'];
-export const featureOn = (b, f) => (b.kind || 'bank') !== 'bank' || b.features?.[f] !== false;
+// Tiết kiệm (v7.48): có Thu (vd lãi tiết kiệm) và Chuyển, không có Chi.
+export const featureOn = (b, f) => ((b.kind || 'bank') === 'saving' ? f !== 'expense' : (b.kind || 'bank') !== 'bank' || b.features?.[f] !== false);
 export function setFeature(bookId, f, on) {
   const b = getProfiles().find((x) => x.id === bookId);
   saveProfile({ id: bookId, features: { ...(b.features || {}), [f]: on } });
@@ -1753,7 +1761,7 @@ export const RECALL_LINES = 5;
 export function quickTypesFor(b) {
   const k = kindOfBook(b);
   if (k === 'card') return b.credit ? ['expense', 'income'] : ['card'];
-  if (k === 'saving') return ['gop'];
+  if (k === 'saving') return ['income', 'gop'];
   return TX_FEATURES.filter((f) => featureOn(b, f));
 }
 /** Danh sách nút nhanh; dữ liệu kiểu cũ (mỗi loại 1 mẫu) được đọc thành danh sách. */
