@@ -11,7 +11,7 @@ import {
   fmtDM, vnDateISO, fmtTimeVN, fmtDateTimeVN, isMasked, setMasked, fmtPlain, fmtBal, fmtBalShort,
 } from './utils.js';
 import { donut, bars, lineChart } from './charts.js';
-import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, PAIR_TINT, BANK_LOGOS, bankColorOf, plain } from './icons.js';
+import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, PAIR_TINT, BANK_LOGOS, bankColorOf, bankLogoSrc, plain } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
 import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile, encryptBackup, decryptBackup, isEncryptedBackup, BACKUP_PIN_RE } from './autosave.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay, bioEnabled, bioAvailable, enableBio, disableBio } from './lock.js';
@@ -39,7 +39,10 @@ const logoForBank = (bank) => {
   return BANK_LOGOS.find((l) => l.name.toLowerCase().replace(/\s+/g, '') === k)
     || BANK_LOGOS.find((l) => k.includes(l.name.toLowerCase().replace(/\s+/g, '')) || l.code.toLowerCase() === k) || null;
 };
-const badgeHtml = (l, cls = '') => `<span class="bank-badge ${cls}" style="--bb:${l.bg}">${esc(l.code)}</span>`;
+// Ngân hàng có ảnh logo thì dùng ảnh, không thì huy hiệu màu + mã.
+const badgeHtml = (l, cls = '') => (bankLogoSrc(l.code)
+  ? `<img class="bank-badge bank-img ${cls}" src="${bankLogoSrc(l.code)}" alt="${esc(l.code)}" title="${esc(l.name)}">`
+  : `<span class="bank-badge ${cls}" style="--bb:${l.bg}">${esc(l.code)}</span>`);
 /** Biểu tượng tài khoản: huy hiệu ngân hàng nếu đã chọn, không thì emoji. */
 const accIconHtml = (a) => (bankLogo(a.logo) ? badgeHtml(bankLogo(a.logo)) : esc(a.icon || '🏦'));
 /** Tên tài khoản kèm số tài khoản (nếu có), dùng trong các ô chọn khi tạo giao dịch. */
@@ -641,7 +644,7 @@ actions.books = () => {
       const adds = room ? `<button type="button" class="grp-add" data-group-add="${esc(g.id)}">＋ Thêm mục</button>` : '';
       // Nền dòng tên Bank: màu nhạt theo icon của Thanh Toán trong Bank (logo ngân hàng thì lấy màu logo).
       const acc = books.find((b) => S.slotOf(b) === 'account') || books[0];
-      const tint = acc ? bankColorOf(acc.icon) || acc.color : bankColorOf(g.icon);
+      const tint = bankColorOf(g.icon) || (acc ? bankColorOf(acc.icon) || acc.color : null);
       return `<section class="grp-card${g.collapsed ? ' collapsed' : ''}">
         <div class="grp-card-h${tint ? ' tinted' : ''}"${tint ? ` style="--gc:${esc(tint)}"` : ''}><span class="grp-ic" data-group-edit="${esc(g.id)}" role="button" aria-label="Sửa">${esc(g.icon || S.GROUP_TYPES[g.type].icon)}<i>✎</i></span>
           <b>${esc(g.name)}</b><small>${S.GROUP_TYPES[g.type].label} · ${books.length} mục</small>
@@ -826,13 +829,14 @@ async function confirmDeleteUser(u) {
 }
 
 /** Phần chọn ảnh / icon (có tìm kiếm) / màu dùng chung cho form User và mục. */
-function looksFields(f, withPhoto) {
+function looksFields(f, withPhoto, { noIcon = false, noColor = false } = {}) {
   return `${withPhoto ? `<div class="field"><span>Ảnh đại diện</span>
       <div class="pf-photo"><span id="pf-preview">${avatar(f, 'ptile-av')}</span>
         <label class="btn ghost small">📷 Dùng ảnh của bạn<input type="file" accept="image/*" id="pf-file" hidden></label>
         <button type="button" class="btn ghost small" id="pf-nophoto" ${f.photo ? '' : 'hidden'}>✕ Bỏ ảnh</button></div></div>` : ''}
-    <div class="field"><span>${withPhoto ? 'Hoặc chọn biểu tượng' : 'Biểu tượng'}</span>${iconPickerHtml('pf-icons', f.icon)}</div>
-    <div class="field"><span>Màu</span><div class="colors">${S.PROFILE_COLORS.map((col) => `<button type="button" class="color ${col === f.color ? 'on' : ''}" data-color="${col}" style="--c:${col}" aria-label="${col}"></button>`).join('')}</div></div>`;
+    ${noIcon ? `<div class="field"><span>Biểu tượng <b>${esc(f.icon || '')}</b></span><small class="muted">Icon đi theo kiểu tài khoản, đổi trong <b>Cài đặt chung › Icon kiểu tài khoản</b>.</small></div>`
+    : `<div class="field"><span>${withPhoto ? 'Hoặc chọn biểu tượng' : 'Biểu tượng'}</span>${iconPickerHtml('pf-icons', f.icon)}</div>`}
+    ${noColor ? '' : `<div class="field"><span>Màu</span><div class="colors">${S.PROFILE_COLORS.map((col) => `<button type="button" class="color ${col === f.color ? 'on' : ''}" data-color="${col}" style="--c:${col}" aria-label="${col}"></button>`).join('')}</div></div>`}`;
 }
 
 function bindLooks(sh, f) {
@@ -842,7 +846,7 @@ function bindLooks(sh, f) {
     const np = $(sh, '#pf-nophoto');
     if (np) np.hidden = !f.photo;
   };
-  bindIconPicker($(sh, '#pf-icons'), (icon) => { f.icon = icon; f.photo = null; preview(); }, () => f.icon);
+  if ($(sh, '#pf-icons')) bindIconPicker($(sh, '#pf-icons'), (icon) => { f.icon = icon; f.photo = null; preview(); }, () => f.icon);
   // Ảnh riêng: nén còn ~160px để lưu gọn.
   $(sh, '#pf-file')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -855,7 +859,7 @@ function bindLooks(sh, f) {
     } catch (err) { toast(err.message || 'Không đọc được ảnh'); }
   });
   $(sh, '#pf-nophoto')?.addEventListener('click', () => { f.photo = null; preview(); });
-  $(sh, '.colors').addEventListener('click', (e) => {
+  $(sh, '.colors')?.addEventListener('click', (e) => {
     const b = e.target.closest('[data-color]');
     if (!b) return;
     f.color = b.dataset.color;
@@ -1006,7 +1010,8 @@ function userForm(u) {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">${u ? 'Lưu' : 'Tạo'}</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên hiển thị', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="vd: Dũng, Vợ">`)}
-      ${looksFields(f, true)}
+      ${looksFields(f, true, { noColor: true })}
+      <p class="muted small">Nút User góc trên trái luôn có nền 7 màu cầu vồng; có thông báo thì các màu chạy liên tục từ trái qua phải.</p>
       ${u ? '' : '<p class="muted small">User mới có sẵn 1 Bank chứa 1 Thanh Toán.</p>'}
       ${u && users.length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa User</button></div>' : ''}
     </form>`,
@@ -1075,7 +1080,7 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
         <div class="kv"><span>Số dư hiện tại</span><b data-od-bal>…</b></div>
         <p class="muted small">Không sửa được số dư và hạn mức. Muốn đổi: ${S.isSpecialBook(b) ? 'dùng Reset trong Cài đặt' : 'xóa mục này rồi tạo lại'}.</p>` : ''}
       ${field('Tên mục', `<input id="pf-name" required maxlength="24" value="${esc(f.name)}" placeholder="${{ card: 'vd: Thẻ MoMo, Đi chợ', saving: 'vd: Quỹ học phí, Tiết kiệm mua nhà' }[kind] || 'vd: Ngân hàng, Tiền nhà'}">`)}
-      ${looksFields(f, false)}
+      ${looksFields(f, false, { noIcon: !!S.accTypeOf({ ...f, overdraft: isOd }) })}
       ${b && S.userBooks(owner.id).length > 1 ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa mục</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
@@ -1580,7 +1585,8 @@ const overName = (u) => u.overName || 'Tổng quan';
 const overIcon = (u) => u.overIcon || '📊';
 const overColor = (u) => u.overColor || u.color;
 const OVER_TABS = [['bank', 'Thanh Toán'], ['od', 'Thấu chi'], ['saving', 'Tiết Kiệm'], ['prepaid', 'Thẻ trả trước'], ['credit', 'Credit Card'], ['wallet', 'Ví điện tử']];
-const OVER_ICONS = { bank: '🏦', od: '🏧', saving: '🐷', prepaid: '🪪', credit: '💳', wallet: '👛' };
+// Icon các thẻ ở Tổng quan theo icon kiểu tài khoản trong Cài đặt chung.
+const OVER_ICONS = new Proxy({}, { get: (_, tab) => S.typeIcons()[tab === 'bank' ? 'account' : tab] || '🏦' });
 /** Ví điện tử đã bỏ: thẻ này chỉ còn hiện cho User đang có ví từ trước, để thanh toán và xóa dần. */
 const overTabs = (userId) => OVER_TABS.filter(([tab]) => (tab !== 'wallet' && tab !== 'prepaid') || tabBooks(userId, tab).length);
 const overKindNow = () => {
@@ -3803,6 +3809,26 @@ function txIconSettingsHtml() {
   <section class="card list">${TX_ICON_ROWS.map((t) => `<button type="button" class="row" data-act="tx-icon" data-t="${t}"><span class="ci">${kIcon(t)}</span><span class="grow"><b>${QUICK_KINDS[t].label}</b></span><span>✎</span></button>`).join('')}</section>
   <p class="muted small">Icon này hiển thị trên các nút nhanh của mọi mục. Tên chức năng không đổi được.</p>`;
 }
+/** Đổi icon của một kiểu tài khoản (Cài đặt chung). */
+actions['type-icon'] = (el) => {
+  const t = el.dataset.t;
+  const label = S.ACC_TYPES.find(([k]) => k === t)[1];
+  let icon = S.typeIcons()[t];
+  const formId = 'tyi-' + Date.now();
+  openSheet({
+    title: `Icon ${label}`,
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form" id="${formId}">
+      <div class="field"><span>Biểu tượng đang chọn <b id="tyi-now">${esc(icon)}</b></span>${iconPickerHtml('tyi-icons', icon)}</div>
+      ${icon !== S.TYPE_ICON_DEFAULTS[t] ? `<div class="actions"><button type="button" class="btn ghost" data-reset>Về mặc định ${S.TYPE_ICON_DEFAULTS[t]}</button></div>` : ''}
+    </form>`,
+    onMount(sh, close) {
+      bindIconPicker($(sh, '#tyi-icons'), (x) => { icon = x; $(sh, '#tyi-now').textContent = x; }, () => icon);
+      $(sh, 'form').addEventListener('submit', (e) => { e.preventDefault(); S.setTypeIcon(t, icon); close(); toast(`Đã đổi icon ${label}`); });
+      $(sh, '[data-reset]')?.addEventListener('click', () => { S.setTypeIcon(t, S.TYPE_ICON_DEFAULTS[t]); close(); toast('Đã về icon mặc định'); });
+    },
+  });
+};
 actions['tx-icon'] = (el) => {
   const t = el.dataset.t;
   let icon = S.txIcons()[t];
@@ -4238,6 +4264,10 @@ function settingsView() {
   <p class="muted small">Thẻ trả trước bị khóa thì không ghi khoản chi mới.</p>
 
   ${txIconSettingsHtml()}
+
+  ${sectionTitle('Icon kiểu tài khoản')}
+  <section class="card list">${S.ACC_TYPES.map(([t, label]) => `<button type="button" class="row" data-act="type-icon" data-t="${t}"><span class="ci">${esc(S.typeIcons()[t])}</span><span class="grow"><b>${label}</b></span><span>✎</span></button>`).join('')}</section>
+  <p class="muted small">Mọi tài khoản cùng kiểu dùng chung icon này (Tổng quan, danh sách mục, ô chọn tài khoản…).</p>
 
   ${sectionTitle('Danh mục')}
   <section class="card list">

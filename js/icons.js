@@ -87,6 +87,9 @@ export const BANK_LOGOS = [
 export const BANK_SEP = '\u2063';
 export const bankIcon = (code) => '🏦' + BANK_SEP + code;
 const bankOf = (code) => BANK_LOGOS.find((l) => l.code === code);
+/** v7.50: ngân hàng có ảnh logo (icons/logo/*.png) thì hiện ảnh thay cho huy hiệu chữ. Mã → tên file. */
+export const BANK_LOGO_IMGS = { VPB: 'vpb', HDB: 'hdb', MOMO: 'momo', ZALO: 'zalo' };
+export const bankLogoSrc = (code) => (BANK_LOGO_IMGS[code] ? `icons/logo/${BANK_LOGO_IMGS[code]}.png` : null);
 /** Màu huy hiệu nếu icon là logo ngân hàng, không thì null. */
 export const bankColorOf = (icon) => {
   const m = /🏦⁣([A-Z]{2,6})/.exec(String(icon || ''));
@@ -155,6 +158,14 @@ function convertText(node) {
       img.className = 'pic-ic';
       img.src = `icons/pic/${pic.file}.png`;
       img.alt = pic.emoji;
+      img.draggable = false;
+      frag.append(img);
+    } else if (bankLogoSrc(l.code)) {
+      const img = document.createElement('img');
+      img.className = 'bank-badge ib bank-img';
+      img.src = bankLogoSrc(l.code);
+      img.alt = l.code;
+      img.title = l.name;
       img.draggable = false;
       frag.append(img);
     } else {

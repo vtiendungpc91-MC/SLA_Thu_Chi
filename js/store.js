@@ -394,13 +394,35 @@ function migrateAccountName() {
 }
 
 /** Danh sách mục (sổ) của mọi người dùng. */
+// ---------- Icon theo kiểu tài khoản (Cài đặt chung, v7.51) ----------
+// Mỗi kiểu tài khoản một icon, áp dụng cho mọi mục cùng kiểu (không chọn icon riêng từng mục nữa).
+// Mục của Secrecy (NEOBANK, Cash Outflow) giữ icon riêng.
+const TYPE_ICONS_KEY = 'stc-type-icons';
+export const ACC_TYPES = [['account', 'Thanh Toán', '🏦'], ['od', 'Thấu chi', '💳'], ['saving', 'Tiết kiệm', '🐷'], ['credit', 'Credit Card', '💳'], ['prepaid', 'Thẻ trả trước', '🪪'], ['wallet', 'Ví điện tử', '👛']];
+export const TYPE_ICON_DEFAULTS = Object.fromEntries(ACC_TYPES.map(([k, , ic]) => [k, ic]));
+export const typeIcons = () => ({ ...TYPE_ICON_DEFAULTS, ...(readJSON(TYPE_ICONS_KEY) || {}) });
+export function setTypeIcon(type, icon) {
+  localStorage.setItem(TYPE_ICONS_KEY, JSON.stringify({ ...typeIcons(), [type]: icon }));
+  emit();
+}
+/** Kiểu tài khoản của một mục (null = mục Secrecy, giữ icon riêng). Tài khoản thanh toán trong Ví điện tử tính là Ví điện tử. */
+export function accTypeOf(b) {
+  if (!b || b.owner === SECRECY || ['neo', 'outflow'].includes(b.kind)) return null;
+  const s = slotOf(b);
+  if (s === 'legacy') return 'wallet';
+  if (s === 'account' && groupOf(b)?.type === 'wallet') return 'wallet';
+  return s;
+}
+
 export function getProfiles() {
   ensureModel();
   migrateV4();
   migrateV5();
   migrateV6();
   migrateAccountName();
-  return readJSON(PROFILES_KEY);
+  const ic = typeIcons();
+  // Icon hiển thị của mục = icon của kiểu tài khoản.
+  return (readJSON(PROFILES_KEY) || []).map((b) => { const t = accTypeOf(b); return t ? { ...b, icon: ic[t] } : b; });
 }
 export function getUsers() {
   ensureModel();
