@@ -1148,55 +1148,43 @@ function bookForm(b, kind = 'bank', od = false, cardPreset = 'credit', { group =
 // ================= Thống kê của mục Ngân hàng: thiết lập nguồn =================
 const moneyBookList = () => S.getProfiles().filter((p) => ['bank', 'saving', 'neo'].includes(p.kind || 'bank'));
 
-/** Thống kê Thu/Chi: chọn các mục (Ngân hàng / Tiết kiệm) + danh mục thu, chi cần lấy (theo tên danh mục). */
+/**
+ * Thống kê Thu/Chi chung (Cài đặt chung): lấy Thu / Chi của MỌI tài khoản (trừ Secrecy) thuộc các danh mục đã tích.
+ * Số liệu theo kỳ Ngày / Tuần / Tháng / Last Month đang chọn ở Tổng quan; hiện dạng băng rôn chạy dưới dòng ngày.
+ */
 function statTrackForm(item = null) {
-  const books = S.getProfiles().filter((p) => ['bank', 'saving'].includes(p.kind || 'bank'));
   const src = item || {};
-  const pickedBooks = new Set(src.books && src.books.length ? src.books : [S.currentProfile().id]);
   const inc = new Set(src.income || []), exp = new Set(src.expense || []);
   const formId = 'ts-' + Date.now();
+  const box = (type, title, set) => `<div class="field"><span>${title}</span><div class="check-list">${catTabList(type).map((c) =>
+    `<label class="check"><input type="checkbox" data-t="${type}" value="${esc(c.name)}" ${set.has(c.name) ? 'checked' : ''}> ${esc(c.icon + ' ' + c.name)}</label>`).join('') || '<small class="muted">Không có</small>'}</div></div>`;
   openSheet({
-    title: '📊 Thống kê Thu/Chi',
+    title: `📊 ${item ? 'Sửa' : 'Tạo'} thống kê`,
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
-      ${field('Tên hiển thị ở Tổng quan', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Chi tiêu gia đình">`)}
+      ${field('Tên hiển thị', `<input id="st-name" maxlength="30" value="${esc(src.name || '')}" placeholder="vd: Chi tiêu gia đình">`)}
       ${statIconField(src.icon || STATS.track.icon)}
-      <p class="muted small">Lấy các khoản <b>Thu / Chi</b> trong các mục bạn chọn, thuộc các danh mục bạn tích. Số liệu tính theo kỳ đang chọn ở Tổng quan (Ngày / Tuần / Tháng / Last Month). Xóa giao dịch thì ở đây cũng mất theo.</p>
-      <div class="field"><span>📒 Lấy từ các mục</span><div class="check-list one" id="ts-books">${books.map((b) =>
-        `<label class="check"><input type="checkbox" value="${esc(b.id)}" ${pickedBooks.has(b.id) ? 'checked' : ''}> ${esc(b.icon + ' ' + S.bookLabel(b))}</label>`).join('')}</div></div>
-      <div id="ts-cats"><p class="muted small">Đang tải danh mục…</p></div>
+      <p class="muted small">Lấy các khoản <b>Thu / Chi</b> của <b>tất cả tài khoản</b> (Thanh Toán, Thấu chi, Tiết kiệm, Credit Card, Ví…) thuộc các danh mục bạn tích. Không tính khoản Chuyển. Số liệu theo kỳ đang chọn ở Tổng quan (Ngày / Tuần / Tháng / Last Month), hiện dạng băng rôn chạy dưới dòng ngày.</p>
+      <div id="ts-cats">${box('income', '💹 Danh mục THU lấy vào', inc)}${box('expense', '💸 Danh mục CHI lấy vào', exp)}</div>
       ${statDelBtn(item)}
     </form>`,
     onMount(sh, close) {
       bindStatDel(sh, item, close);
       const getIcon = bindStatIcon(sh, src.icon || STATS.track.icon);
-      const load = async () => {
-        const names = await S.categoryNamesOf([...pickedBooks]);
-        const box = (type, title, set) => `<div class="field"><span>${title}</span><div class="check-list">${names[type].map(([n, ic]) =>
-          `<label class="check"><input type="checkbox" data-t="${type}" value="${esc(n)}" ${set.has(n) ? 'checked' : ''}> ${esc(ic + ' ' + n)}</label>`).join('') || '<small class="muted">Không có</small>'}</div></div>`;
-        $(sh, '#ts-cats').innerHTML = box('income', '💹 Danh mục THU lấy vào', inc) + box('expense', '💸 Danh mục CHI lấy vào', exp);
-      };
-      $(sh, '#ts-books').addEventListener('change', (e) => {
-        if (e.target.checked) pickedBooks.add(e.target.value); else pickedBooks.delete(e.target.value);
-        load();
-      });
       $(sh, '#ts-cats').addEventListener('change', (e) => {
         const set = e.target.dataset.t === 'income' ? inc : exp;
         if (e.target.checked) set.add(e.target.value); else set.delete(e.target.value);
       });
-      load();
       $(sh, 'form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (!pickedBooks.size) return toast('Chọn ít nhất 1 mục');
         if (!inc.size && !exp.size) return toast('Chọn ít nhất 1 danh mục thu hoặc chi');
-        await saveStat(item, { type: 'track', name: $(sh, '#st-name').value.trim(), icon: getIcon(), books: [...pickedBooks], income: [...inc], expense: [...exp] });
+        await saveStat(item, { type: 'track', name: $(sh, '#st-name').value.trim(), icon: getIcon(), income: [...inc], expense: [...exp] });
         close();
-        toast('Đã lưu thiết lập thống kê');
+        toast('Đã lưu thống kê');
       });
     },
   });
 }
-
 function sectionTitle(text, actionHtml = '') {
   return `<div class="sec-h"><h2>${text}</h2>${actionHtml}</div>`;
 }
@@ -1244,10 +1232,10 @@ function cardView() {
 
 // ================= Thống kê Thu/Chi ở Tổng quan (v7.38: đã bỏ thống kê Chuyển/Nhận) =================
 const STATS = {
-  track: { icon: '📊', label: 'Thu/Chi', load: S.loadTrackStats, form: (item) => statTrackForm(item) },
+  track: { icon: '📊', label: 'Thu/Chi', load: S.loadGStat, form: (item) => statTrackForm(item) },
 };
-const statName = (st) => st.name || STATS[st.type].label;
-const statIcon = (st) => st.icon || STATS[st.type].icon;
+const statName = (st) => st.name || STATS.track.label;
+const statIcon = (st) => st.icon || STATS.track.icon;
 /** Ô chọn biểu tượng trong form thiết lập thống kê. */
 const statIconField = (icon) => `<div class="field"><span>Biểu tượng <b id="st-icon-now">${esc(icon)}</b></span>${iconPickerHtml('st-icons', icon)}</div>`;
 function bindStatIcon(sh, start) {
@@ -1261,14 +1249,14 @@ const statRange = () => overRange();
 const statDelBtn = (item) => (item ? '<div class="actions"><button type="button" class="btn danger" data-stat-del>Xóa thống kê</button></div>' : '');
 function bindStatDel(sh, item, close) {
   $(sh, '[data-stat-del]')?.addEventListener('click', async () => {
-    await S.setSetting('stats', S.statsOf().filter((x) => x.id !== item.id));
+    S.saveGStats(S.gStats().filter((x) => x.id !== item.id));
     close(); toast('Đã xóa thống kê');
   });
 }
 async function saveStat(item, data) {
-  const list = S.statsOf();
-  const row = { ...data, id: item?.id || 'st' + Date.now(), show: item?.show !== false };
-  await S.setSetting('stats', item ? list.map((x) => (x.id === item.id ? row : x)) : [...list, row]);
+  const list = S.gStats();
+  const row = { ...data, id: item?.id || 'gs' + Date.now(), show: item?.show !== false };
+  S.saveGStats(item ? list.map((x) => (x.id === item.id ? row : x)) : [...list, row]);
 }
 const statSum = (list, type) => list.filter((t) => t.type === type).reduce((s, t) => s + t.amountVnd, 0);
 // Last Month: cả tháng liền trước tháng hiện tại, tính như kỳ Tháng.
@@ -1292,12 +1280,10 @@ function statRow(t) {
 
 /** Bấm dòng thống kê ở Tổng quan: xem chi tiết theo kỳ đã đặt trong thiết lập của thống kê. */
 actions['stat-open'] = async (el) => {
-  const { id, book } = el.dataset;
-  await inBook(book);
-  const st = S.statsOf().find((x) => x.id === id);
+  const st = S.gStats().find((x) => x.id === el.dataset.id);
   if (!st) return;
-  const m = await STATS[st.type].load(st);
-  if (!m.configured) return STATS[st.type].form(st);
+  const m = await STATS.track.load(st);
+  if (!m.configured) return STATS.track.form(st);
   const r = statRange(st);
   const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
   const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
@@ -1309,25 +1295,25 @@ actions['stat-open'] = async (el) => {
   });
 };
 actions['stat-setup'] = (el) => {
-  const st = S.statsOf().find((x) => x.id === el.dataset.id);
-  if (st) STATS[st.type].form(st);
+  const st = S.gStats().find((x) => x.id === el.dataset.id);
+  if (st) STATS.track.form(st);
 };
 actions['stat-new'] = () => {
-  if (S.statsOf().length >= S.STAT_MAX) return toast(`Tối đa ${S.STAT_MAX} thống kê`);
+  if (S.gStats().length >= S.GSTAT_MAX) return toast(`Tối đa ${S.GSTAT_MAX} thống kê`);
   return STATS.track.form(null); // Chỉ còn 1 loại thống kê (Thu/Chi): mở thẳng form.
 };
 
-/** Phần Thống kê trong Cài đặt riêng của mục: công tắc ẩn/hiện, danh sách, nút tạo. */
+/** Phần Thống kê trong Cài đặt chung: danh sách (tối đa 5), công tắc hiện ở băng rôn Tổng quan, nút tạo. */
 function statSettingsHtml() {
-  const list = S.statsOf();
-  const open = state.settings.statListOpen !== false;
-  return `${sectionTitle(`📊 Thống kê <small class="muted">(${list.length}/${S.STAT_MAX})</small>`, `<label class="switch" title="Mở/thu gọn danh sách"><input type="checkbox" data-list-toggle="statListOpen" ${open ? 'checked' : ''}><i></i></label>`)}
-  ${open ? `<section class="card list">${list.map((st) => `<div class="row quick-row">
+  const list = S.gStats();
+  return `${sectionTitle(`📊 Thống kê <small class="muted">(${list.length}/${S.GSTAT_MAX})</small>`)}
+  ${`<section class="card list">${list.map((st) => `<div class="row quick-row">
       <button type="button" class="grow-btn" data-act="stat-setup" data-id="${esc(st.id)}"><span class="ci">${esc(statIcon(st))}</span>
-        <span class="grow"><b>${esc(statName(st))}</b><small>${STATS[st.type].label} · theo kỳ chọn ở Tổng quan</small></span><span>✎</span></button>
-      <label class="switch" title="Hiện ở Tổng quan"><input type="checkbox" data-stat-show="${esc(st.id)}" ${st.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
-    ${list.length < S.STAT_MAX ? '<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b></span></button>' : ''}
-  </section>` : ''}`;
+        <span class="grow"><b>${esc(statName(st))}</b><small>Thu ${(st.income || []).length} · Chi ${(st.expense || []).length} danh mục · mọi tài khoản</small></span><span>✎</span></button>
+      <label class="switch" title="Hiện ở băng rôn Tổng quan"><input type="checkbox" data-stat-show="${esc(st.id)}" ${st.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
+    ${list.length < S.GSTAT_MAX ? '<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b></span></button>' : ''}
+  </section>
+  <p class="muted small">Thống kê hiện dạng băng rôn chạy dưới dòng ngày ở Tổng quan, nhiều thống kê thì chạy lần lượt và xoay vòng.</p>`}`;
 }
 
 function cardRow(t) {
@@ -1658,6 +1644,7 @@ function homeView() {
   <div class="title-row over-title"><div><h1>${esc(overName(u))}</h1></div><div class="title-acts"><button type="button" class="icon-btn" data-act="search-all" title="Tìm trong mọi tài khoản" aria-label="Tìm trong mọi tài khoản">🔎</button>${maskBtn()}</div></div>
   <div class="over-date"><small>📅 ${ui.overPeriod === 'lastmonth' ? `Last Month · ${esc(overRange().label)}` : fmtDayHeader(todayISO())}</small>
     <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${OVER_PERIODS.map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="stat-banner" data-stat-banner ${statBannerCache ? '' : 'hidden'}>${statBannerCache || ''}</div>
   <div class="seg tabs">${homeTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
   <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? OVER_PERIODS.map(([p]) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
   ${fab(kind)}`;
@@ -1747,19 +1734,6 @@ async function overCard(b) {
   const st = o.settings;
   // Ô nút nhanh như đã xếp trong Cài đặt; nút đang ẩn để trống ô của nó.
   const quicks = quickSlots(S.quicksOf(st).filter((q) => S.quickTypesFor(b).includes(q.type)), S.quickMax(b)).map((q) => (q && q.show !== false ? q : null));
-  let stats = '';
-  if (!isCard) {
-    for (const x of S.statsOf(st).filter((y) => y.show !== false).slice(0, S.STAT_MAX)) {
-      const m = await STATS[x.type].load(x);
-      // Kỳ riêng của thống kê, không theo ô chọn Ngày/Tuần/Tháng của Tổng quan.
-      const sr = statRange(x);
-      const list = m.txs.filter((t) => t.date >= sr.start && t.date <= sr.end);
-      const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
-      stats += `<button type="button" class="stat-line" data-act="stat-open" data-id="${esc(x.id)}" data-book="${esc(b.id)}">
-        <span class="grow"><b>${esc(statIcon(x))} ${esc(statName(x))} <small class="stat-per">· ${esc(statPeriodLabel(x))}</small></b><small>${m.configured ? `Thu ${fmtShort(inc)} · Chi ${fmtShort(exp)}` : 'Chưa thiết lập nguồn'}</small></span>
-        ${m.configured ? `<strong class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</strong>` : ''}<i>›</i></button>`;
-    }
-  }
   // Thẻ tín dụng: hiện Khả dụng = hạn mức − dư nợ (số dư âm là đang nợ; trả dư thì khả dụng vượt hạn mức).
   const sub = b.kind === 'card' ? (b.credit && b.limit ? `Khả dụng ${fmtBal(b.limit - (isCard ? o.balance : -o.balance))}` : S.CARD_TYPES[b.cardType] || '')
     : [o.number && `STK ${o.number}`, b.overdraft && `Hạn mức ${fmtShort(b.limit)}`].filter(Boolean).join(' · ');
@@ -1774,7 +1748,6 @@ async function overCard(b) {
     </div>
     ${quickRows(quicks, b.id, o.cats)}
     ${recentRows(o.recent, b)}
-    ${stats ? `<div class="home-stats">${stats}</div>` : ''}
   </section>`;
 }
 
@@ -1793,9 +1766,52 @@ let fitTimer = null;
 window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => fitQuickNames(), 150); });
 
 /** Vẽ các thẻ tài khoản của tab đang chọn (đọc từ nhiều sổ nên làm sau khi vẽ khung). */
+/**
+ * Băng rôn thống kê dưới dòng ngày ở Tổng quan: mỗi lần chạy 1 thống kê ngang màn hình (phải → trái),
+ * chạy hết thì sang thống kê kế tiếp, xoay vòng. Bấm vào để xem chi tiết. Số liệu theo kỳ đang chọn.
+ */
+let statBannerCache = '', statBannerToken = 0;
+async function fillStatBanner(root) {
+  const el = root.querySelector('[data-stat-banner]');
+  if (!el) return;
+  const token = ++statBannerToken;
+  const list = S.gStats().filter((x) => x.show !== false);
+  if (!list.length) { el.hidden = true; el.innerHTML = ''; statBannerCache = ''; return; }
+  const r = overRange();
+  const items = [];
+  for (const st of list) {
+    try {
+      const m = await S.loadGStat(st);
+      const txs = m.txs.filter((t) => t.date >= r.start && t.date <= r.end);
+      const inc = statSum(txs, 'income'), exp = statSum(txs, 'expense');
+      const parts = [(st.income || []).length ? `Thu ${fmtShort(inc)}` : '', (st.expense || []).length ? `Chi ${fmtShort(exp)}` : ''].filter(Boolean);
+      const net = (st.income || []).length && (st.expense || []).length ? ` · <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b>` : '';
+      items.push({ id: st.id, html: `${esc(statIcon(st))} <b>${esc(statName(st))}</b> · ${esc(statPeriodLabel())}: ${esc(parts.join(' · '))}${net}` });
+    } catch (err) { console.warn(err); }
+  }
+  if (token !== statBannerToken || !el.isConnected) return;
+  let i = 0;
+  const show = () => {
+    if (!el.isConnected || token !== statBannerToken) return;
+    const it = items[i % items.length];
+    el.innerHTML = `<button type="button" class="sb-track" data-act="stat-open" data-id="${esc(it.id)}"><span class="sb-text">${it.html}</span></button>`;
+    statBannerCache = el.innerHTML;
+    const txt = el.querySelector('.sb-text');
+    // Tốc độ đều: quãng chạy = bề rộng băng rôn + bề rộng chữ, khoảng 60px mỗi giây.
+    const dist = el.clientWidth + txt.scrollWidth;
+    txt.style.setProperty('--sb-from', `${el.clientWidth}px`);
+    txt.style.setProperty('--sb-to', `${-txt.scrollWidth}px`);
+    txt.style.animationDuration = `${Math.max(6, dist / 60)}s`;
+    txt.addEventListener('animationend', () => { i += 1; show(); }, { once: true });
+  };
+  el.hidden = false;
+  show();
+}
+
 async function fillOverview(root) {
   const box = root.querySelector('[data-over-list]');
   if (!box) return;
+  fillStatBanner(root);
   root.querySelector('#over-period')?.addEventListener('change', (e) => { ui.overPeriod = e.target.value; refresh(); });
   const token = ++overToken;
   overExpiry = Infinity;
@@ -4244,30 +4260,16 @@ function settingsView() {
   <section class="card list">${S.getUsers().map((u) => `
     <button type="button" class="row user-pick ${u.id === settingsUser().id ? 'picked' : ''} ${u.id === S.currentUser().id ? 'is-current' : ''}" data-act="settings-user" data-id="${esc(u.id)}" style="--c:${esc(u.color)}">
       ${avatar(u)}<span class="grow"><b>${esc(u.name)}</b>
-      <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'Bấm để xem các mục'}</small></span>
+      <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'User khác'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
-  <p class="muted small pin-end">Chọn User để xem các mục của người đó ở phần bên dưới.</p>
-
-  ${sectionTitle(`Các mục của ${esc(settingsUser().name)}`, `<button type="button" class="link" data-act="books">Quản lý</button>`)}
-  ${[settingsUser()].map((u) => `
-  <section class="card list">${S.userBooks(u.id).map((p) => `
-    <div class="row book-row ${p.locked ? 'is-locked' : ''} ${p.id === S.currentProfile().id ? 'is-current' : ''}">
-      <button type="button" class="grow-btn" data-act="profile-switch" data-id="${esc(p.id)}">
-        ${avatar(p)}<span class="grow"><b>${esc(p.name)}${p.locked ? ' 🔒' : ''}</b>
-        <small>${esc(kindOf(p).label)} · ${p.id === S.currentProfile().id ? 'Đang mở' : 'Bấm để mở'}</small></span>
-        <span class="psum" data-psum="${esc(p.id)}">…</span></button>
-      ${p.kind === 'card' ? `<button type="button" class="lock-btn ${p.locked ? 'on' : ''}" data-act="book-lock" data-id="${esc(p.id)}"
-        aria-label="${p.locked ? 'Mở khóa' : 'Khóa'}">${p.locked ? '🔒<small>Đang khóa</small>' : '🔓<small>Mở</small>'}</button>` : ''}
-    </div>`).join('')}
-  </section>`).join('')}
-  <p class="muted small">Thẻ trả trước bị khóa thì không ghi khoản chi mới.</p>
-
   ${txIconSettingsHtml()}
 
   ${sectionTitle('Icon kiểu tài khoản')}
   <section class="card list">${S.ACC_TYPES.map(([t, label]) => `<button type="button" class="row" data-act="type-icon" data-t="${t}"><span class="ci">${esc(S.typeIcons()[t])}</span><span class="grow"><b>${label}</b></span><span>✎</span></button>`).join('')}</section>
   <p class="muted small">Mọi tài khoản cùng kiểu dùng chung icon này (Tổng quan, danh sách mục, ô chọn tài khoản…).</p>
+
+  ${statSettingsHtml()}
 
   ${sectionTitle('Danh mục')}
   <section class="card list">
@@ -4386,7 +4388,6 @@ function bookSettingsView() {
     ${quickSettingsHtml()}
 
     ${S.isSpecialBook(p) ? pfSettingsHtml() : ''}
-    ${statSettingsHtml()}
 
     ${sectionTitle('Tài khoản ngân hàng')}
     <section class="card list">${S.activeAccounts().map((a) => {
@@ -4498,7 +4499,7 @@ async function mountSettings(root) {
     toast(el.checked ? 'Đã hiện mục' : 'Đã ẩn mục');
   }));
   root.querySelectorAll('[data-stat-show]').forEach((el) => el.addEventListener('change', async () => {
-    await S.setSetting('stats', S.statsOf().map((x) => (x.id === el.dataset.statShow ? { ...x, show: el.checked } : x)));
+    S.saveGStats(S.gStats().map((x) => (x.id === el.dataset.statShow ? { ...x, show: el.checked } : x)));
     toast(el.checked ? 'Đã hiện ở Tổng quan' : 'Đã ẩn khỏi Tổng quan');
   }));
   root.querySelector('[data-lock-toggle]')?.addEventListener('change', async (e) => {

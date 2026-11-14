@@ -685,6 +685,7 @@ export async function loadAll() {
   await applyV6Stash();
   await migrateGopNotes();
   await ensureGlobalCats();
+  await migrateGStats();
   // Sổ mới chưa có tài khoản: tạo tài khoản mặc định. Danh mục luôn lấy theo danh sách chung.
   if (!(await db.getAll('accounts')).length) await db.bulkPut('accounts', seedRows().accs);
   await syncBookCats(dbOf(currentProfile().id));
@@ -1272,11 +1273,39 @@ export async function loadTrackStats(src = {}) {
       txs.push({
         ...t, amountVnd: hit.reduce((s, p) => s + p.amountVnd, 0), splits: null, mirror: true,
         catName: cat?.name || '', catIcon: cat?.icon || '🏷️', catColor: cat?.color || '#888',
-        flowLabel: bookLabel(b), accName: accs.find((a) => a.id === t.accountId)?.name || '',
+        flowLabel: bookLabelShort(b), accName: accs.find((a) => a.id === t.accountId)?.name || '',
       });
     }
   }
   return { configured: true, txs, books: ids };
+}
+
+// ---------- Thống kê chung (Cài đặt chung, v7.53) ----------
+// Tối đa 5 thống kê; mỗi thống kê lấy Thu/Chi của MỌI tài khoản (trừ Secrecy) thuộc các danh mục đã chọn (theo tên).
+// Hiện dạng băng rôn chạy ngang dưới dòng ngày ở Tổng quan, theo kỳ Ngày/Tuần/Tháng/Last Month đang chọn.
+const GSTATS_KEY = 'stc-gstats';
+export const GSTAT_MAX = 5;
+export const gStats = () => readJSON(GSTATS_KEY) || [];
+export function saveGStats(list) { localStorage.setItem(GSTATS_KEY, JSON.stringify(list.slice(0, GSTAT_MAX))); emit(); }
+const statBookIds = () => getProfiles().filter((p) => p.owner !== SECRECY && !['neo', 'outflow'].includes(p.kind)).map((p) => p.id);
+export const loadGStat = (st) => loadTrackStats({ books: statBookIds(), income: st.income, expense: st.expense });
+/** Lần đầu: đưa thống kê Thu/Chi cũ trong Cài đặt riêng của các mục sang danh sách chung (bỏ trùng, tối đa 5). */
+async function migrateGStats() {
+  if (localStorage.getItem(GSTATS_KEY)) return;
+  const out = [];
+  const seen = new Set();
+  for (const p of getProfiles()) {
+    let rows = [];
+    try { rows = await dbOf(p.id).getAll('settings'); } catch { continue; }
+    const st = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    for (const x of statsOf(st)) {
+      const key = JSON.stringify([x.name || '', [...(x.income || [])].sort(), [...(x.expense || [])].sort()]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ type: 'track', id: x.id && !out.some((o) => o.id === x.id) ? x.id : 'gs' + uid().slice(0, 8), name: x.name || '', icon: x.icon || '📊', show: x.show !== false, income: x.income || [], expense: x.expense || [] });
+    }
+  }
+  localStorage.setItem(GSTATS_KEY, JSON.stringify(out.slice(0, GSTAT_MAX)));
 }
 
 /** Tên danh mục thu / chi (gộp từ các mục đã chọn) để thiết lập theo dõi Thu/Chi. */
@@ -2001,7 +2030,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), txIcons: txIcons() };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), gStats: gStats(), typeIcons: readJSON(TYPE_ICONS_KEY), txIcons: txIcons() };
 }
 
 /**
@@ -2030,6 +2059,9 @@ export async function importAny(data) {
   if (Array.isArray(data.flowCats) && data.flowCats.length) localStorage.setItem(FLOW_CATS_KEY, JSON.stringify(data.flowCats));
   // Danh mục chung: bản sao lưu có thì dùng; bản cũ chưa có thì gộp lại từ các sổ vừa khôi phục.
   if (Array.isArray(data.cats) && data.cats.length) writeGlobalCats(data.cats); else localStorage.removeItem(CATS_KEY);
+  // Thống kê chung, icon kiểu tài khoản: có trong bản sao lưu thì dùng; bản cũ chưa có thì chuyển lại từ thống kê của các mục.
+  if (Array.isArray(data.gStats)) localStorage.setItem(GSTATS_KEY, JSON.stringify(data.gStats)); else localStorage.removeItem(GSTATS_KEY);
+  if (data.typeIcons) localStorage.setItem(TYPE_ICONS_KEY, JSON.stringify(data.typeIcons));
   if (data.txIcons) localStorage.setItem(TX_ICONS_KEY, JSON.stringify(data.txIcons));
   // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.
   for (const k of ['stc-model', 'stc-model5', 'stc-model6']) localStorage.removeItem(k);
