@@ -1297,3 +1297,10 @@ img.bank-badge:not(.ib) { height: 24px; border-radius: 6px; }
 .stat-banner .sb-track { display: block; width: 100%; height: 30px; padding: 0; border: 0; background: none; text-align: left; color: inherit; font: inherit; overflow: hidden; }
 .stat-banner .sb-text { display: inline-block; white-space: nowrap; line-height: 30px; font-size: 13px; padding: 0 8px; animation: sb-run 10s linear 1 both; }
 @keyframes sb-run { from { transform: translateX(var(--sb-from, 100vw)); } to { transform: translateX(var(--sb-to, -100%)); } }
+/* v7.54: băng rôn thống kê — từng dòng đứng 5 giây, dòng mới trượt từ dưới lên */
+.stat-banner .sb-track { position: relative; overflow: hidden; }
+.stat-banner .sb-line { position: absolute; left: 0; right: 0; top: 0; padding: 0 10px; line-height: 30px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: none; }
+.stat-banner .sb-line.sb-in { animation: sb-up-in .45s ease both; }
+.stat-banner .sb-line.sb-out { animation: sb-up-out .45s ease both; }
+@keyframes sb-up-in { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes sb-up-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }

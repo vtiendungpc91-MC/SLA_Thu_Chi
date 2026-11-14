@@ -1767,10 +1767,11 @@ window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = set
 
 /** Vẽ các thẻ tài khoản của tab đang chọn (đọc từ nhiều sổ nên làm sau khi vẽ khung). */
 /**
- * Băng rôn thống kê dưới dòng ngày ở Tổng quan: mỗi lần chạy 1 thống kê ngang màn hình (phải → trái),
- * chạy hết thì sang thống kê kế tiếp, xoay vòng. Bấm vào để xem chi tiết. Số liệu theo kỳ đang chọn.
+ * Băng rôn thống kê dưới dòng ngày ở Tổng quan: mỗi thống kê hiện 1 dòng trong 5 giây, rồi dòng kế tiếp
+ * trượt từ dưới lên, xoay vòng. Bấm vào để xem chi tiết. Số liệu theo kỳ đang chọn.
  */
-let statBannerCache = '', statBannerToken = 0;
+let statBannerCache = '', statBannerToken = 0, statBannerTimer = null;
+const STAT_BANNER_MS = 5000;
 async function fillStatBanner(root) {
   const el = root.querySelector('[data-stat-banner]');
   if (!el) return;
@@ -1790,24 +1791,26 @@ async function fillStatBanner(root) {
     } catch (err) { console.warn(err); }
   }
   if (token !== statBannerToken || !el.isConnected) return;
+  clearInterval(statBannerTimer);
+  if (!items.length) { el.hidden = true; return; }
   let i = 0;
-  const show = () => {
-    if (!el.isConnected || token !== statBannerToken) return;
-    const it = items[i % items.length];
-    el.innerHTML = `<button type="button" class="sb-track" data-act="stat-open" data-id="${esc(it.id)}"><span class="sb-text">${it.html}</span></button>`;
-    statBannerCache = el.innerHTML;
-    const txt = el.querySelector('.sb-text');
-    // Tốc độ đều: quãng chạy = bề rộng băng rôn + bề rộng chữ, khoảng 60px mỗi giây.
-    const dist = el.clientWidth + txt.scrollWidth;
-    txt.style.setProperty('--sb-from', `${el.clientWidth}px`);
-    txt.style.setProperty('--sb-to', `${-txt.scrollWidth}px`);
-    txt.style.animationDuration = `${Math.max(6, dist / 60)}s`;
-    txt.addEventListener('animationend', () => { i += 1; show(); }, { once: true });
-  };
+  const line = (it, cls = '') => `<span class="sb-line ${cls}">${it.html}</span>`;
+  el.innerHTML = `<button type="button" class="sb-track" data-act="stat-open" data-id="${esc(items[0].id)}">${line(items[0])}</button>`;
+  statBannerCache = el.innerHTML;
   el.hidden = false;
-  show();
+  if (items.length < 2) return;
+  // Mỗi thống kê đứng 5 giây; dòng kế tiếp trượt từ dưới lên đẩy dòng cũ lên trên, xoay vòng.
+  statBannerTimer = setInterval(() => {
+    const track = el.querySelector('.sb-track');
+    if (!el.isConnected || token !== statBannerToken || !track) return clearInterval(statBannerTimer);
+    i = (i + 1) % items.length;
+    const old = track.querySelector('.sb-line');
+    track.insertAdjacentHTML('beforeend', line(items[i], 'sb-in'));
+    track.dataset.id = items[i].id;
+    old?.classList.add('sb-out');
+    setTimeout(() => { old?.remove(); track.querySelector('.sb-in')?.classList.remove('sb-in'); statBannerCache = el.innerHTML; }, 500);
+  }, STAT_BANNER_MS);
 }
-
 async function fillOverview(root) {
   const box = root.querySelector('[data-over-list]');
   if (!box) return;
