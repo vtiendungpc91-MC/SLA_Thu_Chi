@@ -553,7 +553,7 @@ const NOTIF = {
   cardpay: { icon: '💳', btn: 'Trích trả' },
   creditpay: { icon: '💳', btn: '💸 Thanh toán' },
   maturity: { icon: '📅', btn: 'Xem' },
-  split: { icon: '👥', btn: '💸 Thanh toán' },
+  split: { icon: '👥', btn: '💸' },
   backup: { icon: '💾', btn: 'Sao lưu' },
 };
 function notifRow(a) {
@@ -4304,14 +4304,13 @@ function splitForm() {
     title: '👥 Chia Nhóm',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Tạo</button>`,
     onClose: () => {},
-    body: `<form class="form" id="${formId}">
+    body: `<form class="form split-form" id="${formId}">
       ${field('Nội dung', '<input id="sp-title" required maxlength="40" placeholder="vd: Ăn tối nhóm bạn, Du lịch Đà Lạt">')}
-      ${field('Số tiền chi ra', moneyBox('<input id="sp-total" class="money" inputmode="decimal" autocomplete="off" data-no-sug placeholder="vd: 600.000">'))}
+      ${field('Số tiền chi ra', moneyBox('<input id="sp-total" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 600.000">'))}
       ${field('Ngày', `<input type="date" id="sp-date" value="${todayISO()}">`)}
       <label class="check"><input type="checkbox" id="sp-exp" ${books.length ? 'checked' : 'disabled'}> Ghi khoản chi này vào tài khoản</label>
       <div id="sp-exp-box">
-        ${books.length ? `<div class="field"><span>Chi từ</span>${userChips('sp-who', books, (p) => `<button type="button" class="chip ${p.id === whoId ? 'on' : ''}" data-who="${esc(p.id)}">${esc(p.icon)} ${esc(p.name)}</button>`)}</div>
-        ${field('Tài khoản', '<select id="sp-acc" data-acc class="acc-out"><option></option></select>')}
+        ${books.length ? `${field('Tài khoản chi', '<select id="sp-acc" class="acc-out"><option>Đang tải…</option></select>')}
         ${field('Danh mục chi', `<select id="sp-cat" class="cat-select">${catTabList('expense').map((c) => `<option value="${c.id}">${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}` : ''}
       </div>
       <div class="field"><span>Số người cần trả lại</span><div class="two">
@@ -4329,20 +4328,19 @@ function splitForm() {
         const s = read().reduce((a, p) => a + p.amount, 0), t = Math.round(readMoney(total.value) || 0);
         $(sh, '#sp-sum').textContent = t ? `Tổng người khác nợ: ${fmt(s)} · phần của bạn: ${fmt(t - s)}` : `Tổng người khác nợ: ${fmt(s)}`;
       };
+      // Một ô chọn (droplist) gồm mọi tài khoản Thanh Toán, chia nhóm theo mục; giá trị = mã mục|mã tài khoản.
       const loadAcc = async () => {
         const sel = $(sh, '#sp-acc');
-        if (!sel || !whoId) return;
-        const accs = await S.peerAccounts(whoId);
-        sel.innerHTML = accs.map((a) => `<option value="${a.id}">${esc(accLabel(a))}</option>`).join('');
+        if (!sel) return;
+        let html = '';
+        for (const b of books) {
+          const accs = await S.peerAccounts(b.id);
+          html += `<optgroup label="${esc(plainIcon(b.icon) + ' ' + S.bookLabelShort(b))}">${accs.map((a) => `<option value="${esc(b.id + '|' + a.id)}" ${b.id === whoId && a === accs[0] ? 'selected' : ''}>${esc(plainIcon(b.icon) + ' ' + S.bookLabelShort(b) + (accs.length > 1 ? ' · ' + accTitle(a) : ''))}</option>`).join('')}</optgroup>`;
+        }
+        sel.innerHTML = html;
       };
       loadAcc();
-      $(sh, '#sp-who')?.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-who]');
-        if (!b) return;
-        whoId = b.dataset.who;
-        sh.querySelectorAll('#sp-who [data-who]').forEach((x) => x.classList.toggle('on', x === b));
-        loadAcc();
-      });
+      $(sh, '#sp-acc')?.addEventListener('change', (e) => { whoId = e.target.value.split('|')[0]; });
       $(sh, '#sp-exp').addEventListener('change', (e) => { $(sh, '#sp-exp-box').hidden = !e.target.checked; });
       $(sh, '[data-split-all]').addEventListener('click', () => { close(); actions['split-list'](); });
       $(sh, '#sp-n').addEventListener('input', (e) => {
@@ -4372,7 +4370,7 @@ function splitForm() {
         const withExp = $(sh, '#sp-exp').checked && whoId;
         try {
           const g = await S.createSplit({ title, total: t, date: $(sh, '#sp-date').value || todayISO(), people,
-            expense: withExp ? { bookId: whoId, accountId: $(sh, '#sp-acc').value, categoryId: $(sh, '#sp-cat').value } : null });
+            expense: withExp ? { bookId: $(sh, '#sp-acc').value.split('|')[0], accountId: $(sh, '#sp-acc').value.split('|')[1], categoryId: $(sh, '#sp-cat').value } : null });
           close();
           toast('Đã tạo nhóm chia tiền');
           splitDetail(g.id);
@@ -4396,7 +4394,7 @@ function splitDetail(id) {
         <span class="amt ${p.paid || p.skipped ? '' : 'income'}">${fmt(p.amount)}</span>
         ${p.paid ? `<button type="button" class="btn small ghost" data-unpay="${esc(p.id)}" title="Hủy khoản đã trả">↩</button>`
           : p.skipped ? `<button type="button" class="btn small ghost" data-unskip="${esc(p.id)}" title="Bỏ Skip, đòi lại">↩</button>`
-          : `<span class="sp-btns"><button type="button" class="btn small primary" data-pay="${esc(p.id)}">💸 Thanh toán</button><button type="button" class="btn small ghost" data-skip="${esc(p.id)}" title="Không đòi nữa, tính vào phần mình">Skip</button></span>`}</div>`).join('')}</div>
+          : `<span class="sp-btns"><button type="button" class="btn small primary sp-pay" data-pay="${esc(p.id)}" title="Thanh toán" aria-label="Thanh toán">💸</button><button type="button" class="btn small ghost" data-skip="${esc(p.id)}" title="Không đòi nữa, tính vào phần mình">Skip</button></span>`}</div>`).join('')}</div>
       <div class="actions"><button type="button" class="btn ghost" data-back>‹ Danh sách nhóm</button><button type="button" class="btn danger" data-del>Xóa nhóm</button></div>
       <p class="muted small">Xóa nhóm không xóa các giao dịch đã ghi (khoản chi và các khoản đã trả).</p>`,
     onMount(sh, close) {

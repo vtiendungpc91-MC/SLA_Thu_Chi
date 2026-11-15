@@ -1326,3 +1326,12 @@ body.mask-pending [data-over-list], body.mask-pending .over-lines, body.mask-pen
 #tf-type .seg-split:active { box-shadow: inset 0 0 0 2px currentColor; }
 html.dark #tf-type .seg-split { color: #b197fc; }
 .split-row-p .sp-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+/* v7.59: form Chia Nhóm gọn lại — các dòng nhập cao 80% (45px → 36px), giữ chữ 16px để iPhone không tự phóng to */
+.split-form { gap: 10px; }
+.split-form input:not([type="checkbox"]), .split-form select { height: 36px; min-height: 36px; padding-top: 0; padding-bottom: 0; font-size: 16px; }
+.split-form .plus000 { height: 36px; min-height: 36px; }
+.split-form .field > span { margin-bottom: 2px; }
+.split-form .split-person { margin-bottom: 6px; }
+.split-form .zero-sug { margin-top: 4px; }
+/* Nút thanh toán chỉ còn icon 💸 */
+.split-row-p .sp-pay, .notif-row .n-btn[data-notif="split"] { min-width: 40px; padding-left: 8px; padding-right: 8px; font-size: 16px; }.split-form .split-person input { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; padding: 0 12px; box-sizing: border-box; }
