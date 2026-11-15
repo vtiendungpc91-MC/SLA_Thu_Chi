@@ -1304,3 +1304,7 @@ img.bank-badge:not(.ib) { height: 24px; border-radius: 6px; }
 .stat-banner .sb-line.sb-out { animation: sb-up-out .45s ease both; }
 @keyframes sb-up-in { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes sb-up-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
+/* v7.55: chữ băng rôn nhỏ lại 80%; dòng dài chạy ngang để thấy hết */
+.stat-banner .sb-line { font-size: 10.4px; text-overflow: clip; }
+.stat-banner .sb-txt { display: inline-block; white-space: nowrap; will-change: transform; }
+@keyframes sb-scroll { from { transform: translateX(0); } to { transform: translateX(var(--sb-dx, 0)); } }

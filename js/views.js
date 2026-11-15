@@ -1791,25 +1791,40 @@ async function fillStatBanner(root) {
     } catch (err) { console.warn(err); }
   }
   if (token !== statBannerToken || !el.isConnected) return;
-  clearInterval(statBannerTimer);
+  clearTimeout(statBannerTimer);
   if (!items.length) { el.hidden = true; return; }
   let i = 0;
-  const line = (it, cls = '') => `<span class="sb-line ${cls}">${it.html}</span>`;
+  const line = (it, cls = '') => `<span class="sb-line ${cls}"><span class="sb-txt">${it.html}</span></span>`;
+  /** Dòng dài hơn băng rôn: sau 1 giây chữ chạy ngang để thấy hết; trả về thời gian cần giữ dòng (ms). */
+  const marquee = (lineEl, loop) => {
+    const t = lineEl?.querySelector('.sb-txt');
+    if (!t) return STAT_BANNER_MS;
+    const over = t.scrollWidth - (lineEl.clientWidth - 20);
+    if (over <= 2) return STAT_BANNER_MS;
+    const dur = Math.max(1.5, over / 40); // khoảng 40px mỗi giây
+    t.style.setProperty('--sb-dx', `${-over}px`);
+    t.style.animation = `sb-scroll ${dur}s linear 1s ${loop ? 'infinite alternate' : '1'} both`;
+    return Math.max(STAT_BANNER_MS, 1000 + dur * 1000 + 1500);
+  };
   el.innerHTML = `<button type="button" class="sb-track" data-act="stat-open" data-id="${esc(items[0].id)}">${line(items[0])}</button>`;
-  statBannerCache = el.innerHTML;
+  statBannerCache = el.innerHTML; // Vẽ lại Tổng quan thì hiện ngay dòng đầu, không bị trống.
   el.hidden = false;
+  const first = marquee(el.querySelector('.sb-line'), items.length < 2);
   if (items.length < 2) return;
-  // Mỗi thống kê đứng 5 giây; dòng kế tiếp trượt từ dưới lên đẩy dòng cũ lên trên, xoay vòng.
-  statBannerTimer = setInterval(() => {
+  // Mỗi thống kê đứng 5 giây (dòng dài thì lâu hơn cho chạy hết chữ); dòng kế tiếp trượt từ dưới lên, xoay vòng.
+  const next = () => {
     const track = el.querySelector('.sb-track');
-    if (!el.isConnected || token !== statBannerToken || !track) return clearInterval(statBannerTimer);
+    if (!el.isConnected || token !== statBannerToken || !track) return;
     i = (i + 1) % items.length;
     const old = track.querySelector('.sb-line');
     track.insertAdjacentHTML('beforeend', line(items[i], 'sb-in'));
     track.dataset.id = items[i].id;
     old?.classList.add('sb-out');
-    setTimeout(() => { old?.remove(); track.querySelector('.sb-in')?.classList.remove('sb-in'); statBannerCache = el.innerHTML; }, 500);
-  }, STAT_BANNER_MS);
+    const neu = track.lastElementChild;
+    setTimeout(() => { old?.remove(); neu.classList.remove('sb-in'); }, 500);
+    statBannerTimer = setTimeout(next, 500 + marquee(neu, false));
+  };
+  statBannerTimer = setTimeout(next, first);
 }
 async function fillOverview(root) {
   const box = root.querySelector('[data-over-list]');
