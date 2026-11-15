@@ -1547,6 +1547,25 @@ export async function unpaySplitPerson(groupId, personId) {
   p.paid = null;
   writeSplits(list);
 }
+/** Skip: không đòi người này nữa, phần của họ tính vào phần mình (không ghi giao dịch). on = false để bỏ Skip. */
+export function skipSplitPerson(groupId, personId, on = true) {
+  const list = splitGroups();
+  const p = list.find((x) => x.id === groupId)?.people.find((x) => x.id === personId);
+  if (!p || p.paid) return;
+  p.skipped = on ? { at: Date.now() } : null;
+  writeSplits(list);
+}
+/** Người còn nợ của nhóm (chưa trả, chưa Skip). */
+export const splitOpenPeople = (g) => g.people.filter((p) => !p.paid && !p.skipped);
+/** Thông báo: mỗi nhóm còn người chưa trả là một dòng trong Notifications. */
+export function splitAlerts() {
+  const today = todayISO();
+  return splitGroups().map((g) => {
+    const open = splitOpenPeople(g);
+    if (!open.length) return null;
+    return { key: `split:${g.id}:${open.length}`, kind: 'split', id: g.id, days: Math.min(0, diffDays(today, g.date)), title: g.title, count: open.length, amount: open.reduce((s, p) => s + p.amount, 0), date: g.date, bookId: '', bookName: 'Chia nhóm', bookIcon: '👥' };
+  }).filter(Boolean);
+}
 /** Xóa nhóm: chỉ xóa nhóm, các giao dịch đã ghi (khoản chi, các khoản đã trả) vẫn giữ. */
 export const deleteSplit = (id) => writeSplits(splitGroups().filter((g) => g.id !== id));
 
@@ -1905,7 +1924,7 @@ export async function userAlerts(userId) {
     if (oldReminders?.length) await adoptOldReminders(userId, b.id, oldReminders);
     out.push(...list.map((a) => ({ ...a, bookId: b.id, bookName: b.name, bookIcon: b.icon })));
   }
-  out.push(...await creditPayAlerts(userId), ...maturityAlerts(userId), ...reminderAlerts(userId), ...backupAlerts());
+  out.push(...await creditPayAlerts(userId), ...maturityAlerts(userId), ...splitAlerts(), ...reminderAlerts(userId), ...backupAlerts());
   return out.sort((a, b) => a.days - b.days);
 }
 

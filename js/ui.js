@@ -92,6 +92,7 @@ function reformatMoney(inp) {
 }
 
 function zeroSuggest(inp) {
+  if (inp.hasAttribute('data-no-sug')) return; // Ô tiền không cần gợi ý số (vd ô trong Chia nhóm).
   let box = inp._zeroBox;
   if (!box || !box.isConnected) {
     // Form có chỗ đặt sẵn (cạnh ô Danh mục) thì dùng chỗ đó, không thì chèn ngay dưới ô tiền.

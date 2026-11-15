@@ -342,6 +342,7 @@ const TICKER_LINES = 2;
 let tickerTimer = null, tickerIdx = 0;
 function tickerText(a) {
   if (a.kind === 'backup') return `${NOTIF.backup.icon} ${a.title}`;
+  if (a.kind === 'split') return `${NOTIF.split.icon} ${a.title} · ${a.count} người còn nợ ${fmtShort(a.amount)}`;
   if (a.kind === 'creditpay') return `${NOTIF.creditpay.icon} ${fmtDue(a.days)} · ${a.title} · ${fmtShort(a.amount)}`;
   const when = a.kind === 'budget' ? `${Math.round(a.ratio * 100)}%` : fmtDue(a.days);
   return `${NOTIF[a.kind].icon} ${when} · ${a.title}`;
@@ -552,6 +553,7 @@ const NOTIF = {
   cardpay: { icon: '💳', btn: 'Trích trả' },
   creditpay: { icon: '💳', btn: '💸 Thanh toán' },
   maturity: { icon: '📅', btn: 'Xem' },
+  split: { icon: '👥', btn: '💸 Thanh toán' },
   backup: { icon: '💾', btn: 'Sao lưu' },
 };
 function notifRow(a) {
@@ -560,6 +562,7 @@ function notifRow(a) {
     : a.kind === 'pending'
       ? `${fmtShort(a.amount)} · kỳ ${fmtDate(a.date)}${a.noFunds ? ' · chưa ghi được vì thiếu số dư' : ' · chờ xác nhận'}`
       : a.kind === 'backup' ? 'Dữ liệu chỉ nằm trên máy này, nên lưu file .json mỗi ngày'
+      : a.kind === 'split' ? `${fmtDate(a.date)} · ${a.count} người chưa trả · còn ${fmt(a.amount)}`
       : a.kind === 'creditpay' ? `Đang nợ ${fmt(a.amount)} · ${fmtDue(a.days)} · ${fmtDate(a.date)}`
       : a.kind === 'cardpay' ? `${a.count} khoản chưa thanh toán đến hết ${fmtDate(addDays(a.before, -1))} · ${fmt(a.amount)}`
       : a.kind === 'reminder' ? `${fmtDue(a.days)} · ${fmtDate(a.date)}${a.time ? ' ' + a.time : ''}${a.note ? ' · ' + a.note : ''}`
@@ -590,6 +593,7 @@ async function runNotif({ notif, book, id, due }) {
     await inBook(card.id);
     return creditPaySheet(due ? { due } : {});
   }
+  if (notif === 'split') return splitDetail(id); // Mở nhóm để bấm Thanh toán / Skip từng người.
   if (notif === 'maturity') { await inBook(book); location.hash = '#/bookset'; return; }
   if (notif === 'debt') { // Thanh toán ngay trên màn hình hiện tại, không chuyển về Tổng quan.
     await inBook(book);
@@ -698,7 +702,6 @@ actions.books = () => {
         if (rem) { close(); reminderForm(S.remindersOf(u.id).find((x) => x.id === rem.dataset.rem) || null); }
         else if (e.target.closest('[data-notify-add]')) { close(); notifyAddChooser(u); }
         else if (e.target.closest('[data-plan-open]')) { close(); location.hash = '#/plan/' + (ui.planTab || 'budget'); }
-        else if (e.target.closest('[data-split-open]')) { close(); actions['split-list'](); }
         else if (e.target.closest('[data-group-toggle]')) {
           const btn = e.target.closest('[data-group-toggle]'), card = btn.closest('.grp-card');
           const collapsed = card.classList.toggle('collapsed');
@@ -3105,8 +3108,7 @@ function notifySection(u) {
     <div class="notif-list">
       <button type="button" class="notif-row rem-row" data-plan-open><span class="n-ic">🎯</span>
         <span class="grow"><b>Kế hoạch</b><small>Ngân sách · Mục tiêu · Trả nợ · Định kỳ</small></span>›</button>
-      <button type="button" class="notif-row rem-row" data-split-open><span class="n-ic">👥</span>
-        <span class="grow"><b>Chia tiền nhóm</b><small>${(() => { const l = S.splitGroups(); const left = l.reduce((s, g) => s + g.people.filter((p) => !p.paid).reduce((a, p) => a + p.amount, 0), 0); return l.length ? ` nhóm · còn phải thu ${fmtShort(left)}` : 'Ai nợ bạn bao nhiêu, ghi nhận khi trả'; })()}</small></span>›</button>
+
       ${list.map((r) => `<button type="button" class="notif-row rem-row" data-rem="${esc(r.id)}"><span class="n-ic">🔔</span>
       <span class="grow"><b>${esc(r.title)}</b><small>${esc(reminderSub(r))}</small></span>›</button>`).join('')}</div>
     <button type="button" class="ptile-add block" data-notify-add>＋ Thêm</button>`;
@@ -3524,6 +3526,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       ${isEdit && tx.createdAt ? `<p class="muted small center">🕒 Ghi nhận lúc ${fmtDateTimeVN(tx.createdAt)}${tx.updatedAt && tx.updatedAt - tx.createdAt > 60000 ? ` · sửa lúc ${fmtDateTimeVN(tx.updatedAt)}` : ''} (giờ VN)</p>` : ''}
       <div class="seg seg-3" id="tf-type">${(isEdit && tx.type === 'transfer' ? ['expense', 'income', 'transfer'] : ['expense', 'income']).filter(typeAllowed).map((t) => `<button type="button" data-v="${t}">${t === 'transfer' ? '⇄' : esc(S.txIcons()[t])} ${TYPE_LABEL[t]}</button>`).join('')}
         ${!isEdit && !fromRecurring && S.transferTargets('gop').length ? `<button type="button" class="seg-gop" id="tf-gop">${esc(S.txIcons().gop)} Chuyển</button>` : ''}
+        ${!isEdit && !fromRecurring ? '<button type="button" class="seg-split" id="tf-splitgrp">👥 Chia Nhóm</button>' : ''}
         ${!isEdit && !fromRecurring && S.transferTargets('trich').length ? '<button type="button" class="seg-trich" id="tf-trich">🔄 Nhận</button>' : ''}</div>
       ${field('<span id="tf-acc-l">Tài khoản</span>', `<select id="tf-acc" data-acc>${accOptions(f.accountId, true)}</select>`)}
       <em class="hint" id="tf-bal"></em>
@@ -3603,6 +3606,7 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
       // --- loại giao dịch ---
       const typeBtns = sh.querySelectorAll('#tf-type button[data-v]');
       $(sh, '#tf-gop')?.addEventListener('click', () => { close(); openGopForm(pick); });
+      $(sh, '#tf-splitgrp')?.addEventListener('click', () => { close(); splitForm(); });
       $(sh, '#tf-trich')?.addEventListener('click', () => { close(); openTrichForm(pick); });
       const updType = () => {
         typeBtns.forEach((b) => b.classList.toggle('on', b.dataset.v === f.type));
@@ -4262,7 +4266,8 @@ actions['quick-edit'] = (el) => {
 // Tạo nhóm: số tiền đã chi ra (có thể ghi luôn khoản Chi vào tài khoản), số người, tên + số tiền nợ của từng người.
 // Mỗi người có nút 💸 Thanh toán: chọn tài khoản nhận → OK là ghi khoản Thu và đánh dấu người đó đã trả.
 const splitPaidSum = (g) => g.people.filter((p) => p.paid).reduce((s, p) => s + p.amount, 0);
-const splitDebtSum = (g) => g.people.filter((p) => !p.paid).reduce((s, p) => s + p.amount, 0);
+const splitDebtSum = (g) => S.splitOpenPeople(g).reduce((s, p) => s + p.amount, 0);
+const splitSkipSum = (g) => g.people.filter((p) => p.skipped && !p.paid).reduce((s, p) => s + p.amount, 0);
 const payBooks = () => S.userBooks(S.currentUser().id).filter((b) => (b.kind || 'bank') === 'bank' && !b.overdraft && !b.prepaid);
 const bookNameOf = (id) => { const b = S.getProfiles().find((x) => x.id === id); return b ? S.bookLabelShort(b) : 'tài khoản đã xóa'; };
 
@@ -4271,9 +4276,9 @@ actions['split-list'] = () => {
   openSheet({
     title: '👥 Chia tiền nhóm',
     body: `${list.length ? `<div class="card list">${list.map((g) => {
-      const left = splitDebtSum(g), done = g.people.filter((p) => p.paid).length;
+      const left = splitDebtSum(g), done = g.people.filter((p) => p.paid || p.skipped).length;
       return `<button type="button" class="row" data-split="${esc(g.id)}"><span class="ci">👥</span>
-        <span class="grow"><b>${esc(g.title)}</b><small>${fmtDate(g.date)} · chi ${fmt(g.total)} · đã trả ${done}/${g.people.length}</small></span>
+        <span class="grow"><b>${esc(g.title)}</b><small>${fmtDate(g.date)} · chi ${fmt(g.total)} · xong ${done}/${g.people.length}</small></span>
         <span class="amt ${left ? 'income' : ''}">${left ? 'Còn ' + fmtShort(left) : '✅ Xong'}</span></button>`;
     }).join('')}</div>` : empty('👥', 'Chưa có nhóm nào. Tạo nhóm khi bạn trả tiền trước cho cả nhóm (đi ăn, du lịch…), rồi ghi nhận từng người trả lại.')}
       <button type="button" class="btn primary block" data-split-new>＋ Tạo nhóm chia tiền</button>`,
@@ -4293,15 +4298,15 @@ function splitForm() {
   let n = 2;
   const formId = 'spf-' + Date.now();
   const rows = (count, keep) => Array.from({ length: count }, (_, i) => `<div class="split-person" data-i="${i}">
-      <input class="sp-name" maxlength="20" placeholder="Tên người ${i + 1}" value="${esc(keep[i]?.name || '')}">
-      ${moneyBox(`<input class="money sp-amt" inputmode="decimal" placeholder="Số tiền nợ" value="${esc(keep[i]?.amount || '')}">`)}</div>`).join('');
+      <input class="sp-name" maxlength="20" placeholder="Friend ${i + 1}" value="${esc(keep[i]?.name || '')}">
+      ${moneyBox(`<input class="money sp-amt" inputmode="decimal" autocomplete="off" data-no-sug placeholder="Số tiền nợ" value="${esc(keep[i]?.amount || '')}">`)}</div>`).join('');
   openSheet({
-    title: '👥 Tạo nhóm chia tiền',
+    title: '👥 Chia Nhóm',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Tạo</button>`,
     onClose: () => {},
     body: `<form class="form" id="${formId}">
       ${field('Nội dung', '<input id="sp-title" required maxlength="40" placeholder="vd: Ăn tối nhóm bạn, Du lịch Đà Lạt">')}
-      ${amountField('sp-total', 0, 'Số tiền chi ra')}
+      ${field('Số tiền chi ra', moneyBox('<input id="sp-total" class="money" inputmode="decimal" autocomplete="off" data-no-sug placeholder="vd: 600.000">'))}
       ${field('Ngày', `<input type="date" id="sp-date" value="${todayISO()}">`)}
       <label class="check"><input type="checkbox" id="sp-exp" ${books.length ? 'checked' : 'disabled'}> Ghi khoản chi này vào tài khoản</label>
       <div id="sp-exp-box">
@@ -4314,10 +4319,12 @@ function splitForm() {
         <button type="button" class="btn ghost small" data-even>Chia đều (gồm cả bạn)</button></div></div>
       <div id="sp-people">${rows(n, [])}</div>
       <em class="hint" id="sp-sum"></em>
+      <button type="button" class="btn ghost block" data-split-all>📋 Các nhóm đã tạo</button>
     </form>`,
     onMount(sh, close) {
-      const total = bindMoney(sh, 'sp-total');
-      const read = () => [...sh.querySelectorAll('.split-person')].map((r) => ({ name: $(r, '.sp-name').value.trim(), amount: Math.round(readMoney($(r, '.sp-amt').value) || 0) }));
+      const total = $(sh, '#sp-total');
+      // Tên để trống thì tự đặt Friend 1, Friend 2, … theo thứ tự.
+      const read = () => [...sh.querySelectorAll('.split-person')].map((r, i) => ({ name: $(r, '.sp-name').value.trim() || `Friend ${i + 1}`, amount: Math.round(readMoney($(r, '.sp-amt').value) || 0) }));
       const updSum = () => {
         const s = read().reduce((a, p) => a + p.amount, 0), t = Math.round(readMoney(total.value) || 0);
         $(sh, '#sp-sum').textContent = t ? `Tổng người khác nợ: ${fmt(s)} · phần của bạn: ${fmt(t - s)}` : `Tổng người khác nợ: ${fmt(s)}`;
@@ -4337,6 +4344,7 @@ function splitForm() {
         loadAcc();
       });
       $(sh, '#sp-exp').addEventListener('change', (e) => { $(sh, '#sp-exp-box').hidden = !e.target.checked; });
+      $(sh, '[data-split-all]').addEventListener('click', () => { close(); actions['split-list'](); });
       $(sh, '#sp-n').addEventListener('input', (e) => {
         const c = Math.min(30, Math.max(1, Number(e.target.value) || 1));
         const keep = [...sh.querySelectorAll('.split-person')].map((r) => ({ name: $(r, '.sp-name').value, amount: $(r, '.sp-amt').value }));
@@ -4360,7 +4368,6 @@ function splitForm() {
         const people = read();
         if (!title) return toast('Nhập nội dung');
         if (!(t > 0)) return toast('Nhập số tiền chi ra');
-        if (people.some((p) => !p.name)) return toast('Nhập tên của từng người');
         if (people.some((p) => !(p.amount > 0))) return toast('Nhập số tiền nợ của từng người');
         const withExp = $(sh, '#sp-exp').checked && whoId;
         try {
@@ -4382,19 +4389,28 @@ function splitDetail(id) {
   openSheet({
     title: `👥 ${g.title}`,
     body: `<section class="card stats two-col"><div><small>Đã chi ra · ${fmtDate(g.date)}</small><b class="expense">${fmt(g.total)}</b><em>${g.expense ? 'Chi từ ' + esc(bookNameOf(g.expense.bookId)) : 'Chưa ghi khoản chi'}</em></div>
-        <div><small>Còn phải thu</small><b class="income">${fmt(splitDebtSum(g))}</b><em>Đã thu ${fmt(splitPaidSum(g))}</em></div></section>
+        <div><small>Còn phải thu</small><b class="income">${fmt(splitDebtSum(g))}</b><em>Đã thu ${fmt(splitPaidSum(g))}${splitSkipSum(g) ? ' · Skip ' + fmt(splitSkipSum(g)) : ''}</em></div></section>
       <div class="card list">${g.people.map((p) => `<div class="row split-row-p">
-        <span class="ci">${p.paid ? '✅' : '🧑'}</span>
-        <span class="grow"><b>${esc(p.name)}</b><small>${p.paid ? `Đã trả ${fmtDate(p.paid.date)} · vào ${esc(bookNameOf(p.paid.bookId))}` : 'Chưa trả'}</small></span>
-        <span class="amt ${p.paid ? '' : 'income'}">${fmt(p.amount)}</span>
+        <span class="ci">${p.paid ? '✅' : p.skipped ? '⏭' : '🧑'}</span>
+        <span class="grow"><b>${esc(p.name)}</b><small>${p.paid ? `Đã trả ${fmtDate(p.paid.date)} · vào ${esc(bookNameOf(p.paid.bookId))}` : p.skipped ? 'Skip · tính vào phần bạn' : 'Chưa trả'}</small></span>
+        <span class="amt ${p.paid || p.skipped ? '' : 'income'}">${fmt(p.amount)}</span>
         ${p.paid ? `<button type="button" class="btn small ghost" data-unpay="${esc(p.id)}" title="Hủy khoản đã trả">↩</button>`
-          : `<button type="button" class="btn small primary" data-pay="${esc(p.id)}">💸 Thanh toán</button>`}</div>`).join('')}</div>
+          : p.skipped ? `<button type="button" class="btn small ghost" data-unskip="${esc(p.id)}" title="Bỏ Skip, đòi lại">↩</button>`
+          : `<span class="sp-btns"><button type="button" class="btn small primary" data-pay="${esc(p.id)}">💸 Thanh toán</button><button type="button" class="btn small ghost" data-skip="${esc(p.id)}" title="Không đòi nữa, tính vào phần mình">Skip</button></span>`}</div>`).join('')}</div>
       <div class="actions"><button type="button" class="btn ghost" data-back>‹ Danh sách nhóm</button><button type="button" class="btn danger" data-del>Xóa nhóm</button></div>
       <p class="muted small">Xóa nhóm không xóa các giao dịch đã ghi (khoản chi và các khoản đã trả).</p>`,
     onMount(sh, close) {
       sh.addEventListener('click', async (e) => {
         const pay = e.target.closest('[data-pay]'), un = e.target.closest('[data-unpay]');
+        const skip = e.target.closest('[data-skip]'), unskip = e.target.closest('[data-unskip]');
         if (pay) { close(); splitPaySheet(g.id, pay.dataset.pay); }
+        else if (skip) {
+          const p = g.people.find((x) => x.id === skip.dataset.skip);
+          if (!confirm(`Skip ${p.name}? Không đòi ${fmt(p.amount)} nữa, khoản này tính vào phần của bạn.`)) return;
+          S.skipSplitPerson(g.id, p.id, true); close(); toast(`⏭ Đã Skip ${p.name}`); splitDetail(g.id);
+        } else if (unskip) {
+          S.skipSplitPerson(g.id, unskip.dataset.unskip, false); close(); toast('Đã bỏ Skip'); splitDetail(g.id);
+        }
         else if (un) {
           const p = g.people.find((x) => x.id === un.dataset.unpay);
           if (!confirm(`Hủy khoản ${fmt(p.amount)} ${p.name} đã trả? Khoản Thu đã ghi sẽ bị xóa.`)) return;

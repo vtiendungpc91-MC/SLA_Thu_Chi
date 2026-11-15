@@ -1321,3 +1321,8 @@ body.mask-pending [data-over-list], body.mask-pending .over-lines, body.mask-pen
 .over-acc .ol-ic:active { background: color-mix(in srgb, var(--kc, #e8590c) 25%, transparent); }
 .over-acc.folded > :not(.over-head), .over-acc.folded .over-head > .ol:not(:first-child) { display: none !important; }
 .over-acc.folded { padding-top: 10px; padding-bottom: 10px; }
+/* v7.58: nút "👥 Chia Nhóm" trong màn hình + ; nút Thanh toán / Skip của từng người */
+#tf-type .seg-split { background: color-mix(in srgb, #7950f2 14%, var(--card)); color: #5f3dc4; }
+#tf-type .seg-split:active { box-shadow: inset 0 0 0 2px currentColor; }
+html.dark #tf-type .seg-split { color: #b197fc; }
+.split-row-p .sp-btns { display: flex; gap: 6px; flex: 0 0 auto; }
