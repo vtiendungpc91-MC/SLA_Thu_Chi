@@ -1308,3 +1308,16 @@ img.bank-badge:not(.ib) { height: 24px; border-radius: 6px; }
 .stat-banner .sb-line { font-size: 10.4px; text-overflow: clip; }
 .stat-banner .sb-txt { display: inline-block; white-space: nowrap; will-change: transform; }
 @keyframes sb-scroll { from { transform: translateX(0); } to { transform: translateX(var(--sb-dx, 0)); } }
+/* v7.56: chia tiền nhóm */
+.split-person { display: flex; gap: 8px; margin-bottom: 8px; }
+.split-person .sp-name { flex: 1 1 45%; min-width: 0; }
+.split-person .money-box, .split-person > :last-child { flex: 1 1 55%; min-width: 0; }
+.split-row-p { gap: 8px; }
+.split-row-p .btn.small { flex: 0 0 auto; white-space: nowrap; }
+/* v7.57: bấm 👁 — làm mờ tạm phần số liệu trong lúc vẽ bản đã che (không chớp, không lộ số) */
+body.mask-pending [data-over-list], body.mask-pending .over-lines, body.mask-pending [data-kind-total], body.mask-pending .psum { filter: blur(6px); transition: filter .12s; }
+/* Thẻ tài khoản thu gọn: chỉ còn dòng đầu (tên + số dư); bấm icon tài khoản để thu gọn / mở rộng */
+.over-acc .ol-ic { display: inline-block; cursor: pointer; padding: 2px 3px; margin: -2px -1px; border-radius: 6px; -webkit-tap-highlight-color: transparent; }
+.over-acc .ol-ic:active { background: color-mix(in srgb, var(--kc, #e8590c) 25%, transparent); }
+.over-acc.folded > :not(.over-head), .over-acc.folded .over-head > .ol:not(:first-child) { display: none !important; }
+.over-acc.folded { padding-top: 10px; padding-bottom: 10px; }

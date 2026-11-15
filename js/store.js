@@ -1,6 +1,6 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
 import { db, dbOf, STORES, useProfile, dropProfile } from './db.js';
-import { BANK_LOGOS, bankIcon } from './icons.js';
+import { BANK_LOGOS, bankIcon, plain } from './icons.js';
 import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate, fmt, fmtTimeVN } from './utils.js';
 
 const LIST = STORES.filter((s) => s !== 'settings' && s !== 'photos');
@@ -1012,7 +1012,15 @@ export function topCategories(type, n = 6) {
 }
 
 // ---------- Giao dịch ----------
-export async function deleteTx(tx) {
+/**
+ * v7.57: giao dịch chỉ xóa được trong 24 giờ kể từ lúc ghi (createdAt); quá 24 giờ thì khóa để giữ lịch sử.
+ * Giao dịch cũ không có giờ ghi coi như đã quá 24 giờ. Reset lịch sử trong Cài đặt riêng là thao tác riêng, không bị chặn.
+ */
+export const DELETE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const canDeleteTx = (t) => !!t?.createdAt && Date.now() - t.createdAt < DELETE_WINDOW_MS;
+export const deleteLockMsg = 'Giao dịch đã ghi quá 24 giờ nên không xóa được nữa';
+export async function deleteTx(tx, { force = false } = {}) {
+  if (!force && !canDeleteTx(tx)) throw new Error(deleteLockMsg);
   for (const pid of tx.photoIds || []) await db.del('photos', pid);
   await deleteGopPeer(tx);
   await reopenCardItem(tx);
@@ -1434,8 +1442,151 @@ export async function processRecurring() {
     }
     if (guard) await put('recurring', r, { silent: true });
   }
+  added += await processSavingTerms();
   if (added) emit();
   return added;
+}
+
+// ---------- Ghi giao dịch vào một mục bất kỳ (mục đang mở hoặc mục khác) ----------
+export async function addTxTo(bookId, tx) {
+  const item = { currency: 'VND', rate: 1, tags: [], splits: null, photoIds: [], createdAt: Date.now(), ...tx };
+  if (bookId === currentProfile().id) return put('transactions', item, { silent: true });
+  const { peer } = await openPeerBook(bookId);
+  item.id = item.id || uid();
+  item.updatedAt = Date.now();
+  await peer.put('transactions', item);
+  return item;
+}
+async function removeTxFrom(bookId, txId) {
+  if (!txId || !getProfiles().some((p) => p.id === bookId)) return;
+  if (bookId === currentProfile().id) await remove('transactions', txId, { silent: true });
+  else await dbOf(bookId).del('transactions', txId);
+}
+/** Danh mục Thu theo tên (không có thì danh mục Thu đầu tiên không phải hệ thống). */
+const incomeCatByName = (...names) => {
+  const list = globalCats().filter((c) => c.type === 'income' && !c.deleted && !c.archived);
+  for (const n of names) { const c = list.find((x) => x.name.toLowerCase() === n.toLowerCase()); if (c) return c; }
+  return list.find((c) => !c.sys) || list[0] || null;
+};
+const dmy = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+// ---------- Sổ tiết kiệm có kỳ hạn (v7.56) ----------
+// Lưu trên mục Tiết kiệm: b.term = { rate (%/năm), months, start, principal, renew }.
+// Lãi đơn cuối kỳ = gốc × lãi suất × số tháng / 12. Đến ngày đáo hạn app tự ghi khoản Thu lãi;
+// tự tái tục thì kỳ mới bắt đầu từ ngày đáo hạn, gốc mới = gốc cũ + lãi.
+export const termMaturity = (t) => addMonths(t.start, Number(t.months) || 0);
+export const termInterest = (t) => Math.round((Number(t.principal) || 0) * (Number(t.rate) || 0) / 100 * (Number(t.months) || 0) / 12);
+export async function processSavingTerms() {
+  const today = todayISO();
+  let added = 0;
+  for (const b of getProfiles().filter((p) => p.kind === 'saving' && p.term && !p.term.done)) {
+    let term = { ...b.term };
+    let guard = 0;
+    while (!term.done && termMaturity(term) <= today && guard++ < 60) {
+      const mat = termMaturity(term);
+      const interest = termInterest(term);
+      const { accs } = await openPeerBook(b.id);
+      const acc = accs.find((a) => !a.archived) || accs[0];
+      if (interest > 0 && acc) {
+        const cat = incomeCatByName('Lãi tiết kiệm/Đầu tư', 'Lãi tiết kiệm');
+        await addTxTo(b.id, { type: 'income', amount: interest, amountVnd: interest, date: mat, categoryId: cat?.id || null, accountId: acc.id, note: `Lãi tiết kiệm kỳ ${dmy(term.start)} – ${dmy(mat)}`, termInterest: true });
+        added++;
+      }
+      term = term.renew === false ? { ...term, done: true } : { ...term, start: mat, principal: (Number(term.principal) || 0) + interest };
+    }
+    if (guard) saveProfile({ id: b.id, term });
+  }
+  if (added) emit();
+  return added;
+}
+/** Nhắc sắp đáo hạn: từ 3 ngày trước ngày đáo hạn. */
+export function maturityAlerts(userId) {
+  const today = todayISO();
+  return userBooks(userId).filter((b) => b.kind === 'saving' && b.term && !b.term.done).map((b) => {
+    const mat = termMaturity(b.term), days = diffDays(today, mat);
+    return days >= 0 && days <= 3 ? { key: `maturity:${b.id}:${mat}`, kind: 'maturity', id: b.id, days, title: `Đáo hạn ${b.name}`, amount: termInterest(b.term), date: mat, bookId: b.id, bookName: b.name, bookIcon: b.icon } : null;
+  }).filter(Boolean);
+}
+
+// ---------- Chia tiền nhóm (v7.56) ----------
+// Lưu chung ở "stc-splits": { id, title, total, date, expense: { bookId, txId } | null, people: [{ id, name, amount, paid }] }.
+// Mỗi người trả: ghi khoản Thu vào tài khoản nhận đã chọn; paid = { bookId, accountId, txId, date }.
+const SPLITS_KEY = 'stc-splits';
+export const splitGroups = () => readJSON(SPLITS_KEY) || [];
+const writeSplits = (list) => { localStorage.setItem(SPLITS_KEY, JSON.stringify(list)); emit(); };
+export async function createSplit({ title, total, date, people, expense = null }) {
+  const id = 'sp' + uid().slice(0, 10);
+  let exp = null;
+  if (expense) {
+    const locked = lockError(expense.bookId);
+    if (locked) throw new Error(locked);
+    const tx = await addTxTo(expense.bookId, { type: 'expense', amount: total, amountVnd: total, date, categoryId: expense.categoryId, accountId: expense.accountId, note: `👥 ${title}`, splitId: id });
+    exp = { bookId: expense.bookId, txId: tx.id };
+  }
+  const g = { id, title, total, date, createdAt: Date.now(), expense: exp, people: people.map((p) => ({ id: uid().slice(0, 8), name: p.name, amount: Math.round(p.amount), paid: null })) };
+  writeSplits([g, ...splitGroups()]);
+  return g;
+}
+export async function paySplitPerson(groupId, personId, { bookId, accountId, date }) {
+  const list = splitGroups();
+  const g = list.find((x) => x.id === groupId);
+  const p = g?.people.find((x) => x.id === personId);
+  if (!p || p.paid) return;
+  const cat = incomeCatByName('Thu khác');
+  const tx = await addTxTo(bookId, { type: 'income', amount: p.amount, amountVnd: p.amount, date, categoryId: cat?.id || null, accountId, note: `👥 ${p.name} trả: ${g.title}`, splitId: g.id });
+  p.paid = { bookId, accountId, txId: tx.id, date, at: Date.now() };
+  writeSplits(list);
+}
+/** Hủy khoản đã trả của một người: xóa khoản Thu đã ghi, người đó về "chưa trả". */
+export async function unpaySplitPerson(groupId, personId) {
+  const list = splitGroups();
+  const p = list.find((x) => x.id === groupId)?.people.find((x) => x.id === personId);
+  if (!p?.paid) return;
+  if (!p.paid.at || Date.now() - p.paid.at >= DELETE_WINDOW_MS) throw new Error(deleteLockMsg);
+  await removeTxFrom(p.paid.bookId, p.paid.txId);
+  p.paid = null;
+  writeSplits(list);
+}
+/** Xóa nhóm: chỉ xóa nhóm, các giao dịch đã ghi (khoản chi, các khoản đã trả) vẫn giữ. */
+export const deleteSplit = (id) => writeSplits(splitGroups().filter((g) => g.id !== id));
+
+// ---------- Gợi ý danh mục theo ghi chú (v7.56) ----------
+// Học từ giao dịch cũ của mọi tài khoản: ghi chú → danh mục hay dùng nhất. Ghi chú so sánh không dấu, chữ thường.
+const normNote = (s) => plain(s).replace(/\s+/g, ' ').trim();
+export async function noteCatIndex(type) {
+  const idx = new Map();
+  const cur = currentProfile().id;
+  for (const p of getProfiles()) {
+    if (p.owner === SECRECY) continue;
+    let txs = [];
+    try { txs = p.id === cur ? state.transactions : await dbOf(p.id).getAll('transactions'); } catch { continue; }
+    for (const t of txs) {
+      if (t.type !== type || t.gop || !t.note || !t.categoryId) continue;
+      const k = normNote(t.note);
+      if (k.length < 2) continue;
+      const m = idx.get(k) || new Map();
+      m.set(t.categoryId, (m.get(t.categoryId) || 0) + 1);
+      idx.set(k, m);
+    }
+  }
+  return idx;
+}
+/** Danh mục gợi ý cho ghi chú đang gõ (ít nhất 2 ký tự): khớp nguyên câu > đầu câu > chứa trong câu; hòa thì lấy danh mục dùng nhiều hơn. */
+export function suggestCat(idx, text, type) {
+  const k = normNote(text);
+  if (k.length < 2 || !idx) return null;
+  const live = new Set(catsOf(type).map((c) => c.id));
+  let best = null;
+  for (const [note, m] of idx) {
+    const score = note === k ? 3 : note.startsWith(k) ? 2 : note.includes(k) || (note.length >= 3 && k.includes(note)) ? 1 : 0;
+    if (!score) continue;
+    for (const [cid, n] of m) {
+      if (!live.has(cid)) continue;
+      const s = score * 10000 + n;
+      if (!best || s > best.s) best = { cid, s };
+    }
+  }
+  return best?.cid || null;
 }
 
 // ---------- Trả nợ ----------
@@ -1519,6 +1670,9 @@ export async function withBook(b, fn) {
 export async function undoDebtPayment(debt) {
   const last = (debt.history || []).slice(-1)[0];
   if (!last) return;
+  const other = last.bookId && last.bookId !== currentProfile().id;
+  const paidTx = other ? (await dbOf(last.bookId).getAll('transactions')).find((t) => t.id === last.txId) : state.transactions.find((t) => t.id === last.txId);
+  if (paidTx && !canDeleteTx(paidTx)) throw new Error(deleteLockMsg);
   // Lần trả bằng mục khác: xóa khoản chi trong sổ của mục đó.
   if (last.bookId && last.bookId !== currentProfile().id) await dbOf(last.bookId).del('transactions', last.txId);
   const tx = state.transactions.find((t) => t.id === last.txId);
@@ -1751,7 +1905,7 @@ export async function userAlerts(userId) {
     if (oldReminders?.length) await adoptOldReminders(userId, b.id, oldReminders);
     out.push(...list.map((a) => ({ ...a, bookId: b.id, bookName: b.name, bookIcon: b.icon })));
   }
-  out.push(...await creditPayAlerts(userId), ...reminderAlerts(userId), ...backupAlerts());
+  out.push(...await creditPayAlerts(userId), ...maturityAlerts(userId), ...reminderAlerts(userId), ...backupAlerts());
   return out.sort((a, b) => a.days - b.days);
 }
 
@@ -2030,7 +2184,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), gStats: gStats(), typeIcons: readJSON(TYPE_ICONS_KEY), txIcons: txIcons() };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), gStats: gStats(), splits: splitGroups(), typeIcons: readJSON(TYPE_ICONS_KEY), txIcons: txIcons() };
 }
 
 /**
@@ -2062,6 +2216,7 @@ export async function importAny(data) {
   // Thống kê chung, icon kiểu tài khoản: có trong bản sao lưu thì dùng; bản cũ chưa có thì chuyển lại từ thống kê của các mục.
   if (Array.isArray(data.gStats)) localStorage.setItem(GSTATS_KEY, JSON.stringify(data.gStats)); else localStorage.removeItem(GSTATS_KEY);
   if (data.typeIcons) localStorage.setItem(TYPE_ICONS_KEY, JSON.stringify(data.typeIcons));
+  if (Array.isArray(data.splits)) localStorage.setItem(SPLITS_KEY, JSON.stringify(data.splits));
   if (data.txIcons) localStorage.setItem(TX_ICONS_KEY, JSON.stringify(data.txIcons));
   // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.
   for (const k of ['stc-model', 'stc-model5', 'stc-model6']) localStorage.removeItem(k);
