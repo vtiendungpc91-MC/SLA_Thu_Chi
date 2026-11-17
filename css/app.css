@@ -1341,3 +1341,5 @@ html.dark #tf-type .seg-split { color: #b197fc; }
 .bank-chips .chip { flex: 0 0 auto; white-space: nowrap; padding: 5px 12px; font-size: 13px; }
 .bank-chips .chip.on { background: var(--kc, #e8590c); color: var(--kc-on, #fff); border-color: transparent; }
 .bank-chips .bank-badge.ib, .bank-chips .pic-ic { font-size: 9px; }
+/* v7.61: giãn khoảng cách thêm 80% để tránh bấm nhầm — băng rôn → dòng ngân hàng 8px → 14px; dòng ngân hàng → nút thẻ tài khoản 5px → 9px */
+.bank-chips { padding-top: 12px; padding-bottom: 6px; }
