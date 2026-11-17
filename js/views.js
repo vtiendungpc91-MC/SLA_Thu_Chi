@@ -380,14 +380,14 @@ function startTicker(el, alerts) {
 }
 
 /**
- * Tổng số dư ở Tổng quan: mọi Thanh Toán, Thấu chi (số âm trừ vào) và Tiết kiệm trong các Bank của User.
- * Không tính Ví điện tử, thẻ trả trước, Credit Card (nợ thẻ hiện ở dòng riêng).
+ * Tổng số dư ở Tổng quan: mọi Thanh Toán, Thấu chi (số âm trừ vào) và Tiết kiệm trong các Bank của User,
+ * cộng tài khoản thanh toán của Ví điện tử (v7.62). Không tính thẻ trả trước, Credit Card (nợ thẻ hiện ở dòng riêng).
  */
 async function bankTotal(userId) {
   let total = 0;
   for (const b of S.userBooks(userId)) {
     const k = S.kindOfBook(b);
-    if ((k !== 'bank' && k !== 'saving') || b.prepaid || S.groupOf(b)?.type === 'wallet') continue;
+    if ((k !== 'bank' && k !== 'saving') || b.prepaid) continue;
     total += (await S.profileSummary(b)).balance;
   }
   return total;
