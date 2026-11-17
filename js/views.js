@@ -62,7 +62,81 @@ const badgeHtml = (l, cls = '') => (bankLogoSrc(l.code)
 const accIconHtml = (a) => (bankLogo(a.logo) ? badgeHtml(bankLogo(a.logo)) : esc(a.icon || '🏦'));
 /** Tên tài khoản kèm số tài khoản (nếu có), dùng trong các ô chọn khi tạo giao dịch. */
 const accTitle = (a) => a.name + (a.number ? ` · STK ${a.number}` : '');
-const accLabel = (a) => `${a.icon || '🏦'} ${accTitle(a)}`;
+// ================= Ô chọn tài khoản có logo (v7.63) =================
+// Ô chọn gốc của điện thoại không hiện được ảnh logo ngân hàng. Các ô chọn tài khoản / mục được thay bằng một nút
+// hiện đúng logo + icon loại tài khoản; bấm vào mở danh sách chọn. Ô gốc vẫn giữ (ẩn) nên mọi chỗ đọc .value
+// và nghe sự kiện change vẫn chạy như cũ.
+const RICH_SEL = 'select[data-acc], select.book-select, select[data-rich]';
+const SEL_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+const SEL_INDEX = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
+function enhanceSelect(sel) {
+  if (sel._rich || !sel.isConnected) return;
+  sel._rich = true;
+  sel.dataset.keepTokens = ''; // Giữ mã logo trong chữ của lựa chọn (không rút gọn còn emoji).
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  sel.classList.add('rich-src');
+  sel.insertAdjacentElement('afterend', btn);
+  // Chỉ đổi nút khi thật sự khác (tránh vòng lặp với các đoạn khác cũng đang theo dõi thay đổi trong form).
+  const paint = () => {
+    const o = sel.options[SEL_INDEX.get.call(sel)];
+    const text = o ? o.textContent : '';
+    if (btn._raw !== text) { btn._raw = text; btn.textContent = text; }
+    const cls = 'rich-sel ' + [...sel.classList].filter((c) => c !== 'rich-src').join(' ');
+    if (btn.className !== cls) btn.className = cls;
+    if (btn.disabled !== sel.disabled) btn.disabled = sel.disabled;
+  };
+  sel._paint = paint;
+  Object.defineProperty(sel, 'value', { configurable: true, get() { return SEL_VALUE.get.call(this); }, set(x) { SEL_VALUE.set.call(this, x); paint(); } });
+  Object.defineProperty(sel, 'selectedIndex', { configurable: true, get() { return SEL_INDEX.get.call(this); }, set(x) { SEL_INDEX.set.call(this, x); paint(); } });
+  sel.addEventListener('change', paint);
+  new MutationObserver(paint).observe(sel, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'class'] });
+  btn.addEventListener('click', () => { if (!sel.disabled) openRichList(sel); });
+  paint();
+}
+function openRichList(sel) {
+  const title = sel.closest('.field')?.querySelector(':scope > span')?.textContent.trim() || 'Chọn';
+  const cur = SEL_VALUE.get.call(sel);
+  const item = (o) => `<button type="button" class="rp-item ${o.value === cur ? 'on' : ''}" data-v="${esc(o.value)}" ${o.disabled ? 'disabled' : ''}>${esc(o.textContent)}${o.value === cur ? '<i>✓</i>' : ''}</button>`;
+  const body = [...sel.children].map((ch) => (ch.tagName === 'OPTGROUP'
+    ? `<div class="rp-h">${esc(ch.label)}</div>${[...ch.children].map(item).join('')}` : item(ch))).join('');
+  const pop = document.createElement('div');
+  pop.className = 'rich-pop';
+  pop.innerHTML = `<div class="rp-back"></div><div class="rp-panel" role="listbox"><div class="rp-title">${esc(title)}</div>${body}</div>`;
+  document.body.append(pop);
+  requestAnimationFrame(() => pop.classList.add('show'));
+  const close = () => { pop.classList.remove('show'); setTimeout(() => pop.remove(), 200); };
+  pop.addEventListener('click', (e) => {
+    const it = e.target.closest('.rp-item');
+    if (it && !it.disabled) {
+      if (it.dataset.v !== SEL_VALUE.get.call(sel)) {
+        sel.value = it.dataset.v;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      close();
+    } else if (e.target.closest('.rp-back')) close();
+  });
+}
+// Đăng ký sớm (trước bộ đổi mã logo) để ô chọn được đánh dấu giữ mã logo trước khi bị rút gọn.
+new MutationObserver((list) => {
+  for (const m of list) for (const n of m.addedNodes) {
+    if (n.nodeType !== 1) continue;
+    if (n.matches?.(RICH_SEL)) enhanceSelect(n);
+    n.querySelectorAll?.(RICH_SEL).forEach(enhanceSelect);
+  }
+}).observe(document.documentElement, { childList: true, subtree: true });
+
+/** Logo / icon của Bank chứa mục (chỉ khi khác icon loại tài khoản, tránh lặp 🏦 🏦). */
+const bankMark = (b) => { const ic = S.groupOf(b)?.icon; return ic && ic !== b.icon ? ic + ' ' : ''; };
+/** Nhãn mục trong ô chọn: logo ngân hàng + icon loại tài khoản + tên (v7.63). */
+const bookRichLabel = (b) => `${bankMark(b)}${b.icon || ''} ${S.bookLabelShort(b)}`.trim();
+/** Nhãn tài khoản trong ô chọn: theo mục chứa tài khoản (a.bookId do peerAccounts gắn; không có thì mục đang mở). */
+const accLabel = (a) => {
+  const b = (a.bookId && S.getProfiles().find((p) => p.id === a.bookId)) || S.currentProfile();
+  const extra = a.name && !['Tài khoản chính', b.name].includes(a.name) ? ' · ' + accTitle(a) : a.number ? ' · STK ' + a.number : '';
+  return bookRichLabel(b) + extra;
+};
 const BANKS = ['Vietcombank', 'VietinBank', 'BIDV', 'Agribank', 'Techcombank', 'MB Bank', 'ACB', 'VPBank', 'TPBank', 'Sacombank',
   'HDBank', 'VIB', 'SHB', 'SeABank', 'OCB', 'MSB', 'LPBank', 'Eximbank', 'Nam A Bank', 'Bac A Bank', 'ABBANK', 'Shinhan Bank',
   'HSBC', 'Standard Chartered', 'UOB', 'Cake by VPBank', 'Timo', 'FE Credit', 'Home Credit', 'HD Saison', 'Mcredit', 'Mirae Asset'];
@@ -211,8 +285,10 @@ function balHint(el, { have, need, bookId, who = '' }) {
   }
   const od = S.getProfiles().find((b) => b.id === bookId && b.overdraft);
   if (od) {
-    const over = need > od.limit || have - need < -od.limit;
-    el.textContent = `Thấu chi · số dư ${fmtBal(have)} · hạn mức ${fmt(od.limit)}` + (over ? ' — ⚠️ vượt hạn mức' : '');
+    // Khả dụng = số dư + hạn mức; trừ quá khả dụng thì không lưu được (v7.64).
+    const room = have + (Number(od.limit) || 0);
+    const over = need > room;
+    el.textContent = `Thấu chi · khả dụng ${fmtBal(Math.max(0, room))} (số dư ${fmtBal(have)} + hạn mức ${fmt(od.limit)})` + (over ? ' — ⛔ không đủ, không trừ được' : '');
     el.className = 'hint' + (over ? ' warn-red' : '');
     return;
   }
@@ -2081,7 +2157,7 @@ const sortByUser = (books) => byUser(books).flatMap((g) => g.books);
 // Trong droplist không vẽ được huy hiệu logo / icon ảnh: bỏ mã, chỉ để emoji (🏦, 🤑, 💰...).
 const plainIcon = (s) => String(s || '').replace(/⁣[A-Z]{2,6}/g, '');
 const bookSelect = (id, books, selectedId) => `<select id="${id}" class="book-select">${byUser(books).map((g) =>
-  `<optgroup label="${esc(plainIcon(g.label))}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${esc(plainIcon(p.icon))} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
+  `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${esc(bookRichLabel(p))}${p.locked ? ' 🔒' : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
 const userChips = (id, books, chip) => `<div class="user-groups" id="${id}">${byUser(books).map((g) =>
   `<div class="user-group"><small>${esc(g.label)}</small><div class="chips">${g.books.map(chip).join('')}</div></div>`).join('')}</div>`;
 
@@ -2766,6 +2842,7 @@ actions['goal-edit'] = async (el) => {
       ${amountField('gf-target', f.target, 'Số tiền cần đạt')}
       ${g ? '' : amountField('gf-saved', 0, 'Đã có sẵn (không bắt buộc)')}
       ${datePick('gf-dl', f.deadline || '', 'Hạn hoàn thành')}
+      ${calCheck()}
       <div class="actions">${g ? '<button type="button" class="btn danger" data-del>Xóa</button>' : ''}<button class="btn primary">Lưu</button></div>
     </form>`,
     onMount(sh, close) {
@@ -2778,8 +2855,11 @@ actions['goal-edit'] = async (el) => {
         if (!(target > 0)) return toast('Nhập số tiền mục tiêu');
         const obj = { ...f, name: $(sh, '#gf-name').value.trim(), icon: $(sh, '#gf-icon').value.trim() || '🎯', target: Math.round(target), deadline: $(sh, '#gf-dl').value || null };
         if (sv) obj.saved = Math.round(readMoney(sv.value) || 0);
-        await S.put('goals', obj);
+        if (wantCal(sh) && !obj.deadline) return toast('Chọn hạn hoàn thành để thêm vào Lịch');
+        const saved = await S.put('goals', obj);
         close(); toast('Đã lưu mục tiêu');
+        // Mục tiêu: một sự kiện vào ngày hạn hoàn thành, nhắc trước 7 ngày.
+        if (wantCal(sh)) addToCalendar('muc-tieu.ics', [{ uid: 'goal-' + saved.id, date: saved.deadline, remindDays: 7, time: S.ALERT_TIME, title: `🎯 Hạn mục tiêu ${saved.name}: ${fmtPlain(saved.target)}`, description: `Đã có ${fmtPlain(saved.saved || 0)} / ${fmtPlain(saved.target)}` }]);
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
         if (!confirm('Xóa mục tiêu này? (Các giao dịch đã ghi vẫn giữ nguyên)')) return;
@@ -2906,6 +2986,7 @@ actions['debt-edit'] = async (el) => {
       ${field('Cách thức thanh toán', `<select id="df-method">${PAY_METHODS.map((m) => `<option ${m === f.method || (!methodIsPreset && m === 'Khác') ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>`)}
       ${field('Ghi chú thanh toán', `<textarea id="df-note" rows="3" placeholder="vd: CK tới STK 0123456789 – Nguyễn Văn A, nội dung: HD123 thang 11. Hoặc: withdraw tự động từ TK lương, nhớ để đủ tiền trước ngày 25.">${esc(f.note || (!methodIsPreset ? f.method : ''))}</textarea>`)}
       ${field('Trích từ tài khoản', `<select id="df-acc" data-acc>${accOptions(f.accountId)}</select>`)}
+      ${calCheck()}
       <div class="actions">${d ? '<button type="button" class="btn danger" data-del>Xóa</button>' : ''}<button class="btn primary">Lưu</button></div>
     </form>`,
     onMount(sh, close) {
@@ -2922,13 +3003,14 @@ actions['debt-edit'] = async (el) => {
         const dueDate = $(sh, '#df-date').value;
         if (!dueDate) return toast('Chọn ngày đến hạn');
         const left = $(sh, '#df-left').value;
-        await S.put('debts', {
+        const saved = await S.put('debts', {
           ...f, bank: $(sh, '#df-bank').value.trim(), title: $(sh, '#df-title').value.trim(), amount: Math.round(v),
           dueDate, dueDay: Number(dueDate.slice(8)), repeat: rep.value, periodsLeft: rep.value === 'monthly' && left ? Math.max(1, Number(left)) : null,
           method: $(sh, '#df-method').value, note: $(sh, '#df-note').value.trim(), accountId: $(sh, '#df-acc').value,
           time: $(sh, '#df-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#df-rem').value) || 0, done: d ? d.done && dueDate === d.dueDate : false, history: f.history || [],
         });
         close(); toast('Đã lưu khoản trả nợ');
+        if (wantCal(sh) && !saved.done) addToCalendar('tra-no.ics', [debtEvent(saved)]);
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
         if (!confirm('Xóa khoản này? Các giao dịch trả nợ đã ghi vẫn được giữ.')) return;
@@ -3104,6 +3186,15 @@ actions['debt-ics-all'] = async () => {
   calendarSheet('lich-tra-no.ics', buildAllDayICS(evs));
 };
 
+/** Ô tick "Thêm vào Lịch" ở các form Kế hoạch / Nhắc nhở (v7.63): tick thì lưu xong tự mở thêm vào app Lịch. */
+const calCheck = (checked = false) => `<label class="check cal-check"><input type="checkbox" data-cal-add ${checked ? 'checked' : ''}> 📅 Thêm vào Lịch điện thoại (đúng ngày, giờ nhắc, số kỳ)</label>`;
+const wantCal = (sh) => !!sh.querySelector('[data-cal-add]')?.checked;
+/** Đưa sự kiện vào app Lịch ngay sau khi lưu (iPhone hiện hộp "Thêm vào Lịch"). */
+function addToCalendar(filename, events) {
+  if (!events.length) return;
+  setTimeout(() => openCalendarFile(filename, buildAllDayICS(events)), 350);
+}
+
 function calendarSheet(filename, ics) {
   openSheet({
     title: 'Thêm vào Lịch điện thoại',
@@ -3155,6 +3246,15 @@ function notifyAddChooser(u) {
   });
 }
 
+/** Sự kiện Lịch của một nhắc nhở: đúng ngày, giờ nhắc, nhắc trước, lặp và số kỳ. */
+function reminderEvent(r) {
+  const freq = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY' }[r.repeat];
+  return {
+    uid: 'rem-' + r.id, date: r.date, rrule: freq ? `FREQ=${freq}${r.periodsLeft != null ? ';COUNT=' + r.periodsLeft : ''}` : null, remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME,
+    title: `🔔 ${r.title}`, description: r.note || '',
+  };
+}
+
 function reminderForm(r) {
   const u = S.currentUser();
   const f = r ? { ...r } : { title: '', date: todayISO(), remindDays: 0, repeat: 'none', time: S.ALERT_TIME, periodsLeft: null };
@@ -3176,6 +3276,7 @@ function reminderForm(r) {
         <div class="field"><span>Lặp theo</span><div class="seg" id="rm-unit">${Object.entries(S.REPEAT_UNITS).map(([k, v]) => `<button type="button" data-u="${k}" class="${k === unit ? 'on' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
         ${field('Số kì lặp', `<input type="number" id="rm-count" min="1" max="999" inputmode="numeric" value="${esc(f.periodsLeft ?? '')}" placeholder="Để trống: không giới hạn">`)}
       </div>
+      ${calCheck()}
       ${r ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa nhắc nhở</button><button type="button" class="btn ghost" data-ics>📅 Thêm vào Lịch</button></div>' : ''}
     </form>`,
     onMount(sh, close) {
@@ -3197,22 +3298,18 @@ function reminderForm(r) {
         const count = $(sh, '#rm-count').value.trim();
         const periodsLeft = rep.checked && count ? Math.floor(Number(count)) : null;
         if (periodsLeft != null && !(periodsLeft >= 1)) return toast('Số kì lặp phải từ 1 trở lên');
+        let saved;
         try {
-          S.saveReminder(u.id, { ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: rep.checked ? unit : 'none', periodsLeft });
+          saved = S.saveReminder(u.id, { ...f, title, date, day: Number(date.slice(8)), time: $(sh, '#rm-time').value || S.ALERT_TIME, remindDays: Number($(sh, '#rm-before').value) || 0, repeat: rep.checked ? unit : 'none', periodsLeft });
         } catch (err) { return toast(err.message); }
         close(); toast('Đã lưu nhắc nhở');
+        if (wantCal(sh)) addToCalendar('nhac-nho.ics', [reminderEvent(saved)]);
       });
       $(sh, '[data-del]')?.addEventListener('click', () => {
         if (!confirm(`Xóa nhắc nhở "${r.title}"?`)) return;
         S.deleteReminder(u.id, r.id); close(); toast('Đã xóa');
       });
-      $(sh, '[data-ics]')?.addEventListener('click', () => {
-        const freq = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY' }[r.repeat];
-        calendarSheet('nhac-nho.ics', buildAllDayICS([{
-          uid: 'rem-' + r.id, date: r.date, rrule: freq ? `FREQ=${freq}${r.periodsLeft != null ? ';COUNT=' + r.periodsLeft : ''}` : null, remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME,
-          title: `🔔 ${r.title}`, description: r.note || '',
-        }]));
-      });
+      $(sh, '[data-ics]')?.addEventListener('click', () => calendarSheet('nhac-nho.ics', buildAllDayICS([reminderEvent(r)])));
     },
   });
 }
@@ -3277,7 +3374,7 @@ function recurringForm(r) {
       ${amountField('rc-amt', t.amount || 0, 'Số tiền mỗi kỳ')}
       <div id="rc-cat-wrap">${field('Danh mục', '<select id="rc-cat" class="cat-select"></select>')}</div>
       <div id="rc-peer-wrap">
-        ${field('<span id="rc-peer-l">Mục</span>', '<select id="rc-peer"></select>')}
+        ${field('<span id="rc-peer-l">Mục</span>', '<select id="rc-peer" data-rich></select>')}
         ${field('<span id="rc-pacc-l">Tài khoản</span>', '<select id="rc-pacc" data-acc><option></option></select>')}
         ${flowCatField('rc-fcat', t.flowCat || '')}
       </div>
@@ -3291,6 +3388,7 @@ function recurringForm(r) {
         ${field('Nhắc trước (ngày)', `<input type="number" id="rc-rem" min="0" max="30" value="${esc(r?.remindDays ?? 0)}">`)}</div>
       <p class="muted small" id="rc-mode-hint"></p>
       ${datePick('rc-end', r?.endDate || '', 'Kết thúc (không bắt buộc)')}
+      ${calCheck()}
       ${r ? `<label class="check"><input type="checkbox" id="rc-active" ${r.active ? 'checked' : ''}> Đang hoạt động</label>
         <div class="actions"><button type="button" class="btn danger" data-del>Xóa</button><button type="button" class="btn ghost" data-ics>📅 Thêm vào Lịch</button></div>` : ''}
     </form>`,
@@ -3330,7 +3428,7 @@ function recurringForm(r) {
         }
         // Mục của chính User này lên đầu (thường là chuyển giữa các tài khoản của mình).
         const list = [...peers(kind)].sort((a, b) => (b.owner === me.owner) - (a.owner === me.owner));
-        peerSel.innerHTML = list.map((p) => `<option value="${p.id}" ${p.id === t.peerId ? 'selected' : ''}>${esc(S.bookLabel(p))}</option>`).join('') || '<option value="">Không có mục phù hợp</option>';
+        peerSel.innerHTML = list.map((p) => `<option value="${p.id}" ${p.id === t.peerId ? 'selected' : ''}>${esc(bookRichLabel(p))}</option>`).join('') || '<option value="">Không có mục phù hợp</option>';
         loadPeerAccs();
       };
       $(sh, '#rc-kind').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) { kind = b.dataset.k; fillKind(); } });
@@ -3368,20 +3466,24 @@ function recurringForm(r) {
         const n = await S.processRecurring();
         close();
         toast(n ? `Đã lưu, tự ghi ${n} kỳ đã đến hạn` : 'Đã lưu khoản định kỳ');
+        if (wantCal(sh) && rec.active) addToCalendar('dinh-ky.ics', [recEvent(rec)]);
       });
       $(sh, '[data-del]')?.addEventListener('click', async () => {
         if (!confirm('Xóa khoản định kỳ? Các giao dịch đã ghi vẫn được giữ.')) return;
         await S.remove('recurring', r.id); close();
       });
-      $(sh, '[data-ics]')?.addEventListener('click', () => {
-        const rr = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' }[r.freq];
-        calendarSheet('dinh-ky.ics', buildAllDayICS([{
-          uid: 'rec-' + r.id, date: r.nextDate, rrule: `FREQ=${rr};INTERVAL=${r.interval || 1}${r.endDate ? ';UNTIL=' + r.endDate.replace(/-/g, '') : ''}`,
-          remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME, title: `🔁 ${S.recurringTitle(r)}: ${fmtPlain(r.template.amount)}`, description: 'Khoản định kỳ trong Sổ Thu Chi',
-        }]));
-      });
+      $(sh, '[data-ics]')?.addEventListener('click', () => calendarSheet('dinh-ky.ics', buildAllDayICS([recEvent(r)])));
     },
   });
+}
+
+/** Sự kiện Lịch của khoản định kỳ: từ kỳ tới, lặp theo tần suất, đến ngày kết thúc (nếu có), đúng giờ và số ngày nhắc trước. */
+function recEvent(r) {
+  const rr = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' }[r.freq] || 'MONTHLY';
+  return {
+    uid: 'rec-' + r.id, date: r.nextDate, rrule: `FREQ=${rr};INTERVAL=${r.interval || 1}${r.endDate ? ';UNTIL=' + r.endDate.replace(/-/g, '') : ''}`,
+    remindDays: r.remindDays || 0, time: r.time || S.ALERT_TIME, title: `🔁 ${S.recurringTitle(r)}: ${fmtPlain(r.template.amount)}`, description: 'Khoản định kỳ trong Sổ Thu Chi',
+  };
 }
 
 /** Xác nhận một kỳ: hiện số tiền đã đặt (sửa được), ghi rõ tiền ra từ đâu, vào đâu. */
@@ -4242,7 +4344,7 @@ actions['quick-edit'] = (el) => {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form" id="${formId}">
       ${field('Tên nút (tối đa 12 ký tự)', `<input id="qe-name" required maxlength="12" value="${esc(q.name || '')}" placeholder="vd: Ăn trưa">`)}
-      ${isPeer ? `${field(k === 'gop' ? 'Chuyển cho' : 'Nhận từ', `<select id="qe-peer">${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(p.icon + ' ' + p.name)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
+      ${isPeer ? `${field(k === 'gop' ? 'Chuyển cho' : 'Nhận từ', `<select id="qe-peer" data-rich>${byUser(others).map((g) => `<optgroup label="${esc(g.label)}">${g.books.map((p) => `<option value="${esc(p.id)}" ${p.id === q.peerId ? 'selected' : ''}>${esc(bookRichLabel(p))}</option>`).join('')}</optgroup>`).join('')}</select>`)}
         ${field(k === 'gop' ? 'Vào tài khoản của người nhận' : 'Từ tài khoản nguồn', '<select id="qe-pacc" data-acc><option></option></select>')}
         ${flowCatField('qe-fcat', q.flowCat || '')}`
         : field('Danh mục', `<select id="qe-cat" class="cat-select">${cats.map((c) => `<option value="${c.id}" ${c.id === q.categoryId ? 'selected' : ''}>${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}
@@ -4333,12 +4435,13 @@ function splitForm() {
       ${field('Ngày', `<input type="date" id="sp-date" value="${todayISO()}">`)}
       <label class="check"><input type="checkbox" id="sp-exp" ${books.length ? 'checked' : 'disabled'}> Ghi khoản chi này vào tài khoản</label>
       <div id="sp-exp-box">
-        ${books.length ? `${field('Tài khoản chi', '<select id="sp-acc" class="acc-out"><option>Đang tải…</option></select>')}
+        ${books.length ? `${field('Tài khoản chi', '<select id="sp-acc" class="acc-out" data-rich><option>Đang tải…</option></select>')}
         ${field('Danh mục chi', `<select id="sp-cat" class="cat-select">${catTabList('expense').map((c) => `<option value="${c.id}">${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}` : ''}
       </div>
       <div class="field"><span>Số người cần trả lại</span><div class="two">
         <input type="number" id="sp-n" min="1" max="30" inputmode="numeric" value="${n}">
         <button type="button" class="btn ghost small" data-even>Chia đều (gồm cả bạn)</button></div></div>
+      <label class="check"><input type="checkbox" id="sp-notme"> Not Me (không tính phần của tôi, chia hết cho các bạn)</label>
       <div id="sp-people">${rows(n, [])}</div>
       <em class="hint" id="sp-sum"></em>
       <button type="button" class="btn ghost block" data-split-all>📋 Các nhóm đã tạo</button>
@@ -4347,10 +4450,15 @@ function splitForm() {
       const total = $(sh, '#sp-total');
       // Tên để trống thì tự đặt Friend 1, Friend 2, … theo thứ tự.
       const read = () => [...sh.querySelectorAll('.split-person')].map((r, i) => ({ name: $(r, '.sp-name').value.trim() || `Friend ${i + 1}`, amount: Math.round(readMoney($(r, '.sp-amt').value) || 0) }));
+      const notMe = () => $(sh, '#sp-notme').checked;
       const updSum = () => {
         const s = read().reduce((a, p) => a + p.amount, 0), t = Math.round(readMoney(total.value) || 0);
-        $(sh, '#sp-sum').textContent = t ? `Tổng người khác nợ: ${fmt(s)} · phần của bạn: ${fmt(t - s)}` : `Tổng người khác nợ: ${fmt(s)}`;
+        $(sh, '[data-even]').textContent = notMe() ? 'Chia đều (không tính bạn)' : 'Chia đều (gồm cả bạn)';
+        $(sh, '#sp-sum').textContent = !t ? `Tổng người khác nợ: ${fmt(s)}`
+          : notMe() ? `Tổng người khác nợ: ${fmt(s)} / ${fmt(t)}${s !== t ? ' · còn lệch ' + fmt(t - s) : ' · đủ'}`
+          : `Tổng người khác nợ: ${fmt(s)} · phần của bạn: ${fmt(t - s)}`;
       };
+      $(sh, '#sp-notme').addEventListener('change', updSum);
       // Một ô chọn (droplist) gồm mọi tài khoản Thanh Toán, chia nhóm theo mục; giá trị = mã mục|mã tài khoản.
       const loadAcc = async () => {
         const sel = $(sh, '#sp-acc');
@@ -4358,7 +4466,7 @@ function splitForm() {
         let html = '';
         for (const b of books) {
           const accs = await S.peerAccounts(b.id);
-          html += `<optgroup label="${esc(plainIcon(b.icon) + ' ' + S.bookLabelShort(b))}">${accs.map((a) => `<option value="${esc(b.id + '|' + a.id)}" ${b.id === whoId && a === accs[0] ? 'selected' : ''}>${esc(plainIcon(b.icon) + ' ' + S.bookLabelShort(b) + (accs.length > 1 ? ' · ' + accTitle(a) : ''))}</option>`).join('')}</optgroup>`;
+          html += `<optgroup label="${esc(bookRichLabel(b))}">${accs.map((a) => `<option value="${esc(b.id + '|' + a.id)}" ${b.id === whoId && a === accs[0] ? 'selected' : ''}>${esc(bookRichLabel(b) + (accs.length > 1 ? ' · ' + accTitle(a) : ''))}</option>`).join('')}</optgroup>`;
         }
         sel.innerHTML = html;
       };
@@ -4376,7 +4484,7 @@ function splitForm() {
         const t = Math.round(readMoney(total.value) || 0);
         if (!t) return toast('Nhập số tiền chi ra trước');
         const people = sh.querySelectorAll('.split-person');
-        const each = Math.round(t / (people.length + 1));
+        const each = Math.round(t / (people.length + (notMe() ? 0 : 1)));
         people.forEach((r) => { $(r, '.sp-amt').value = fmtNum(each); });
         updSum();
       });
@@ -4390,9 +4498,10 @@ function splitForm() {
         if (!title) return toast('Nhập nội dung');
         if (!(t > 0)) return toast('Nhập số tiền chi ra');
         if (people.some((p) => !(p.amount > 0))) return toast('Nhập số tiền nợ của từng người');
+        if (notMe() && people.reduce((a, p) => a + p.amount, 0) !== t && !confirm('Đang chọn Not Me nhưng tổng số tiền các bạn nợ khác số tiền chi ra. Vẫn tạo nhóm?')) return;
         const withExp = $(sh, '#sp-exp').checked && whoId;
         try {
-          const g = await S.createSplit({ title, total: t, date: $(sh, '#sp-date').value || todayISO(), people,
+          const g = await S.createSplit({ title, total: t, notMe: notMe(), date: $(sh, '#sp-date').value || todayISO(), people,
             expense: withExp ? { bookId: $(sh, '#sp-acc').value.split('|')[0], accountId: $(sh, '#sp-acc').value.split('|')[1], categoryId: $(sh, '#sp-cat').value } : null });
           close();
           toast('Đã tạo nhóm chia tiền');

@@ -740,12 +740,23 @@ export function available(accountId, ignoreTx = null) {
   return accountBalance(acc) - (ignoreTx ? txEffect(ignoreTx, accountId) : 0);
 }
 
+/**
+ * v7.64: Thấu chi chỉ được trừ tiền trong phạm vi khả dụng = số dư + hạn mức; khả dụng về 0 thì không trừ được nữa
+ * (không cho khả dụng âm, tức không vượt hạn mức). Mục khác: khả dụng = số dư.
+ */
+export const odLimit = (b) => (b?.overdraft ? Number(b.limit) || 0 : 0);
+const odShortMsg = (b, have, need) => `Thấu chi "${b.name}" không đủ hạn mức: khả dụng còn ${fmt(Math.max(0, have))} (số dư + hạn mức ${fmt(odLimit(b))}), cần ${fmt(need)}`;
+
 /** Trả về thông báo lỗi nếu tài khoản không đủ tiền cho khoản chi, ngược lại trả về null. */
 export function fundsError(accountId, amountVnd, ignoreTx = null) {
   // Mục đang khóa thì không cho chuyển tiền đi (chi, chuyển, trả nợ, chuyển khoản…).
   const locked = lockError(currentProfile().id);
   if (locked) return locked;
-  if (currentProfile().overdraft || currentProfile().credit) return null; // Thấu chi, Thẻ tín dụng được âm số dư.
+  if (currentProfile().credit) return null; // Thẻ tín dụng: hạn mức kiểm tra riêng (creditError).
+  if (currentProfile().overdraft) {
+    const room = available(accountId, ignoreTx) + odLimit(currentProfile());
+    return amountVnd <= room ? null : odShortMsg(currentProfile(), room, amountVnd);
+  }
   const have = available(accountId, ignoreTx);
   if (amountVnd <= have) return null;
   return `Số dư "${accById(accountId)?.name || 'tài khoản'}" không đủ: còn ${fmt(have)}, cần ${fmt(amountVnd)}`;
@@ -768,7 +779,8 @@ async function openPeerBook(profileId) {
 /** Danh sách tài khoản (chưa ẩn) của một người dùng khác. */
 export async function peerAccounts(profileId) {
   const { accs } = await openPeerBook(profileId);
-  return accs.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // bookId: để ô chọn tài khoản hiện đúng logo ngân hàng + icon loại tài khoản của mục chứa tài khoản.
+  return accs.filter((a) => !a.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((a) => ({ ...a, bookId: profileId }));
 }
 
 /**
@@ -828,6 +840,7 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
   const overDebt = creditError(amount);
   if (overDebt) throw new Error(overDebt);
   const have = await peerBalance(from.id, fromAccountId);
+  if (from.overdraft && amount > have + odLimit(from)) throw new Error(odShortMsg(from, have + odLimit(from), amount));
   if (!from.overdraft && amount > have) {
     const acc = accs.find((a) => a.id === fromAccountId);
     throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${bookLabel(from)} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
@@ -852,10 +865,7 @@ export async function trich({ fromProfileId, amount, fromAccountId, toAccountId,
 export async function overdraftWarnings({ fromId, fromAccountId, toId, toAccountId, amount }) {
   const out = [];
   const from = getProfiles().find((p) => p.id === fromId), to = getProfiles().find((p) => p.id === toId);
-  if (from?.overdraft) {
-    const after = (await peerBalance(fromId, fromAccountId)) - amount;
-    if (amount > from.limit || after < -from.limit) out.push(`Thấu chi "${from.name}" chuyển đi ${fmt(amount)}, số dư sau ${fmt(after)}: vượt hạn mức ${fmt(from.limit)}.`);
-  }
+  // Chuyển đi từ Thấu chi vượt khả dụng (số dư + hạn mức) giờ bị chặn hẳn (fundsError), không còn là cảnh báo.
   if (to?.overdraft) {
     const after = (await peerBalance(toId, toAccountId)) + amount;
     if (amount > to.limit || after > to.limit) out.push(`Thấu chi "${to.name}" nhận về ${fmt(amount)}, số dư sau ${fmt(after)}: vượt hạn mức ${fmt(to.limit)}.`);
@@ -896,6 +906,7 @@ export async function payCredit({ payerId, amount, fromAccountId, date, pf = nul
   if (err) throw new Error(err);
   const { peer, cats } = await openPeerBook(payer.id);
   const have = await peerBalance(payer.id, fromAccountId);
+  if (payer.overdraft && amount > have + odLimit(payer)) throw new Error(odShortMsg(payer, have + odLimit(payer), amount));
   if (!payer.overdraft && amount > have) throw new Error(`Số dư của ${bookLabel(payer)} không đủ: còn ${fmt(have)}, cần ${fmt(amount)}`);
   const mark = await pfMark(payer, card, pf, -amount);
   const gid = uid();
@@ -1212,7 +1223,8 @@ export async function payCardItem(item, { profileId, accountId, date, pf = null 
   if (locked) throw new Error(locked);
   const { peer, cats, accs } = await openPeerBook(profileId);
   const acc = accs.find((a) => a.id === accountId);
-  const have = await peerBalance(profileId, accountId);
+  const have = (await peerBalance(profileId, accountId)) + odLimit(payer);
+  if (payer.overdraft && item.amountVnd > have) throw new Error(odShortMsg(payer, have, item.amountVnd));
   if (item.amountVnd > have) {
     throw new Error(`Số dư "${acc?.name || 'tài khoản'}" của ${bookLabel(payer)} không đủ: còn ${fmt(have)}, cần ${fmt(item.amountVnd)}`);
   }
@@ -1514,7 +1526,7 @@ export function maturityAlerts(userId) {
 const SPLITS_KEY = 'stc-splits';
 export const splitGroups = () => readJSON(SPLITS_KEY) || [];
 const writeSplits = (list) => { localStorage.setItem(SPLITS_KEY, JSON.stringify(list)); emit(); };
-export async function createSplit({ title, total, date, people, expense = null }) {
+export async function createSplit({ title, total, date, people, expense = null, notMe = false }) {
   const id = 'sp' + uid().slice(0, 10);
   let exp = null;
   if (expense) {
@@ -1523,7 +1535,7 @@ export async function createSplit({ title, total, date, people, expense = null }
     const tx = await addTxTo(expense.bookId, { type: 'expense', amount: total, amountVnd: total, date, categoryId: expense.categoryId, accountId: expense.accountId, note: `👥 ${title}`, splitId: id });
     exp = { bookId: expense.bookId, txId: tx.id };
   }
-  const g = { id, title, total, date, createdAt: Date.now(), expense: exp, people: people.map((p) => ({ id: uid().slice(0, 8), name: p.name, amount: Math.round(p.amount), paid: null })) };
+  const g = { id, title, total, date, notMe: !!notMe, createdAt: Date.now(), expense: exp, people: people.map((p) => ({ id: uid().slice(0, 8), name: p.name, amount: Math.round(p.amount), paid: null })) };
   writeSplits([g, ...splitGroups()]);
   return g;
 }

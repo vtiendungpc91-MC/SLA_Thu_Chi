@@ -140,7 +140,8 @@ function convertText(node) {
   if (!text.includes(BANK_SEP)) return;
   if (node.parentElement?.closest(SKIP)) {
     // Ô chọn không vẽ được ảnh: icon ảnh chỉ còn emoji (huy hiệu ngân hàng vẫn hiện "🏦VCB").
-    if (node.parentElement.closest('option')) {
+    // Ô chọn có logo (data-keep-tokens) tự vẽ danh sách riêng nên giữ nguyên mã logo.
+    if (node.parentElement.closest('option') && !node.parentElement.closest('select[data-keep-tokens]')) {
       const clean = text.replace(TOKEN_RE, (all, e, code) => (e !== '🏦' && picOf(code) ? e : all));
       if (clean !== text) node.data = clean;
     }
