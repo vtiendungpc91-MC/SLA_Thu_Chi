@@ -1335,3 +1335,9 @@ html.dark #tf-type .seg-split { color: #b197fc; }
 .split-form .zero-sug { margin-top: 4px; }
 /* Nút thanh toán chỉ còn icon 💸 */
 .split-row-p .sp-pay, .notif-row .n-btn[data-notif="split"] { min-width: 40px; padding-left: 8px; padding-right: 8px; font-size: 16px; }.split-form .split-person input { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; padding: 0 12px; box-sizing: border-box; }
+/* v7.60: dòng thẻ ngân hàng ở Tổng quan — cuộn ngang khi nhiều ngân hàng */
+.bank-chips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 0 2px; margin: 0 -2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.bank-chips::-webkit-scrollbar { display: none; }
+.bank-chips .chip { flex: 0 0 auto; white-space: nowrap; padding: 5px 12px; font-size: 13px; }
+.bank-chips .chip.on { background: var(--kc, #e8590c); color: var(--kc-on, #fff); border-color: transparent; }
+.bank-chips .bank-badge.ib, .bank-chips .pic-ic { font-size: 9px; }

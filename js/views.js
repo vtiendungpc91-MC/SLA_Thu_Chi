@@ -1602,8 +1602,30 @@ const overKindNow = () => {
   const tabs = homeTabs(S.currentUser().id);
   return tabs.some(([tab]) => tab === ui.overKind) ? ui.overKind : tabs[0]?.[0] || 'bank';
 };
-/** Thẻ ở Tổng quan: chỉ hiện thẻ đang có tài khoản. */
-const homeTabs = (userId) => overTabs(userId).filter(([tab]) => tabBooks(userId, tab).length);
+/** Thẻ ở Tổng quan: chỉ hiện thẻ đang có tài khoản (của ngân hàng đang chọn ở dòng thẻ ngân hàng). */
+const homeTabs = (userId) => overTabs(userId).filter(([tab]) => overBooks(userId, tab).length);
+
+/**
+ * Dòng thẻ ngân hàng ở Tổng quan (dưới băng rôn thống kê): "Tất cả" + mỗi Bank / Ví điện tử của User.
+ * Chọn một ngân hàng thì các thẻ Thanh Toán / Thấu chi / Tiết Kiệm / Credit Card chỉ hiện tài khoản của ngân hàng đó.
+ */
+const OVER_BANK_KEY = 'stc-over-bank';
+const overBank = () => {
+  const id = localStorage.getItem(OVER_BANK_KEY) || '';
+  return id && S.userGroups(S.currentUser().id).some((g) => g.id === id) ? id : '';
+};
+const overBooks = (userId, tab) => { const g = overBank(); return tabBooks(userId, tab).filter((b) => !g || b.group === g); };
+function bankChips(u) {
+  const groups = S.userGroups(u.id).filter((g) => S.groupBooks(g.id).length);
+  if (groups.length < 2) return '';
+  const cur = overBank();
+  const chip = (id, label) => `<button type="button" class="chip ${cur === id ? 'on' : ''}" data-act="over-bank" data-id="${esc(id)}">${label}</button>`;
+  return `<div class="bank-chips" role="tablist" aria-label="Chọn ngân hàng">${chip('', '🏦 Tất cả')}${groups.map((g) => chip(g.id, `${esc(g.icon || S.GROUP_TYPES[g.type].icon)} ${esc(g.name)}`)).join('')}</div>`;
+}
+actions['over-bank'] = (el) => {
+  if (el.dataset.id) localStorage.setItem(OVER_BANK_KEY, el.dataset.id); else localStorage.removeItem(OVER_BANK_KEY);
+  refresh();
+};
 /** Các mục của một thẻ ở Tổng quan: Bank và Thấu chi tách riêng. */
 const tabBooks = (userId, tab) => S.userBooks(userId).filter((b) => {
   if (tab === 'bank') return S.kindOfBook(b) === 'bank' && !b.overdraft && !b.prepaid;
@@ -1668,8 +1690,9 @@ function homeView() {
   <div class="over-date"><small>📅 ${ui.overPeriod === 'lastmonth' ? `Last Month · ${esc(overRange().label)}` : fmtDayHeader(todayISO())}</small>
     <select id="over-period" class="chip-select" aria-label="Kỳ xem số liệu">${OVER_PERIODS.map(([k, l]) => `<option value="${k}" ${(ui.overPeriod || 'day') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   <div class="stat-banner" data-stat-banner ${statBannerCache ? '' : 'hidden'}>${statBannerCache || ''}</div>
+  ${bankChips(u)}
   <div class="seg tabs">${homeTabs(u.id).map(([k, label]) => `<button type="button" data-act="over-tab" data-v="${k}" class="${kind === k ? 'on' : ''}">${label}</button>`).join('')}</div>
-  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}`) ?? OVER_PERIODS.map(([p]) => overCache.get(`${u.id}:${kind}:${p}`)).find(Boolean) ?? ''}</div>
+  <div data-over-list>${overCache.get(`${u.id}:${kind}:${ui.overPeriod || 'day'}:${overBank()}`) ?? OVER_PERIODS.map(([p]) => overCache.get(`${u.id}:${kind}:${p}:${overBank()}`)).find(Boolean) ?? ''}</div>
   ${fab(kind)}`;
 }
 actions['over-tab'] = (el) => { ui.overKind = el.dataset.v; window.scrollTo(0, 0); refresh(); };
@@ -1876,7 +1899,7 @@ async function fillOverview(root) {
   overExpiry = Infinity;
   const u = S.currentUser();
   const kind = overKindNow();
-  const key = `${u.id}:${kind}:${ui.overPeriod || 'day'}`;
+  const key = `${u.id}:${kind}:${ui.overPeriod || 'day'}:${overBank()}`;
   const painted = box.innerHTML;
   fitQuickNames(box);
   try {
@@ -1893,7 +1916,7 @@ async function fillOverview(root) {
     }
     // Chuẩn bị sẵn các thẻ khác để lần đầu bấm sang là có ngay.
     for (const [tab] of homeTabs(u.id)) {
-      const k = `${u.id}:${tab}:${ui.overPeriod || 'day'}`;
+      const k = `${u.id}:${tab}:${ui.overPeriod || 'day'}:${overBank()}`;
       if (overCache.has(k)) continue;
       const other = await overTabHtml(u, tab);
       if (token !== overToken) return;
@@ -1902,7 +1925,7 @@ async function fillOverview(root) {
   } catch (err) { console.warn(err); }
 }
 async function overTabHtml(u, tab) {
-  const books = tabBooks(u.id, tab);
+  const books = overBooks(u.id, tab);
   if (!books.length) return empty('🗂️', 'Chưa có mục nào. Bấm nút góc phải để tạo.');
   let html = '';
   for (const b of books) html += await overCard(b);
@@ -3826,7 +3849,7 @@ actions.add = async (el) => {
   let pick = null;
   if (current.route === 'home') {
     const kind = overKindNow();
-    const books = tabBooks(S.currentUser().id, kind);
+    const books = overBooks(S.currentUser().id, kind);
     if (!books.length) return toast('Chưa có mục nào. Bấm nút góc phải để tạo.');
     if (!books.some((b) => b.id === S.currentProfile().id)) await S.switchProfile(books[0].id);
     pick = books;
