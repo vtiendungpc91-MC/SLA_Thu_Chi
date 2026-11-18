@@ -531,7 +531,7 @@ function topBar(sub = '', right = '', title = '') {
       <small class="chip-sub pf-f" data-pf-top="family" hidden></small>
     </div>
   </header>
-  <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div><div class="title-acts">${right}${current.route !== 'bookset' ? '<a class="icon-btn" href="#/bookset" title="Cài đặt riêng của mục" aria-label="Cài đặt riêng của mục">⚙️</a>' : ''}${maskBtn()}</div></div>`;
+  <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div><div class="title-acts">${right}${maskBtn()}</div></div>`;
 }
 
 // Các số phải đọc bất đồng bộ: hiện ngay giá trị lần trước rồi cập nhật, để không bị trống rồi hiện lại (chớp).
@@ -6078,9 +6078,10 @@ export function render(route, sub) {
     if (location.hash !== '#/home') history.replaceState(null, '', '#/home');
   }
   const tabs = [...document.querySelectorAll('#tabbar a')];
-  // Ở Tổng quan không hiện Giao dịch / Báo cáo: xem của từng tài khoản bằng cách bấm dòng đầu của thẻ tài khoản (v7.68).
-  const onHome = !VIEWS[route] || route === 'home';
-  tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab) || (onHome && (a.dataset.tab === 'tx' || a.dataset.tab === 'reports')); });
+  // v7.69: màn hình của một tài khoản (Giao dịch / Báo cáo / Cài đặt riêng) chỉ có 3 nút đó; các màn hình chung
+  // (Tổng quan, Kế hoạch, Cài đặt chung) chỉ có Tổng quan + Kế hoạch. Vào tài khoản bằng dòng đầu của thẻ ở Tổng quan.
+  const zone = ['tx', 'reports', 'bookset'].includes(route) ? 'book' : 'main';
+  tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab) || a.dataset.zone !== zone; });
   // v7.67: thanh dưới cố định ở mọi màn hình (Tổng quan · Giao dịch · ＋ · Báo cáo · Kế hoạch).
   document.body.classList.toggle('no-tabbar', !VIEWS[route]);
   const sameView = current.route === route && current.sub === sub;

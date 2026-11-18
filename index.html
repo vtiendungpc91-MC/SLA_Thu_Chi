@@ -33,11 +33,12 @@
     <main id="main" class="main"></main>
     <!-- v7.67: thanh điều hướng dưới cố định ở mọi màn hình -->
     <nav class="tabbar" id="tabbar">
-      <a href="#/home" data-tab="home"><span class="ti">🏠</span><span>Tổng quan</span></a>
-      <a href="#/tx" data-tab="tx"><span class="ti">📒</span><span>Giao dịch</span></a>
-      <button type="button" class="tb-add" data-act="add" aria-label="Thêm giao dịch"><span>＋</span></button>
-      <a href="#/reports" data-tab="reports"><span class="ti">📊</span><span>Báo cáo</span></a>
-      <a href="#/plan" data-tab="plan"><span class="ti">🎯</span><span>Kế hoạch</span></a>
+      <!-- v7.69: Tổng quan / Kế hoạch: 🏠 Tổng quan · 🎯 Kế hoạch. Trong một tài khoản: 📒 Giao dịch · 📊 Báo cáo · ⚙️ Cài đặt -->
+      <a href="#/home" data-tab="home" data-zone="main"><span class="ti">🏠</span><span>Tổng quan</span></a>
+      <a href="#/plan" data-tab="plan" data-zone="main"><span class="ti">🎯</span><span>Kế hoạch</span></a>
+      <a href="#/tx" data-tab="tx" data-zone="book"><span class="ti">📒</span><span>Giao dịch</span></a>
+      <a href="#/reports" data-tab="reports" data-zone="book"><span class="ti">📊</span><span>Báo cáo</span></a>
+      <a href="#/bookset" data-tab="bookset" data-zone="book"><span class="ti">⚙️</span><span>Cài đặt</span></a>
     </nav>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

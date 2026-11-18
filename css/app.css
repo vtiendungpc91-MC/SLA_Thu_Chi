@@ -1380,8 +1380,7 @@ html.dark .rich-sel.acc-out { color: #ff8a8f; } html.dark .rich-sel.acc-in { col
 .tabbar a[hidden] { display: none; }
 .tabbar .tb-add { flex: 0 0 58px; height: 46px; margin: -16px 6px 2px; border: 0; border-radius: 18px; background: var(--kc, #e8590c); color: var(--kc-on, #fff); font-size: 28px; line-height: 1; box-shadow: 0 6px 16px rgba(0, 0, 0, .22); display: grid; place-items: center; }
 .tabbar .tb-add:active { transform: scale(.95); }
-/* Đã có ＋ ở thanh dưới: ẩn nút ＋ tròn phía trên cho khỏi trùng */
-body:not(.no-tabbar) .fab { display: none !important; }
+/* v7.69: bỏ ＋ ở thanh dưới, dùng lại nút ＋ tròn phía trên */
 /* A4: chế độ gọn — thu nhỏ toàn bộ khoảng 85% */
 html.compact body { zoom: .85; }
 /* A3: biểu đồ mini số dư 30 ngày trên thẻ tài khoản */
