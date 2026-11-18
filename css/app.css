@@ -1414,3 +1414,8 @@ html.dark .sw-row .sw-btn.sw-red { background: #3d1a1f; color: #ff8a8f; }
 .nl-row { display: flex; gap: 6px; align-items: center; }
 .nl-row input { flex: 1 1 auto; min-width: 0; height: 38px; min-height: 38px; border: 1px dashed var(--kc, #e8590c); border-radius: 12px; padding: 0 12px; background: color-mix(in srgb, var(--kc, #e8590c) 6%, var(--card)); font-size: 16px; color: inherit; }
 .nl-row .btn { flex: 0 0 auto; height: 38px; }
+/* v7.68: chỉ dòng đầu thẻ tài khoản (tên + số dư) mở màn hình Giao dịch / Báo cáo của tài khoản */
+.over-acc .over-head { cursor: default; }
+.over-acc .ol-open { cursor: pointer; border-radius: 8px; -webkit-tap-highlight-color: transparent; }
+.over-acc .ol-open:active { background: color-mix(in srgb, var(--kc, #e8590c) 12%, transparent); }
+.over-acc .ol-open .ol-bal::after { content: ' ›'; color: var(--muted); font-weight: 400; }

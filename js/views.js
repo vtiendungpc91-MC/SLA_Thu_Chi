@@ -2063,8 +2063,8 @@ async function overCard(b) {
   const logo = [S.groupOf(b)?.icon, b.icon].find((ic) => bankColorOf(ic));
   const folded = foldedCards().has(b.id);
   return `<section class="card over-acc${folded ? ' folded' : ''}" style="--c:${esc(b.color)}">
-    <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
-      <span class="ol"><b><span class="ol-ic" data-act="card-fold" data-id="${esc(b.id)}" role="button" aria-label="Thu gọn / mở rộng thẻ" aria-expanded="${folded ? 'false' : 'true'}">${esc(b.icon || kindOf(b).icon)}</span> ${esc(b.name)}${logo ? ` <span class="ol-logo">${esc(logo)}</span>` : ''}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
+    <div class="over-head">
+      <span class="ol ol-open" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}" title="Xem giao dịch và báo cáo"><b><span class="ol-ic" data-act="card-fold" data-id="${esc(b.id)}" role="button" aria-label="Thu gọn / mở rộng thẻ" aria-expanded="${folded ? 'false' : 'true'}">${esc(b.icon || kindOf(b).icon)}</span> ${esc(b.name)}${logo ? ` <span class="ol-logo">${esc(logo)}</span>` : ''}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
       <span class="ol ol-sm"><small>${esc([grpName && grpName !== b.name ? grpName : null, sub].filter(Boolean).join(' · '))}</small>${sparkSvg(o.spark)}<span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
@@ -6078,7 +6078,9 @@ export function render(route, sub) {
     if (location.hash !== '#/home') history.replaceState(null, '', '#/home');
   }
   const tabs = [...document.querySelectorAll('#tabbar a')];
-  tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab); });
+  // Ở Tổng quan không hiện Giao dịch / Báo cáo: xem của từng tài khoản bằng cách bấm dòng đầu của thẻ tài khoản (v7.68).
+  const onHome = !VIEWS[route] || route === 'home';
+  tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab) || (onHome && (a.dataset.tab === 'tx' || a.dataset.tab === 'reports')); });
   // v7.67: thanh dưới cố định ở mọi màn hình (Tổng quan · Giao dịch · ＋ · Báo cáo · Kế hoạch).
   document.body.classList.toggle('no-tabbar', !VIEWS[route]);
   const sameView = current.route === route && current.sub === sub;
