@@ -1418,3 +1418,6 @@ html.dark .sw-row .sw-btn.sw-red { background: #3d1a1f; color: #ff8a8f; }
 .over-acc .ol-open { cursor: pointer; border-radius: 8px; -webkit-tap-highlight-color: transparent; }
 .over-acc .ol-open:active { background: color-mix(in srgb, var(--kc, #e8590c) 12%, transparent); }
 .over-acc .ol-open .ol-bal::after { content: ' ›'; color: var(--muted); font-weight: 400; }
+/* v7.70: ở Tổng quan nút ＋ nằm giữa thanh dưới (Tổng quan · ＋ · Kế hoạch), ẩn nút ＋ tròn phía trên */
+body[data-route="home"] .fab { display: none !important; }
+.tabbar .tb-add[hidden] { display: none; }

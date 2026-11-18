@@ -6077,7 +6077,7 @@ export function render(route, sub) {
     sub = null;
     if (location.hash !== '#/home') history.replaceState(null, '', '#/home');
   }
-  const tabs = [...document.querySelectorAll('#tabbar a')];
+  const tabs = [...document.querySelectorAll('#tabbar > [data-zone]')];
   // v7.69: màn hình của một tài khoản (Giao dịch / Báo cáo / Cài đặt riêng) chỉ có 3 nút đó; các màn hình chung
   // (Tổng quan, Kế hoạch, Cài đặt chung) chỉ có Tổng quan + Kế hoạch. Vào tài khoản bằng dòng đầu của thẻ ở Tổng quan.
   const zone = ['tx', 'reports', 'bookset'].includes(route) ? 'book' : 'main';
@@ -6090,6 +6090,7 @@ export function render(route, sub) {
   const main = document.getElementById('main');
   const y = window.scrollY;
   // Màu của loại tài khoản đang xem (Thanh Toán cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ).
+  document.body.dataset.route = current.route; // Tổng quan: nút ＋ nằm ở thanh dưới, ẩn nút ＋ tròn phía trên
   document.body.dataset.tab = current.route === 'home' ? overKindNow() : current.route === 'settings' ? '' : tabOfBook(S.currentProfile());
   paintMain(main, v.html(sub), current.route);
   restoreTop(main);
