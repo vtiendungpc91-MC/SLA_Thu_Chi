@@ -1364,3 +1364,14 @@ html.dark .rich-sel.acc-out { color: #ff8a8f; } html.dark .rich-sel.acc-in { col
 .rp-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 46px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; font-size: 16px; text-align: left; }
 .rp-item.on { background: color-mix(in srgb, var(--kc, #e8590c) 16%, transparent); font-weight: 700; }
 .rp-item i { margin-left: auto; font-style: normal; }
+/* v7.65: ô chọn tài khoản nhỏ lại 75% (chữ 16px → 12px, cao 44px → 33px) */
+.rich-sel { min-height: 33px; line-height: 31px; font-size: 12px; padding-left: 10px; padding-right: 28px; border-radius: 10px; }
+.rich-sel::after { right: 10px; font-size: 11px; }
+.split-form .rich-sel { min-height: 33px; line-height: 31px; }
+.rich-sel .bank-badge.ib { font-size: 8px; }
+/* v7.66: Bank / tài khoản nằm trong thẻ Tổng quan (mở / thu gọn) */
+.over-tile .over-caret { margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 13px; }
+.over-tile .over-main > b { display: flex; align-items: center; gap: 6px; }
+.over-tile .over-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 11.5px; font-weight: 400; }
+.over-tile .over-banks { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
+.over-tile .over-banks[hidden] { display: none; }

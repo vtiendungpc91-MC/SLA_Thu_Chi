@@ -130,7 +130,8 @@ new MutationObserver((list) => {
 /** Logo / icon của Bank chứa mục (chỉ khi khác icon loại tài khoản, tránh lặp 🏦 🏦). */
 const bankMark = (b) => { const ic = S.groupOf(b)?.icon; return ic && ic !== b.icon ? ic + ' ' : ''; };
 /** Nhãn mục trong ô chọn: logo ngân hàng + icon loại tài khoản + tên (v7.63). */
-const bookRichLabel = (b) => `${bankMark(b)}${b.icon || ''} ${S.bookLabelShort(b)}`.trim();
+// Không ghi tên Bank (đã có logo Bank); mục của Secrecy giữ chữ "Secrecy" để dễ nhận ra (v7.65).
+const bookRichLabel = (b) => `${bankMark(b)}${b.icon || ''} ${b.owner === S.SECRECY ? S.bookLabelShort(b) : b.name}`.trim();
 /** Nhãn tài khoản trong ô chọn: theo mục chứa tài khoản (a.bookId do peerAccounts gắn; không có thì mục đang mở). */
 const accLabel = (a) => {
   const b = (a.bookId && S.getProfiles().find((p) => p.id === a.bookId)) || S.currentProfile();
@@ -720,6 +721,8 @@ actions.users = () => {
 };
 
 // --- Danh sách mục của User hiện tại (nút phải): mỗi mục 1 dòng trải hết chiều ngang ---
+const BOOKS_OPEN_KEY = 'stc-books-open';
+let booksOpen = localStorage.getItem(BOOKS_OPEN_KEY) === '1';
 actions.books = () => {
   const u = S.currentUser();
   const onHome = current.route === 'home';
@@ -728,12 +731,15 @@ actions.books = () => {
   openSheet({
     title: `Mục của ${u.name}`,
     headAction: `<button type="button" class="icon-btn theme-btn" data-theme aria-label="Chuyển sáng/tối">${isDark() ? '☀️' : '🌙'}</button>`,
-    body: `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}" style="--c:${esc(overColor(u))}">
-        <div role="button" tabindex="0" class="over-main" data-over>
-          <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}</b>
+    // v7.66: Bank / tài khoản nằm bên trong thẻ Tổng quan (bấm thẻ để mở / thu gọn, xem và tạo ngay trong đó);
+    // phần Thông báo đưa lên ngay dưới thẻ Tổng quan.
+    body: `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}${booksOpen ? ' open' : ''}" style="--c:${esc(overColor(u))}">
+        <div role="button" tabindex="0" class="over-main" data-over aria-expanded="${booksOpen ? 'true' : 'false'}">
+          <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}<span class="over-caret">${booksOpen ? '▴' : '▾'}</span></b>
           ${overTabs(u.id).map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
+          <small class="over-hint">${booksOpen ? 'Bấm để thu gọn' : `Bấm để xem / tạo Bank và tài khoản (${S.userGroups(u.id).length} Bank · ${mine.length} tài khoản)`}</small>
         </div>
-      </div>` + S.userGroups(u.id).map((g) => {
+        <div class="over-banks" ${booksOpen ? '' : 'hidden'}>` + S.userGroups(u.id).map((g) => {
       // Mỗi Bank / Ví điện tử: các mục bên trong, nút thêm theo giới hạn từng loại.
       const order = ['account', 'od', 'saving', 'prepaid', 'credit', 'legacy'];
       const books = S.groupBooks(g.id).sort((x, y) => order.indexOf(S.slotOf(x)) - order.indexOf(S.slotOf(y)));
@@ -756,7 +762,7 @@ actions.books = () => {
         })).join('')}</div>
         ${adds ? `<div class="grp-adds">${adds}</div>` : ''}
       </section>`;
-    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button>' + notifySection(u) + '</div>',
+    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button></div></div>' + notifySection(u) + '</div>',
     onMount(sh, close) {
       fillProfileSums(sh);
       fillPfVals(sh);
@@ -795,7 +801,17 @@ actions.books = () => {
           if (g) { close(); groupAddChooser(g); }
         }
         else if (e.target.closest('[data-over-edit]')) { close(); overNameForm(u); }
-        else if (e.target.closest('[data-over]')) { close(); actions['book-close'](); }
+        else if (e.target.closest('[data-over]')) {
+          // Bấm thẻ Tổng quan: mở / thu gọn phần Bank và tài khoản ngay trong thẻ (nhớ trạng thái).
+          booksOpen = !booksOpen;
+          localStorage.setItem(BOOKS_OPEN_KEY, booksOpen ? '1' : '0');
+          const tile = $(sh, '.over-tile');
+          tile.classList.toggle('open', booksOpen);
+          $(sh, '.over-banks').hidden = !booksOpen;
+          $(sh, '[data-over]').setAttribute('aria-expanded', String(booksOpen));
+          $(sh, '.over-caret').textContent = booksOpen ? '▴' : '▾';
+          $(sh, '.over-hint').textContent = booksOpen ? 'Bấm để thu gọn' : `Bấm để xem / tạo Bank và tài khoản (${S.userGroups(u.id).length} Bank · ${mine.length} tài khoản)`;
+        }
         else if (del) {
           const b = S.getProfiles().find((x) => x.id === del.dataset.del);
           if (b && await confirmDeleteProfile(b)) { refresh(); close(); actions.books(); }
