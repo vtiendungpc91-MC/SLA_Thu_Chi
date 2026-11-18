@@ -1,5 +1,5 @@
 // Trạng thái app + nghiệp vụ: số dư, tổng hợp, định kỳ, trả nợ, ngân sách, mục tiêu, sao lưu.
-import { db, dbOf, STORES, useProfile, dropProfile } from './db.js';
+import { db, dbOf, dbWrites, STORES, useProfile, dropProfile } from './db.js';
 import { BANK_LOGOS, bankIcon, plain } from './icons.js';
 import { uid, todayISO, addDays, addMonths, diffDays, getRange, nextDate, fmt, fmtTimeVN } from './utils.js';
 
@@ -764,15 +764,20 @@ export function fundsError(accountId, amountVnd, ignoreTx = null) {
 
 // ---------- Chuyển tiền giữa các người dùng ----------
 /** Đọc sổ của người khác; nếu sổ chưa từng mở thì tạo dữ liệu mặc định. */
+const catsSynced = new Map();
 async function openPeerBook(profileId) {
   const peer = dbOf(profileId);
-  let accs = await peer.getAll('accounts');
+  let accs = await readBook(profileId, 'accounts');
   if (!accs.length) {
     accs = seedRows().accs;
     await peer.bulkPut('accounts', accs);
   }
   await ensureGlobalCats();
-  const cats = await syncBookCats(peer);
+  // Đồng bộ danh mục chỉ khi danh sách chung đổi hoặc có ghi dữ liệu mới (đỡ đọc lại mỗi lần vẽ).
+  const sig = localStorage.getItem(CATS_KEY)?.length + ':' + dbWrites.n;
+  let cats;
+  if (catsSynced.get(profileId) === sig) cats = globalCats();
+  else { cats = await syncBookCats(peer); catsSynced.set(profileId, localStorage.getItem(CATS_KEY)?.length + ':' + dbWrites.n); }
   return { peer, cats, accs };
 }
 
@@ -816,11 +821,10 @@ export async function gop({ toProfileId, amount, fromAccountId, toAccountId, dat
 
 /** Số dư hiện tại của một tài khoản trong sổ người khác. */
 export async function peerBalance(profileId, accountId) {
-  const peer = dbOf(profileId);
-  const acc = (await peer.getAll('accounts')).find((a) => a.id === accountId);
+  const acc = (await readBook(profileId, 'accounts')).find((a) => a.id === accountId);
   if (!acc) return 0;
   let b = Number(acc.initial) || 0;
-  for (const t of await peer.getAll('transactions')) b += txEffect(t, accountId);
+  for (const t of await readBook(profileId, 'transactions')) b += txEffect(t, accountId);
   return b;
 }
 
@@ -1344,12 +1348,12 @@ export async function categoryNamesOf(bookIds) {
 /** Tóm tắt để hiện trong danh sách chọn: người dùng → tổng số dư; thẻ → số tiền đã chi chưa thanh toán. */
 export async function profileSummary(p) {
   const isCur = p.id === currentProfile().id;
-  const txs = isCur ? state.transactions : await dbOf(p.id).getAll('transactions');
+  const txs = isCur ? state.transactions : await readBook(p.id, 'transactions');
   if (p.kind === 'card' && !p.credit) {
     const open = txs.filter((t) => t.status !== 'done');
     return { kind: 'card', unpaid: open.reduce((s, t) => s + t.amountVnd, 0), count: open.length };
   }
-  const accs = (isCur ? state.accounts : await dbOf(p.id).getAll('accounts')).filter((a) => !a.archived);
+  const accs = (isCur ? state.accounts : await readBook(p.id, 'accounts')).filter((a) => !a.archived);
   let balance = 0;
   for (const a of accs) {
     let b = Number(a.initial) || 0;
@@ -1457,6 +1461,20 @@ export async function processRecurring() {
   added += await processSavingTerms();
   if (added) emit();
   return added;
+}
+
+// ---------- Đọc nhanh sổ của các mục (v7.67) ----------
+// Tổng quan đọc cùng một sổ nhiều lần trong một lượt vẽ (số dư, thu/chi, tổng, thông báo…). Kết quả đọc được giữ lại
+// và dùng lại cho đến khi có bất kỳ lần ghi dữ liệu nào (dbWrites.n đổi) nên không bao giờ hiện số cũ.
+const readCache = new Map();
+export function readBook(bookId, store) {
+  const k = bookId + '|' + store;
+  const hit = readCache.get(k);
+  if (hit && hit.n === dbWrites.n) return hit.p;
+  const p = dbOf(bookId).getAll(store);
+  readCache.set(k, { n: dbWrites.n, p });
+  p.catch(() => readCache.delete(k));
+  return p;
 }
 
 // ---------- Ghi giao dịch vào một mục bất kỳ (mục đang mở hoặc mục khác) ----------
@@ -1581,6 +1599,36 @@ export function splitAlerts() {
 /** Xóa nhóm: chỉ xóa nhóm, các giao dịch đã ghi (khoản chi, các khoản đã trả) vẫn giữ. */
 export const deleteSplit = (id) => writeSplits(splitGroups().filter((g) => g.id !== id));
 
+// ---------- Chuyến đi / Sự kiện (v7.67) ----------
+// Lưu chung ở "stc-trips": { id, name, icon, start, end }. Mọi khoản Thu/Chi (không tính Chuyển) của mọi tài khoản
+// có ngày trong khoảng start–end tự tính vào chuyến đi, không cần gắn tay.
+const TRIPS_KEY = 'stc-trips';
+export const trips = () => readJSON(TRIPS_KEY) || [];
+const writeTrips = (list) => { localStorage.setItem(TRIPS_KEY, JSON.stringify(list)); emit(); };
+export function saveTrip(t) {
+  const list = trips();
+  const item = { ...t, id: t.id || 'tp' + uid().slice(0, 8) };
+  writeTrips(t.id ? list.map((x) => (x.id === t.id ? item : x)) : [item, ...list]);
+  return item;
+}
+export const deleteTrip = (id) => writeTrips(trips().filter((t) => t.id !== id));
+export const activeTrips = (today = todayISO()) => trips().filter((t) => t.start <= today && today <= t.end);
+/** Giao dịch Thu/Chi của chuyến đi (mọi tài khoản trừ Secrecy), kèm tên/icon danh mục và tên mục. */
+export async function tripTxs(t) {
+  const cats = globalCats();
+  const out = [];
+  for (const b of getProfiles()) {
+    if (b.owner === SECRECY || ['neo', 'outflow'].includes(b.kind)) continue;
+    const txs = b.id === currentProfile().id ? state.transactions : await readBook(b.id, 'transactions');
+    for (const x of txs) {
+      if (x.gop || (x.type !== 'income' && x.type !== 'expense') || x.date < t.start || x.date > t.end) continue;
+      const c = cats.find((c2) => c2.id === (x.categoryId || x.splits?.[0]?.categoryId));
+      out.push({ ...x, mirror: true, catName: c?.name || '', catIcon: c?.icon || '🏷️', catColor: c?.color || '#888', flowLabel: bookLabelShort(b) });
+    }
+  }
+  return out;
+}
+
 // ---------- Gợi ý danh mục theo ghi chú (v7.56) ----------
 // Học từ giao dịch cũ của mọi tài khoản: ghi chú → danh mục hay dùng nhất. Ghi chú so sánh không dấu, chữ thường.
 const normNote = (s) => plain(s).replace(/\s+/g, ' ').trim();
@@ -1689,9 +1737,9 @@ export async function withBook(b, fn) {
   if (b.id === currentProfile().id) return fn();
   const { peer } = await openPeerBook(b.id);
   const data = { settings: { ...DEFAULT_SETTINGS } };
-  for (const s of LIST) data[s] = await peer.getAll(s);
+  for (const s of LIST) data[s] = await readBook(b.id, s);
   data.categories = globalCats();
-  for (const r of await peer.getAll('settings')) data.settings[r.key] = r.value;
+  for (const r of await readBook(b.id, 'settings')) data.settings[r.key] = r.value;
   const saved = {};
   for (const k of Object.keys(data)) saved[k] = state[k];
   Object.assign(state, data);
@@ -1924,9 +1972,9 @@ export async function userAlerts(userId) {
     else {
       const peer = dbOf(b.id);
       const data = { settings: { ...DEFAULT_SETTINGS } };
-      for (const s of LIST) data[s] = await peer.getAll(s);
+      for (const s of LIST) data[s] = await readBook(b.id, s);
       data.categories = globalCats();
-      for (const r of await peer.getAll('settings')) data.settings[r.key] = r.value;
+      for (const r of await readBook(b.id, 'settings')) data.settings[r.key] = r.value;
       const saved = {};
       for (const k of Object.keys(data)) saved[k] = state[k];
       Object.assign(state, data);
@@ -2017,10 +2065,10 @@ export function statsOf(st = state.settings) {
 
 /** Số liệu trong kỳ của một mục (đọc trực tiếp từ sổ của mục đó). */
 export async function bookOverview(b, range) {
-  const { peer, accs, cats } = await openPeerBook(b.id);
-  const txs = await peer.getAll('transactions');
+  const { accs, cats } = await openPeerBook(b.id);
+  const txs = await readBook(b.id, 'transactions');
   const settings = { ...DEFAULT_SETTINGS };
-  for (const r of await peer.getAll('settings')) settings[r.key] = r.value;
+  for (const r of await readBook(b.id, 'settings')) settings[r.key] = r.value;
   const inRange = (d) => !!d && d >= range.start && d <= range.end;
   const active = accs.filter((a) => !a.archived).sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
   let balance = 0, income = 0, expense = 0;
@@ -2048,7 +2096,25 @@ export async function bookOverview(b, range) {
       const flow = t.gop?.flowCat ? flowCatById(t.gop.flowCat) : null;
       return { ...t, catName: cats.find((c) => c.id === t.categoryId)?.name || '', catIcon: flow?.icon || cat?.icon || '' };
     });
-  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent, cats };
+  // Biểu đồ mini (v7.67): số dư cuối mỗi ngày trong 30 ngày gần nhất (cũ → mới). Thẻ trả trước kiểu cũ không có số dư.
+  let spark = null;
+  if (!(kindOfBook(b) === 'card' && !b.credit)) {
+    const today = todayISO(), from = addDays(today, -29);
+    const ids = new Set(active.map((a) => a.id));
+    const dayNet = new Map();
+    let future = 0;
+    for (const t of txs) {
+      let e = 0;
+      for (const id of ids) e += txEffect(t, id);
+      if (!e) continue;
+      if (t.date > today) future += e;
+      else if (t.date >= from) dayNet.set(t.date, (dayNet.get(t.date) || 0) + e);
+    }
+    spark = new Array(30);
+    let bal = balance - future;
+    for (let i = 29, d = today; i >= 0; i--, d = addDays(d, -1)) { spark[i] = bal; bal -= dayNet.get(d) || 0; }
+  }
+  return { book: b, number: active[0]?.number || '', balance, income, expense, net: income - expense, settings, recent, cats, spark };
 }
 
 // ---------- User đặc biệt: Personal / Family ----------
@@ -2215,7 +2281,7 @@ export async function exportAll() {
   const profiles = getProfiles();
   const books = {};
   for (const p of profiles) books[p.id] = await exportBook(p.id);
-  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), gStats: gStats(), splits: splitGroups(), typeIcons: readJSON(TYPE_ICONS_KEY), txIcons: txIcons() };
+  return { app: 'sothuchi', version: 3, all: true, exportedAt: new Date().toISOString(), current: currentProfile().id, users: getUsers(), groups: getGroups(), profiles, books, flowCats: allFlowCats(), cats: globalCats(), gStats: gStats(), splits: splitGroups(), trips: trips(), typeIcons: readJSON(TYPE_ICONS_KEY), txIcons: txIcons() };
 }
 
 /**
@@ -2248,6 +2314,7 @@ export async function importAny(data) {
   if (Array.isArray(data.gStats)) localStorage.setItem(GSTATS_KEY, JSON.stringify(data.gStats)); else localStorage.removeItem(GSTATS_KEY);
   if (data.typeIcons) localStorage.setItem(TYPE_ICONS_KEY, JSON.stringify(data.typeIcons));
   if (Array.isArray(data.splits)) localStorage.setItem(SPLITS_KEY, JSON.stringify(data.splits));
+  if (Array.isArray(data.trips)) localStorage.setItem(TRIPS_KEY, JSON.stringify(data.trips));
   if (data.txIcons) localStorage.setItem(TX_ICONS_KEY, JSON.stringify(data.txIcons));
   // Bản sao lưu cũ có thể còn Category: cho chạy lại các bước chuyển dữ liệu.
   for (const k of ['stc-model', 'stc-model5', 'stc-model6']) localStorage.removeItem(k);

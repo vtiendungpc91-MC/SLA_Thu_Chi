@@ -1375,3 +1375,42 @@ html.dark .rich-sel.acc-out { color: #ff8a8f; } html.dark .rich-sel.acc-in { col
 .over-tile .over-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 11.5px; font-weight: 400; }
 .over-tile .over-banks { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
 .over-tile .over-banks[hidden] { display: none; }
+/* v7.67: thanh điều hướng dưới cố định — Tổng quan · Giao dịch · ＋ · Báo cáo · Kế hoạch */
+.tabbar { align-items: flex-end; }
+.tabbar a[hidden] { display: none; }
+.tabbar .tb-add { flex: 0 0 58px; height: 46px; margin: -16px 6px 2px; border: 0; border-radius: 18px; background: var(--kc, #e8590c); color: var(--kc-on, #fff); font-size: 28px; line-height: 1; box-shadow: 0 6px 16px rgba(0, 0, 0, .22); display: grid; place-items: center; }
+.tabbar .tb-add:active { transform: scale(.95); }
+/* Đã có ＋ ở thanh dưới: ẩn nút ＋ tròn phía trên cho khỏi trùng */
+body:not(.no-tabbar) .fab { display: none !important; }
+/* A4: chế độ gọn — thu nhỏ toàn bộ khoảng 85% */
+html.compact body { zoom: .85; }
+/* A3: biểu đồ mini số dư 30 ngày trên thẻ tài khoản */
+.over-acc .spark { flex: 0 0 60px; width: 60px; height: 16px; margin: 0 8px 0 auto; align-self: center; overflow: visible; }
+.over-acc .spark polyline, .over-acc .spark line { fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.over-acc .spark.up polyline { stroke: #2f9e44; }
+.over-acc .spark.down polyline { stroke: #e03131; }
+.over-acc .spark.flat line { stroke: var(--muted); stroke-dasharray: 2 3; }
+/* A1: vuốt trái dòng giao dịch để hiện Sửa · Nhân bản · Xóa */
+.sw-row { position: relative; overflow: hidden; }
+.sw-row .sw-acts { position: absolute; top: 0; right: 0; bottom: 0; display: flex; }
+.sw-row .sw-btn { width: 62px; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 18px; background: #e7eefc; color: #1c4fbf; }
+.sw-row .sw-btn small { font-size: 10.5px; font-weight: 600; }
+.sw-row .sw-btn + .sw-btn { background: #e9f6ee; color: #18794e; }
+.sw-row .sw-btn.sw-red { background: #fde4e5; color: #c62f35; }
+html.dark .sw-row .sw-btn { background: #172a4a; color: #9cc0ff; }
+html.dark .sw-row .sw-btn + .sw-btn { background: #133523; color: #8ce99a; }
+html.dark .sw-row .sw-btn.sw-red { background: #3d1a1f; color: #ff8a8f; }
+.sw-row .sw-front { position: relative; background: var(--card); transition: transform .2s ease; touch-action: pan-y; }
+.sw-row.open .sw-front { transform: translateX(calc(-1 * var(--sw-w))); }
+.rc-box .sw-row .sw-front { background: var(--card); }
+/* A5: gợi ý khi bấm + */
+.tx-sug { margin-bottom: 4px; }
+.tx-sug > small { display: block; color: var(--muted); font-size: 11.5px; margin-bottom: 4px; }
+.tx-sug .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tx-sug .chips::-webkit-scrollbar { display: none; }
+.tx-sug .chip { flex: 0 0 auto; white-space: nowrap; font-size: 12.5px; padding: 5px 10px; }
+.tx-sug .chip.on { outline: 2px solid var(--kc, #e8590c); }
+/* B3: ô gõ nhanh bằng câu ở đầu form + */
+.nl-row { display: flex; gap: 6px; align-items: center; }
+.nl-row input { flex: 1 1 auto; min-width: 0; height: 38px; min-height: 38px; border: 1px dashed var(--kc, #e8590c); border-radius: 12px; padding: 0 12px; background: color-mix(in srgb, var(--kc, #e8590c) 6%, var(--card)); font-size: 16px; color: inherit; }
+.nl-row .btn { flex: 0 0 auto; height: 38px; }

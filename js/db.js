@@ -51,9 +51,14 @@ async function run(store, mode, fn) {
   return runOn(await open(), store, mode, fn);
 }
 
+/** Đếm số lần ghi dữ liệu (mọi sổ): bộ nhớ đọc nhanh chỉ dùng lại kết quả khi chưa có lần ghi nào mới (v7.67). */
+export const dbWrites = { n: 0 };
+
 function runOn(d, store, mode, fn) {
+  if (mode === 'readwrite') dbWrites.n++;
   return new Promise((resolve, reject) => {
     const t = d.transaction(store, mode);
+    if (mode === 'readwrite') t.addEventListener('complete', () => { dbWrites.n++; });
     const os = t.objectStore(store);
     let result;
     const r = fn(os);

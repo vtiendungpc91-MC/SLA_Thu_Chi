@@ -9,6 +9,8 @@
   <script>
     // Áp chế độ sáng/tối trước khi vẽ để không bị nháy màn hình: 7:00–20:00 sáng, 20:00–7:00 tối.
     try {
+      // Chế độ gọn (Cài đặt chung): áp trước khi vẽ để không bị nháy.
+      if (localStorage.getItem('stc-compact') === '1') document.documentElement.classList.add('compact');
       var h = new Date().getHours();
       if (h >= 20 || h < 7) {
         document.documentElement.classList.add('dark');
@@ -29,10 +31,13 @@
 <body>
   <div id="app">
     <main id="main" class="main"></main>
+    <!-- v7.67: thanh điều hướng dưới cố định ở mọi màn hình -->
     <nav class="tabbar" id="tabbar">
+      <a href="#/home" data-tab="home"><span class="ti">🏠</span><span>Tổng quan</span></a>
       <a href="#/tx" data-tab="tx"><span class="ti">📒</span><span>Giao dịch</span></a>
+      <button type="button" class="tb-add" data-act="add" aria-label="Thêm giao dịch"><span>＋</span></button>
       <a href="#/reports" data-tab="reports"><span class="ti">📊</span><span>Báo cáo</span></a>
-      <a href="#/bookset" data-tab="bookset"><span class="ti">⚙️</span><span>Cài đặt</span></a>
+      <a href="#/plan" data-tab="plan"><span class="ti">🎯</span><span>Kế hoạch</span></a>
     </nav>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

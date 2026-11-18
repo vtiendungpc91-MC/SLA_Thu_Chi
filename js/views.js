@@ -1,7 +1,7 @@
 // Các màn hình và form của app.
 import * as S from './store.js';
 import { state } from './store.js';
-import { dbOf } from './db.js';
+import { dbOf, dbWrites } from './db.js';
 import {
   ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, restorePageScroll, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
@@ -184,6 +184,161 @@ async function removeBlock(t) {
 }
 
 /**
+ * Gợi ý khi bấm + (v7.67): 3 giao dịch Thu/Chi bạn hay ghi nhất trong 90 ngày ở mục đang mở, ưu tiên những khoản
+ * thường ghi vào khung giờ này (±2 giờ). Cùng loại + danh mục + ghi chú + số tiền tính là một mẫu.
+ */
+function txSuggestHtml() {
+  const now = new Date(), hour = now.getHours(), since = addDays(todayISO(), -90);
+  const map = new Map();
+  for (const t of state.transactions) {
+    if (t.gop || t.cardPay || t.debtId || (t.type !== 'income' && t.type !== 'expense') || !t.categoryId || t.date < since) continue;
+    const k = [t.type, t.categoryId, t.note || '', t.amountVnd].join('|');
+    const m = map.get(k) || { t, n: 0, near: 0, last: 0 };
+    m.n++;
+    if (t.createdAt) {
+      const h = new Date(t.createdAt).getHours();
+      if (Math.min(Math.abs(h - hour), 24 - Math.abs(h - hour)) <= 2) m.near++;
+      m.last = Math.max(m.last, t.createdAt);
+    }
+    map.set(k, m);
+  }
+  const top = [...map.values()].filter((m) => m.n >= 2 || m.near >= 1)
+    .sort((a, b) => b.near * 3 + b.n - (a.near * 3 + a.n) || b.last - a.last).slice(0, 3);
+  if (!top.length) return '';
+  return `<div class="tx-sug" data-tx-sug><small>✨ Hay ghi lúc này</small><div class="chips">${top.map(({ t }) => {
+    const c = S.catById(t.categoryId);
+    return `<button type="button" class="chip" data-sg="${esc([t.type, t.categoryId, t.amountVnd].join('|'))}" data-note="${esc(t.note || '')}">${esc(c?.icon || '')} ${esc(t.note || c?.name || '')} · <b class="${t.type}">${fmtShort(t.amountVnd)}</b></button>`;
+  }).join('')}</div></div>`;
+}
+
+/**
+ * B3 nhập bằng câu (v7.67): "ăn trưa 35k vcb" → Chi 35.000, tài khoản có logo VCB, ghi chú "ăn trưa".
+ * Số tiền: 35k, 1tr2, 15tr, 500.000, "2 triệu". Thu nếu có lương / thưởng / thu / lãi / hoàn tiền / được cho… còn lại là Chi.
+ * Tài khoản: so với tên mục, tên Bank, mã logo ngân hàng (vcb, tcb…), tên tài khoản. books = các mục được chọn.
+ */
+const INCOME_WORDS = ['luong', 'thuong', 'thu nhap', 'thu ', 'lai ', 'lai tiet kiem', 'hoan tien', 'duoc cho', 'duoc tang', 'ban hang', 'ban duoc', 'nhan luong', 'tien ve'];
+function parseQuickText(text, books) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const words = raw.split(/\s+/);
+  let amount = 0;
+  const used = new Set();
+  const UNIT = { k: 1e3, nghin: 1e3, ngan: 1e3, tr: 1e6, trieu: 1e6, cu: 1e6, m: 1e6, ty: 1e9 };
+  for (let i = 0; i < words.length && !amount; i++) {
+    const w = words[i], nw = plain(words[i + 1] || '');
+    if (/^\d[\d.,]*$/.test(w) && UNIT[nw]) { amount = Math.round(parseFloat(w.replace(/\./g, '').replace(',', '.')) * UNIT[nw]); used.add(i).add(i + 1); break; }
+    if (/\d/.test(w)) { const a = parseAmount(w); if (a > 0) { amount = Math.round(a); used.add(i); } }
+  }
+  let bookId = null, accountId = null;
+  for (let i = 0; i < words.length; i++) {
+    if (used.has(i)) continue;
+    const w = plain(words[i]);
+    if (w.length < 2) continue;
+    const b = (books || []).find((x) => {
+      const g = S.groupOf(x);
+      const code = /🏦\u2063([A-Z]{2,6})/.exec(g?.icon || '')?.[1]?.toLowerCase();
+      return code === w || plain(x.name) === w || (g && plain(g.name).replace(/\s+/g, '') === w);
+    });
+    if (b) { bookId = b.id; used.add(i); break; }
+  }
+  if (!bookId) {
+    for (let i = 0; i < words.length; i++) {
+      if (used.has(i)) continue;
+      const w = plain(words[i]);
+      const a = w.length >= 2 && S.activeAccounts().find((x) => plain(x.name).split(/\s+/).includes(w) || plain(x.bank || '').replace(/\s+/g, '') === w);
+      if (a) { accountId = a.id; used.add(i); break; }
+    }
+  }
+  const note = words.filter((_, i) => !used.has(i)).join(' ').trim();
+  const p = ' ' + plain(raw) + ' ';
+  const type = INCOME_WORDS.some((k) => p.includes(' ' + k)) ? 'income' : 'expense';
+  if (!amount && !note) return null;
+  return { amount, type, bookId, accountId, note };
+}
+
+// ================= Vuốt dòng giao dịch (v7.67) =================
+// Vuốt trái một dòng (màn hình Giao dịch, Giao dịch gần đây) để hiện ✏️ Sửa · 📄 Nhân bản · 🗑 Xóa.
+// Nhân bản chỉ có ở khoản Thu/Chi thường; Xóa chỉ hiện khi giao dịch chưa quá 24 giờ.
+function swipeWrap(inner, t, bookId) {
+  const dup = !t.gop && !t.cardPay && !t.debtId && (t.type === 'income' || t.type === 'expense');
+  const del = S.canDeleteTx(t);
+  const n = 1 + dup + del;
+  const btn = (act, ic, label, cls = '') => `<button type="button" class="sw-btn ${cls}" data-act="${act}" data-id="${esc(t.id)}" data-book="${esc(bookId)}">${ic}<small>${label}</small></button>`;
+  return `<div class="sw-row" style="--sw-w:${n * 62}px"><div class="sw-acts">${btn('sw-edit', '✏️', 'Sửa')}${dup ? btn('sw-dup', '📄', 'Nhân bản') : ''}${del ? btn('sw-del', '🗑', 'Xóa', 'sw-red') : ''}</div><div class="sw-front">${inner}</div></div>`;
+}
+const swTx = async (el) => { await inBook(el.dataset.book); closeSwipes(); return state.transactions.find((x) => x.id === el.dataset.id); };
+actions['sw-edit'] = async (el) => {
+  const t = await swTx(el);
+  if (!t) return toast('Không tìm thấy giao dịch');
+  if (t.gop) return gopDetail(t);
+  if (t.cardPay) return cardPayDetail(t);
+  openTxForm({ tx: t });
+};
+actions['sw-dup'] = async (el) => {
+  const t = await swTx(el);
+  if (!t) return toast('Không tìm thấy giao dịch');
+  const { type, amount, currency, rate, categoryId, accountId, note, tags, splits } = t;
+  openTxForm({ type, preset: { type, amount, currency, rate, categoryId, accountId, note, tags: tags || [], splits: splits ? splits.map((p) => ({ ...p })) : null, date: todayISO() } });
+};
+actions['sw-del'] = async (el) => {
+  const t = await swTx(el);
+  if (!t) return toast('Không tìm thấy giao dịch');
+  const err = await removeBlock(t);
+  if (err) return toast('⛔ ' + err, 4500);
+  if (!confirm(`Xóa giao dịch ${fmt(t.amountVnd)}${t.note ? ` "${t.note}"` : ''}?${t.gop ? ' Giao dịch ở mục bên kia cũng bị xóa.' : ''}`)) return;
+  try { await S.deleteTx(t); } catch (e) { return toast('⛔ ' + e.message, 4500); }
+  toast('Đã xóa giao dịch');
+};
+function closeSwipes(except = null) {
+  document.querySelectorAll('.sw-row.open').forEach((r) => { if (r !== except) r.classList.remove('open'); });
+}
+(() => {
+  let s = null, justSwiped = 0;
+  document.addEventListener('pointerdown', (e) => {
+    const front = e.target.closest?.('.sw-front');
+    if (!front) { if (!e.target.closest?.('.sw-acts')) closeSwipes(); return; }
+    const row = front.parentElement;
+    closeSwipes(row);
+    s = { row, front, x: e.clientX, y: e.clientY, w: parseFloat(getComputedStyle(row).getPropertyValue('--sw-w')) || 124, base: row.classList.contains('open') ? -1 : 0, on: false };
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    if (!s) return;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    if (!s.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { s = null; return; } // cuộn dọc
+      if (Math.abs(dx) < 10) return;
+      s.on = true;
+      s.front.style.transition = 'none';
+    }
+    const x = Math.max(-s.w - 20, Math.min(0, s.base * s.w + dx));
+    s.front.style.transform = `translateX(${x}px)`;
+  }, true);
+  const end = (e) => {
+    if (!s) return;
+    const d = s;
+    s = null;
+    if (!d.on) return;
+    justSwiped = Date.now();
+    const dx = e.clientX - d.x;
+    const open = d.base * d.w + dx < -d.w / 2;
+    d.front.style.transition = '';
+    d.front.style.transform = '';
+    d.row.classList.toggle('open', open);
+  };
+  document.addEventListener('pointerup', end, true);
+  document.addEventListener('pointercancel', end, true);
+  // Vừa vuốt xong thì không tính là bấm (không mở form); bấm vào dòng đang mở thì chỉ đóng lại.
+  document.addEventListener('click', (e) => {
+    const front = e.target.closest?.('.sw-front');
+    if (!front) return;
+    if (Date.now() - justSwiped < 350 || front.parentElement.classList.contains('open')) {
+      e.stopPropagation(); e.preventDefault();
+      if (Date.now() - justSwiped >= 350) front.parentElement.classList.remove('open');
+    }
+  }, true);
+})();
+
+/**
  * Số dư của tài khoản ngay sau mỗi giao dịch (txId → số dư), tính trên toàn bộ giao dịch của mục đang mở,
  * xếp theo ngày rồi giờ ghi. Chuyển giữa 2 tài khoản trong mục: lấy số dư của tài khoản bị trừ tiền.
  * Khoản không gắn tài khoản (thẻ kiểu cũ) thì không có.
@@ -241,7 +396,7 @@ function groupedTx(list) {
   return [...groups.entries()].map(([d, items]) => {
     const net = items.reduce((s, t) => s + (t.type === 'income' ? t.amountVnd : t.type === 'expense' ? -t.amountVnd : 0), 0);
     return `<div class="day"><div class="day-h"><span>${fmtDayHeader(d)}</span><span class="${net >= 0 ? 'income' : 'expense'}">${fmtSigned(net)}</span></div>
-      <div class="card list">${items.map((t) => txRow(t, bals.get(t.id))).join('')}</div></div>`;
+      <div class="card list">${items.map((t) => swipeWrap(txRow(t, bals.get(t.id)), t, S.currentProfile().id)).join('')}</div></div>`;
   }).join('');
 }
 
@@ -376,7 +531,7 @@ function topBar(sub = '', right = '', title = '') {
       <small class="chip-sub pf-f" data-pf-top="family" hidden></small>
     </div>
   </header>
-  <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div><div class="title-acts">${right}${maskBtn()}</div></div>`;
+  <div class="title-row"><div><h1>${esc(b.name)}${b.locked ? ' <span class="lock-badge" title="Mục đang khóa">🔒</span>' : ''}</h1>${sub ? `<small>${sub}</small>` : ''}</div><div class="title-acts">${right}${current.route !== 'bookset' ? '<a class="icon-btn" href="#/bookset" title="Cài đặt riêng của mục" aria-label="Cài đặt riêng của mục">⚙️</a>' : ''}${maskBtn()}</div></div>`;
 }
 
 // Các số phải đọc bất đồng bộ: hiện ngay giá trị lần trước rồi cập nhật, để không bị trống rồi hiện lại (chớp).
@@ -631,7 +786,7 @@ const NOTIF = {
   creditpay: { icon: '💳', btn: '💸 Thanh toán' },
   maturity: { icon: '📅', btn: 'Xem' },
   split: { icon: '👥', btn: '💸' },
-  backup: { icon: '💾', btn: 'Sao lưu' },
+  backup: { icon: '💾', btn: '💾 Lưu ngay' },
 };
 function notifRow(a) {
   const sub = a.kind === 'budget'
@@ -655,6 +810,7 @@ async function fillNotifications(sh) {
   const n = sh.querySelector('[data-notif-n]'), list = sh.querySelector('[data-notif-list]');
   showCached(n, key + ':n'); showCached(list, key);
   const alerts = await S.userAlerts(S.currentUser().id);
+  if (alerts.some((a) => a.kind === 'backup')) prepareBackup(); // chuẩn bị sẵn file để bấm Lưu ngay là chia sẻ luôn
   setCached(n, key + ':n', `(${alerts.length})`);
   setCached(list, key, alerts.length
     ? alerts.map(notifRow).join('') : '<p class="muted small center">Không có thông báo nào.</p>');
@@ -663,7 +819,7 @@ async function fillNotifications(sh) {
 /** Mở đúng mục rồi thực hiện thao tác của thông báo. */
 async function runNotif({ notif, book, id, due }) {
   if (notif === 'reminder') { S.doneReminder(S.currentUser().id, id); return toast('Đã Done'); }
-  if (notif === 'backup') return actions.backup();
+  if (notif === 'backup') return backupNow();
   if (notif === 'creditpay') { // Thanh toán thẻ ngay trên màn hình hiện tại: chọn tài khoản Thanh Toán của Bank để trả.
     const card = S.getProfiles().find((p) => p.id === (book || id));
     if (!card) return toast('Không tìm thấy thẻ');
@@ -1834,10 +1990,10 @@ function recentRows(list, b) {
     const sign = t.type === 'income' ? 1 : t.type === 'expense' ? -1 : 0;
     const when = `${t.date === today ? '' : fmtDM(t.date) + ' '}${t.createdAt && t.date === today ? fmtTimeVN(t.createdAt) : ''}`.trim();
     // Thứ tự: tên · (nút Recall) · số tiền · ô icon danh mục rộng cố định → số tiền mọi dòng thẳng cột bên phải.
-    return `<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(isPlainGop(t) ? recentGopText(t) : txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
+    return swipeWrap(`<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(isPlainGop(t) ? recentGopText(t) : txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
       ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
-      <span class="rc-cat" aria-hidden="true">${esc(t.catIcon || '')}</span></div>`;
+      <span class="rc-cat" aria-hidden="true">${esc(t.catIcon || '')}</span></div>`, t, b.id);
   }).join('');
   return `<div class="rc-box">
     <div class="rc-head"><small>Giao dịch gần đây</small><button type="button" class="link rc-toggle" data-act="recent-toggle" data-id="${esc(b.id)}">${b.hideRecent ? 'Hiện' : 'Ẩn'}</button></div>
@@ -1879,6 +2035,16 @@ actions['card-fold'] = (el) => {
   });
 };
 
+/** Biểu đồ mini số dư 30 ngày (xanh: tăng / đứng, đỏ: giảm so với 30 ngày trước). Ẩn khi đang che số tiền. */
+function sparkSvg(s) {
+  if (!s || s.length < 2 || isMasked()) return '';
+  const min = Math.min(...s), max = Math.max(...s);
+  if (min === max) return '<svg class="spark flat" viewBox="0 0 60 16" aria-hidden="true"><line x1="0" y1="8" x2="60" y2="8"/></svg>';
+  const pts = s.map((v, i) => `${(i * 60 / (s.length - 1)).toFixed(1)},${(14 - (v - min) / (max - min) * 12).toFixed(1)}`).join(' ');
+  const up = s[s.length - 1] >= s[0];
+  return `<svg class="spark ${up ? 'up' : 'down'}" viewBox="0 0 60 16" aria-label="Số dư 30 ngày: ${up ? 'tăng' : 'giảm'}"><polyline points="${pts}"/></svg>`;
+}
+
 let recallTimer = null;
 async function overCard(b) {
   const r = overRange();
@@ -1899,7 +2065,7 @@ async function overCard(b) {
   return `<section class="card over-acc${folded ? ' folded' : ''}" style="--c:${esc(b.color)}">
     <div class="over-head" role="button" tabindex="0" data-act="book-open" data-id="${esc(b.id)}">
       <span class="ol"><b><span class="ol-ic" data-act="card-fold" data-id="${esc(b.id)}" role="button" aria-label="Thu gọn / mở rộng thẻ" aria-expanded="${folded ? 'false' : 'true'}">${esc(b.icon || kindOf(b).icon)}</span> ${esc(b.name)}${logo ? ` <span class="ol-logo">${esc(logo)}</span>` : ''}${b.locked ? ' 🔒' : ''}</b><span class="ol-right"><b class="ol-bal ${isCard ? 'expense' : o.balance < 0 ? 'expense' : ''}">${fmtBal(o.balance)}</b>${b.kind === 'card' ? `<button type="button" class="over-pay" data-act="over-pay" data-id="${esc(b.id)}" aria-label="Thanh toán" title="Thanh toán">💸</button>` : ''}</span></span>
-      <span class="ol ol-sm"><small>${esc([grpName && grpName !== b.name ? grpName : null, sub].filter(Boolean).join(' · '))}</small><span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
+      <span class="ol ol-sm"><small>${esc([grpName && grpName !== b.name ? grpName : null, sub].filter(Boolean).join(' · '))}</small>${sparkSvg(o.spark)}<span class="${o.net >= 0 ? 'income' : 'expense'}">${fmtSigned(o.net)}</span></span>
       <span class="ol ol-sm"><span class="income">${isCard ? 'Đã TT' : 'Thu'} ${fmt(o.income)}</span><span class="expense">Chi ${fmt(o.expense)}</span></span>
     </div>
     ${quickRows(quicks, b.id, o.cats)}
@@ -1933,7 +2099,8 @@ async function fillStatBanner(root) {
   if (!el) return;
   const token = ++statBannerToken;
   const list = S.gStats().filter((x) => x.show !== false);
-  if (!list.length) { el.hidden = true; el.innerHTML = ''; statBannerCache = ''; return; }
+  const tripsNow = S.activeTrips();
+  if (!list.length && !tripsNow.length) { el.hidden = true; el.innerHTML = ''; statBannerCache = ''; return; }
   const r = overRange();
   const items = [];
   for (const st of list) {
@@ -1944,6 +2111,13 @@ async function fillStatBanner(root) {
       const parts = [(st.income || []).length ? `Thu ${fmtShort(inc)}` : '', (st.expense || []).length ? `Chi ${fmtShort(exp)}` : ''].filter(Boolean);
       const net = (st.income || []).length && (st.expense || []).length ? ` · <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b>` : '';
       items.push({ id: st.id, html: `${esc(statIcon(st))} <b>${esc(statName(st))}</b> · ${esc(statPeriodLabel())}: ${esc(parts.join(' · '))}${net}` });
+    } catch (err) { console.warn(err); }
+  }
+  // Chuyến đi đang diễn ra cũng chạy trên băng rôn (bấm để xem chi tiết).
+  for (const t of tripsNow) {
+    try {
+      const exp = statSum(await S.tripTxs(t), 'expense');
+      items.push({ id: t.id, act: 'trip-open', html: `${esc(t.icon || '✈️')} <b>${esc(t.name)}</b> · ${tripRange(t)}: đã chi ${esc(fmtShort(exp))}` });
     } catch (err) { console.warn(err); }
   }
   if (token !== statBannerToken || !el.isConnected) return;
@@ -1962,7 +2136,7 @@ async function fillStatBanner(root) {
     t.style.animation = `sb-scroll ${dur}s linear 1s ${loop ? 'infinite alternate' : '1'} both`;
     return Math.max(STAT_BANNER_MS, 1000 + dur * 1000 + 1500);
   };
-  el.innerHTML = `<button type="button" class="sb-track" data-act="stat-open" data-id="${esc(items[0].id)}">${line(items[0])}</button>`;
+  el.innerHTML = `<button type="button" class="sb-track" data-act="${items[0].act || 'stat-open'}" data-id="${esc(items[0].id)}">${line(items[0])}</button>`;
   statBannerCache = el.innerHTML; // Vẽ lại Tổng quan thì hiện ngay dòng đầu, không bị trống.
   el.hidden = false;
   const first = marquee(el.querySelector('.sb-line'), items.length < 2);
@@ -1975,6 +2149,7 @@ async function fillStatBanner(root) {
     const old = track.querySelector('.sb-line');
     track.insertAdjacentHTML('beforeend', line(items[i], 'sb-in'));
     track.dataset.id = items[i].id;
+    track.dataset.act = items[i].act || 'stat-open';
     old?.classList.add('sb-out');
     const neu = track.lastElementChild;
     setTimeout(() => { old?.remove(); neu.classList.remove('sb-in'); }, 500);
@@ -2636,7 +2811,7 @@ actions['tx-tag-go'] = (el) => {
 };
 
 // ================= Kế hoạch =================
-const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả nợ', recurring: 'Định kỳ' };
+const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả nợ', recurring: 'Định kỳ', trips: 'Chuyến đi' };
 
 /**
  * Kế hoạch là màn hình chung của User (mở từ mục Thông báo ở màn hình nút góc phải), không còn ở thanh dưới của mục.
@@ -2677,6 +2852,7 @@ async function mountPlan(root) {
 }
 
 async function planTabHtml(tab) {
+  if (tab === 'trips') return tripsTabHtml();
   const books = planBooks(tab);
   const today = todayISO();
   const m = getRange('month', today);
@@ -2724,6 +2900,87 @@ async function planTabHtml(tab) {
   return `<p class="muted">Lương, tiền nhà, điện nước, Netflix… Chọn Ngân hàng giao dịch, rồi <b>tự động ghi</b> khi đến ngày hoặc <b>chờ xác nhận</b>.</p>
     ${sections || empty('🔁', 'Chưa có khoản định kỳ.')}${add('+ Thêm khoản định kỳ')}`;
 }
+
+// ================= Chuyến đi / Sự kiện (v7.67) =================
+// Tạo "Đà Lạt 12–15/12": mọi khoản Thu/Chi của mọi tài khoản trong khoảng ngày đó tự tính vào chuyến đi.
+const tripRange = (t) => `${fmtDM(t.start)}${t.end !== t.start ? '–' + fmtDM(t.end) : ''}/${t.end.slice(0, 4)}`;
+const tripStatus = (t, today = todayISO()) => (t.end < today ? 'past' : t.start > today ? 'soon' : 'now');
+async function tripsTabHtml() {
+  const today = todayISO();
+  const order = { now: 0, soon: 1, past: 2 };
+  const list = [...S.trips()].sort((a, b) => order[tripStatus(a, today)] - order[tripStatus(b, today)] || (a.start < b.start ? 1 : -1));
+  let rows = '';
+  for (const t of list) {
+    const txs = await S.tripTxs(t);
+    const exp = statSum(txs, 'expense');
+    const st = tripStatus(t, today);
+    rows += `<button type="button" class="row" data-act="trip-open" data-id="${esc(t.id)}"><span class="ci">${esc(t.icon || '✈️')}</span>
+      <span class="grow"><b>${esc(t.name)}</b><small>${tripRange(t)} · ${st === 'now' ? '🟢 Đang diễn ra' : st === 'soon' ? 'Sắp tới' : 'Đã xong'} · ${txs.length} giao dịch</small></span>
+      <span class="amt expense">${fmtShort(exp)}</span></button>`;
+  }
+  return `<p class="muted">Tạo chuyến đi hoặc sự kiện (du lịch, đám cưới, Tết…). Mọi khoản Thu/Chi của mọi tài khoản trong khoảng ngày đó tự tính vào, xem tổng chi theo danh mục và chia tiền nhóm.</p>
+    ${rows ? `<div class="card list">${rows}</div>` : empty('✈️', 'Chưa có chuyến đi / sự kiện nào.')}
+    <button type="button" class="btn primary block" data-act="trip-edit">+ Thêm chuyến đi / sự kiện</button>`;
+}
+actions['trip-edit'] = (el) => tripForm(S.trips().find((x) => x.id === el?.dataset?.id) || null);
+function tripForm(t) {
+  const f = t ? { ...t } : { name: '', icon: '✈️', start: todayISO(), end: addDays(todayISO(), 2) };
+  const formId = 'tpf-' + Date.now();
+  openSheet({
+    title: `${t ? 'Sửa' : 'Thêm'} chuyến đi / sự kiện`,
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form" id="${formId}">
+      ${field('Tên', `<input id="tp-name" required maxlength="40" value="${esc(f.name)}" placeholder="vd: Đà Lạt, Đám cưới Lan, Tết 2027">`)}
+      <div class="two">${datePick('tp-start', f.start, 'Từ ngày')}${datePick('tp-end', f.end, 'Đến ngày')}</div>
+      <div class="field"><span>Biểu tượng <b id="tp-icon-now">${esc(f.icon)}</b></span>${iconPickerHtml('tp-icons', f.icon)}</div>
+      ${t ? '<div class="actions"><button type="button" class="btn danger" data-del>Xóa chuyến đi</button></div>' : ''}
+      <p class="muted small">Xóa chuyến đi không xóa giao dịch nào.</p>
+    </form>`,
+    onMount(sh, close) {
+      bindIconPicker($(sh, '#tp-icons'), (x) => { f.icon = x; $(sh, '#tp-icon-now').textContent = x; }, () => f.icon);
+      $(sh, 'form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = $(sh, '#tp-name').value.trim(), start = $(sh, '#tp-start').value, end = $(sh, '#tp-end').value;
+        if (!name) return toast('Nhập tên chuyến đi');
+        if (!start || !end) return toast('Chọn ngày bắt đầu và kết thúc');
+        if (end < start) return toast('Ngày kết thúc phải sau ngày bắt đầu');
+        S.saveTrip({ ...f, name, start, end });
+        close(); toast('Đã lưu chuyến đi'); if (current.route === 'plan') refresh();
+      });
+      $(sh, '[data-del]')?.addEventListener('click', () => {
+        if (!confirm(`Xóa "${t.name}"? Các giao dịch vẫn giữ nguyên.`)) return;
+        S.deleteTrip(t.id); close(); toast('Đã xóa chuyến đi'); if (current.route === 'plan') refresh();
+      });
+    },
+  });
+}
+actions['trip-open'] = async (el) => {
+  const t = S.trips().find((x) => x.id === el.dataset.id);
+  if (!t) return;
+  const txs = sortTx(await S.tripTxs(t));
+  const exp = statSum(txs, 'expense'), inc = statSum(txs, 'income');
+  const byCat = new Map();
+  for (const x of txs.filter((y) => y.type === 'expense')) {
+    const k = x.catName || 'Khác';
+    const m = byCat.get(k) || { icon: x.catIcon, sum: 0 };
+    m.sum += x.amountVnd;
+    byCat.set(k, m);
+  }
+  const cats = [...byCat.entries()].sort((a, b) => b[1].sum - a[1].sum);
+  const days = diffDays(t.start, t.end) + 1;
+  openSheet({
+    title: `${t.icon || '✈️'} ${t.name}`,
+    body: `<p class="center muted small">${tripRange(t)} · ${days} ngày</p>
+      <section class="card stats two-col"><div><small>Đã chi</small><b class="expense">${fmt(exp)}</b><em>${days > 1 ? 'TB ' + fmtShort(Math.round(exp / days)) + '/ngày' : ''}</em></div><div><small>Thu</small><b class="income">${fmt(inc)}</b><em>${txs.length} giao dịch</em></div></section>
+      ${cats.length ? `<div class="card list">${cats.map(([name, m]) => `<div class="row"><span class="ci">${esc(m.icon)}</span><span class="grow"><b>${esc(name)}</b>${progress(exp ? m.sum / exp : 0)}</span><span class="amt expense">${fmt(m.sum)}</span></div>`).join('')}</div>` : ''}
+      <div class="actions"><button type="button" class="btn primary" data-split>👥 Chia Nhóm chi phí</button><button type="button" class="btn ghost" data-edit>Sửa</button></div>
+      ${txs.length ? `<h4>Giao dịch</h4><div class="card list">${txs.map(statRow).join('')}</div>` : empty('🧾', 'Chưa có giao dịch nào trong khoảng ngày này.')}`,
+    onMount(sh, close) {
+      $(sh, '[data-split]').addEventListener('click', () => { close(); splitForm({ title: t.name, total: exp }); });
+      $(sh, '[data-edit]').addEventListener('click', () => { close(); tripForm(t); });
+    },
+  });
+};
 
 /** Thêm khoản kế hoạch: mở form trong một mục hợp lệ (đang mở, hoặc mục đầu tiên); trong form chọn lại Ngân hàng. */
 const PLAN_ADD = {
@@ -3660,6 +3917,8 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
     title: isEdit ? 'Sửa giao dịch' : fromRecurring ? 'Xác nhận khoản định kỳ' : 'Thêm giao dịch',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
     body: `<form class="form txf" id="${formId}" autocomplete="off">
+      ${!isEdit && !fromRecurring ? `<div class="nl-row"><input id="tf-nl" autocomplete="off" enterkeyhint="done" placeholder="⚡ Gõ nhanh: ăn trưa 35k vcb, lương 15tr"><button type="button" class="btn small primary" id="tf-nl-go">Điền</button></div>` : ''}
+      ${!isEdit && !fromRecurring && !preset ? txSuggestHtml() : ''}
       ${showWho ? `<div class="who-pick"><span>Ghi vào sổ của</span>${userChips('tf-who', S.txBooks(), (p) =>
         `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" data-who="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`)}</div>` : ''}
       ${bookPick(pick, 'tf-who', 'data-who')}
@@ -3780,6 +4039,47 @@ export function openTxForm({ tx = null, type = 'expense', preset = null, fromRec
         f.categoryId = $(sh, '#tf-cat').value;
       }
       $(sh, '#tf-cat').addEventListener('change', (e) => { f.categoryId = e.target.value; });
+
+      // --- B3 nhập bằng câu: hiểu số tiền, Thu/Chi, tài khoản (theo tên / logo ngân hàng), phần còn lại là ghi chú ---
+      const nlApply = async () => {
+        const q = parseQuickText($(sh, '#tf-nl').value, pick || payBooks());
+        if (!q) return toast('Chưa hiểu câu này. Thử: "ăn trưa 35k", "lương 15tr vcb"');
+        if (q.bookId && q.bookId !== S.currentProfile().id) {
+          // Tài khoản ở mục khác: mở lại form của mục đó, điền sẵn.
+          close();
+          await S.switchProfile(q.bookId);
+          openTxForm({ type: q.type, pick, preset: { type: q.type, amount: q.amount || null, note: q.note } });
+          setTimeout(() => { const n = [...document.querySelectorAll('.sheet')].pop()?.querySelector('#tf-note'); n?.dispatchEvent(new Event('input', { bubbles: true })); }, 400);
+          return;
+        }
+        if (f.type !== q.type) sh.querySelector(`#tf-type button[data-v="${q.type}"]`)?.click();
+        await new Promise((r) => setTimeout(r, 30));
+        if (q.amount) { amtIn.value = fmtNum(q.amount); amtIn.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (q.accountId && $(sh, `#tf-acc option[value="${q.accountId}"]`)) { $(sh, '#tf-acc').value = q.accountId; $(sh, '#tf-acc').dispatchEvent(new Event('change', { bubbles: true })); }
+        const note = $(sh, '#tf-note');
+        note.value = q.note;
+        catTouched = false; // gõ nhanh: để app tự đoán lại danh mục theo ghi chú mới
+        note.dispatchEvent(new Event('input', { bubbles: true })); // để gợi ý danh mục theo ghi chú chạy
+        toast(`⚡ ${q.type === 'income' ? 'Thu' : 'Chi'}${q.amount ? ' ' + fmt(q.amount) : ''}${q.note ? ' · ' + q.note : ''}`);
+      };
+      $(sh, '#tf-nl-go')?.addEventListener('click', nlApply);
+      $(sh, '#tf-nl')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); nlApply(); } });
+
+      // --- gợi ý khi bấm + : bấm một gợi ý là điền sẵn loại, danh mục, số tiền, ghi chú ---
+      $(sh, '[data-tx-sug]')?.addEventListener('click', (e) => {
+        const c = e.target.closest('[data-sg]');
+        if (!c) return;
+        const [type, cat, amount] = c.dataset.sg.split('|');
+        if (f.type !== type) sh.querySelector(`#tf-type button[data-v="${type}"]`)?.click();
+        setTimeout(() => {
+          const sel = $(sh, '#tf-cat');
+          if (sel.querySelector(`option[value="${cat}"]`)) { sel.value = cat; f.categoryId = cat; }
+          amtIn.value = fmtNum(Number(amount));
+          amtIn.dispatchEvent(new Event('input', { bubbles: true }));
+          $(sh, '#tf-note').value = c.dataset.note || '';
+          sh.querySelectorAll('[data-sg]').forEach((x) => x.classList.toggle('on', x === c));
+        }, 30);
+      });
 
       // --- gợi ý danh mục theo ghi chú (giao dịch mới; bạn đã tự chọn danh mục thì không tự đổi nữa) ---
       let catTouched = !!isEdit, noteIdx = null, noteIdxType = null;
@@ -3978,7 +4278,7 @@ actions.add = async (el) => {
 /** Mở form phù hợp với mục đang chọn. pick: các tài khoản cùng thẻ ở Tổng quan để chọn ngay trong form. */
 function openAddForm(pick, { type = 'expense', repeat = 'none' } = {}) {
   const cur = S.currentProfile();
-  if (pick && S.isCard()) return cardItemForm(null, pick);
+  if (S.isCard()) return cardItemForm(null, pick); // Thẻ trả trước kiểu cũ: form khoản chi của thẻ.
   if (!S.featureOn(cur, 'expense') && !S.featureOn(cur, 'income')) return gopTrichChooser(pick);
   openTxForm({ type, repeat, pick });
 }
@@ -4433,7 +4733,7 @@ actions['split-list'] = () => {
   });
 };
 
-function splitForm() {
+function splitForm(pre = {}) {
   const books = payBooks();
   let whoId = books.find((b) => b.id === S.currentProfile().id)?.id || books[0]?.id;
   let n = 2;
@@ -4446,11 +4746,12 @@ function splitForm() {
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Tạo</button>`,
     onClose: () => {},
     body: `<form class="form split-form" id="${formId}">
-      ${field('Nội dung', '<input id="sp-title" required maxlength="40" placeholder="vd: Ăn tối nhóm bạn, Du lịch Đà Lạt">')}
-      ${field('Số tiền chi ra', moneyBox('<input id="sp-total" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 600.000">'))}
+      ${field('Nội dung', `<input id="sp-title" required maxlength="40" placeholder="vd: Ăn tối nhóm bạn, Du lịch Đà Lạt" value="${esc(pre.title || '')}">`)}
+      ${field('Số tiền chi ra', moneyBox(`<input id="sp-total" class="money" inputmode="decimal" autocomplete="off" placeholder="vd: 600.000" value="${pre.total ? fmtNum(pre.total) : ''}">`))}
+      ${pre.total ? '<p class="muted small">Các khoản chi của chuyến đi đã ghi rồi, nên bỏ tick "Ghi khoản chi này" để không ghi trùng.</p>' : ''}
       ${field('Ngày', `<input type="date" id="sp-date" value="${todayISO()}">`)}
-      <label class="check"><input type="checkbox" id="sp-exp" ${books.length ? 'checked' : 'disabled'}> Ghi khoản chi này vào tài khoản</label>
-      <div id="sp-exp-box">
+      <label class="check"><input type="checkbox" id="sp-exp" ${books.length ? (pre.total ? '' : 'checked') : 'disabled'}> Ghi khoản chi này vào tài khoản</label>
+      <div id="sp-exp-box" ${pre.total ? 'hidden' : ''}>
         ${books.length ? `${field('Tài khoản chi', '<select id="sp-acc" class="acc-out" data-rich><option>Đang tải…</option></select>')}
         ${field('Danh mục chi', `<select id="sp-cat" class="cat-select">${catTabList('expense').map((c) => `<option value="${c.id}">${esc(c.icon + '  ' + c.name)}</option>`).join('')}</select>`)}` : ''}
       </div>
@@ -4755,6 +5056,12 @@ function settingsView() {
       <small>${u.id === S.currentUser().id ? 'Đang dùng' : 'User khác'}</small></span>
       <span class="psum" data-usum="${esc(u.id)}">…</span>${u.id === settingsUser().id ? '<span class="pick-dot">●</span>' : '›'}</button>`).join('')}
   </section>
+  ${sectionTitle('Giao diện')}
+  <section class="card form">
+    <div class="row-between"><span>Chế độ gọn<br><small class="muted">Thu nhỏ toàn bộ chữ, dòng và khoảng cách còn khoảng 85% để màn hình chứa được nhiều hơn</small></span>
+      <label class="switch"><input type="checkbox" data-compact ${document.documentElement.classList.contains('compact') ? 'checked' : ''}><i></i></label></div>
+  </section>
+
   ${txIconSettingsHtml()}
 
   ${sectionTitle('Icon kiểu tài khoản')}
@@ -5050,6 +5357,11 @@ async function mountSettings(root) {
     S.saveGStats(S.gStats().map((x) => (x.id === el.dataset.statShow ? { ...x, show: el.checked } : x)));
     toast(el.checked ? 'Đã hiện ở Tổng quan' : 'Đã ẩn khỏi Tổng quan');
   }));
+  root.querySelector('[data-compact]')?.addEventListener('change', (e) => {
+    document.documentElement.classList.toggle('compact', e.target.checked);
+    localStorage.setItem('stc-compact', e.target.checked ? '1' : '0');
+    toast(e.target.checked ? 'Đã bật chế độ gọn' : 'Đã tắt chế độ gọn');
+  });
   root.querySelector('[data-quick-hide]')?.addEventListener('change', async (e) => {
     if (!e.target.checked) { localStorage.removeItem(QUICK_HIDE_KEY); return toast('Đã tắt che nhanh'); }
     if (!(await askMotion())) { e.target.checked = false; return toast('Điện thoại chưa cho phép đọc cảm biến chuyển động (Cài đặt › Safari › Chuyển động & hướng)', 5000); }
@@ -5161,6 +5473,7 @@ function askBackupPin(next) {
       <p class="muted small">Đặt mật khẩu <b>4 chữ số</b> cho file này. Khi khôi phục, trên máy này hay máy khác, phải nhập đúng mật khẩu mới mở được.</p>
       ${backupPinField('bp-1', 'Mật khẩu (4 số)')}
       ${backupPinField('bp-2', 'Nhập lại mật khẩu')}
+      <label class="check"><input type="checkbox" id="bp-keep" ${savedBackupPin() ? 'checked' : ''}> Ghi nhớ mật khẩu trên máy này để lần sau sao lưu 1 chạm</label>
       <p class="muted small">⚠️ Quên mật khẩu thì <b>không mở được file</b>, không có cách lấy lại. Mật khẩu 4 số chỉ chống người khác mở file một cách thông thường, vẫn nên giữ file ở nơi riêng tư.</p>
     </form>`,
     onMount(sh, close) {
@@ -5173,6 +5486,7 @@ function askBackupPin(next) {
         if (!BACKUP_PIN_RE.test(a)) return toast('Mật khẩu phải đúng 4 chữ số');
         if (a !== b) return toast('2 lần nhập mật khẩu không khớp');
         busy = true;
+        if ($(sh, '#bp-keep').checked) localStorage.setItem(BACKUP_PIN_KEY, a); else localStorage.removeItem(BACKUP_PIN_KEY);
         const btn = sh.closest('.sheet-wrap').querySelector('.head-save');
         btn.textContent = 'Đang mã hóa…';
         try {
@@ -5255,6 +5569,39 @@ actions['backup-pick'] = (el) => {
   const root = el.closest('#main') || document;
   askBackupPin((text) => saveBackupSheet({ text, name: AUTO_FILE_NAME, auto: true, root }));
 };
+
+// ----- C2: sao lưu 1 chạm (v7.67) -----
+// Ghi nhớ mật khẩu sao lưu trên máy (tùy chọn). Khi mở danh sách thông báo có nhắc sao lưu, app mã hóa sẵn file;
+// bấm "💾 Lưu ngay" là mở bảng Chia sẻ của iPhone ngay (iPhone chỉ cho mở bảng Chia sẻ ngay sau một lần chạm).
+const BACKUP_PIN_KEY = 'stc-backup-pin';
+const savedBackupPin = () => { const p = localStorage.getItem(BACKUP_PIN_KEY); return p && BACKUP_PIN_RE.test(p) ? p : null; };
+let preparedBackup = null;
+async function prepareBackup() {
+  const pin = savedBackupPin();
+  if (!pin || (preparedBackup && preparedBackup.n === dbWrites.n)) return;
+  const n = dbWrites.n;
+  try { preparedBackup = { n, text: await encryptBackup(await backupJson(), pin) }; } catch (err) { console.warn(err); }
+}
+async function shareBackupFile(text, name) {
+  const file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name });
+  else download(name, file);
+  S.markBackup();
+  await S.setSetting('lastBackup', todayISO());
+  toast('💾 Đã lưu file sao lưu ' + name);
+}
+function backupNow() {
+  const name = `sothuchi-tat-ca-${todayISO()}.json`;
+  if (!savedBackupPin()) return actions.backup(); // Chưa ghi nhớ mật khẩu: làm như cũ (có ô ghi nhớ).
+  if (preparedBackup && preparedBackup.n === dbWrites.n) {
+    return shareBackupFile(preparedBackup.text, name).catch((err) => { if (err?.name !== 'AbortError') toast('⛔ ' + err.message, 4500); });
+  }
+  // Chưa kịp chuẩn bị (hoặc dữ liệu vừa đổi): mã hóa xong thì bấm thêm một lần để lưu.
+  (async () => {
+    try { const text = await encryptBackup(await backupJson(), savedBackupPin()); saveBackupSheet({ text, name, auto: false }); }
+    catch (err) { toast('⛔ Không tạo được file: ' + err.message, 4500); }
+  })();
+}
 
 function quickSave(root) {
   askBackupPin((text) => saveBackupSheet({ text, name: AUTO_FILE_NAME, auto: true, root }));
@@ -5731,9 +6078,9 @@ export function render(route, sub) {
     if (location.hash !== '#/home') history.replaceState(null, '', '#/home');
   }
   const tabs = [...document.querySelectorAll('#tabbar a')];
-  tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab) || a.dataset.tab === 'plan'; });
-  // Tổng quan và Cài đặt chung không dùng thanh dưới; thanh dưới là của màn hình từng mục.
-  document.body.classList.toggle('no-tabbar', route === 'home' || route === 'settings' || route === 'plan' || !VIEWS[route]);
+  tabs.forEach((a) => { a.hidden = hidden.has(a.dataset.tab); });
+  // v7.67: thanh dưới cố định ở mọi màn hình (Tổng quan · Giao dịch · ＋ · Báo cáo · Kế hoạch).
+  document.body.classList.toggle('no-tabbar', !VIEWS[route]);
   const sameView = current.route === route && current.sub === sub;
   current = { route: VIEWS[route] ? route : 'home', sub };
   const v = VIEWS[current.route];
