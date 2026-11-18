@@ -938,7 +938,11 @@ actions.books = () => {
         const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), rem = e.target.closest('[data-rem]');
         const gEdit = e.target.closest('[data-group-edit]'), gDel = e.target.closest('[data-group-del]');
         if (rem) { close(); reminderForm(S.remindersOf(u.id).find((x) => x.id === rem.dataset.rem) || null); }
-        else if (e.target.closest('[data-notify-add]')) { close(); notifyAddChooser(u); }
+        // v7.71: Kế hoạch đã có ở thanh dưới Tổng quan nên ＋ Thêm mở thẳng form Nhắc nhở.
+        else if (e.target.closest('[data-notify-add]')) {
+          if (S.remindersOf(u.id).length >= S.REMINDER_MAX) return toast(`Đã đủ ${S.REMINDER_MAX} nhắc nhở`);
+          close(); reminderForm(null);
+        }
         else if (e.target.closest('[data-plan-open]')) { close(); location.hash = '#/plan/' + (ui.planTab || 'budget'); }
         else if (e.target.closest('[data-group-toggle]')) {
           const btn = e.target.closest('[data-group-toggle]'), card = btn.closest('.grp-card');
@@ -3493,12 +3497,10 @@ function notifySection(u) {
   const list = [...S.remindersOf(u.id)].sort((a, b) => (a.date < b.date ? -1 : 1));
   return `<h4 class="grp-h"><span>🔔 Thông báo</span></h4>
     <div class="notif-list">
-      <button type="button" class="notif-row rem-row" data-plan-open><span class="n-ic">🎯</span>
-        <span class="grow"><b>Kế hoạch</b><small>Ngân sách · Mục tiêu · Trả nợ · Định kỳ</small></span>›</button>
 
       ${list.map((r) => `<button type="button" class="notif-row rem-row" data-rem="${esc(r.id)}"><span class="n-ic">🔔</span>
       <span class="grow"><b>${esc(r.title)}</b><small>${esc(reminderSub(r))}</small></span>›</button>`).join('')}</div>
-    <button type="button" class="ptile-add block" data-notify-add>＋ Thêm</button>`;
+    <button type="button" class="ptile-add block" data-notify-add>＋ Thêm nhắc nhở</button>`;
 }
 
 /** Chọn tạo Nhắc nhở hoặc mở Kế hoạch. */
