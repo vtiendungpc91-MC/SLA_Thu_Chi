@@ -1421,3 +1421,7 @@ html.dark .sw-row .sw-btn.sw-red { background: #3d1a1f; color: #ff8a8f; }
 /* v7.70: ở Tổng quan nút ＋ nằm giữa thanh dưới (Tổng quan · ＋ · Kế hoạch), ẩn nút ＋ tròn phía trên */
 body[data-route="home"] .fab { display: none !important; }
 .tabbar .tb-add[hidden] { display: none; }
+/* v7.72: nút vuốt ở Giao dịch gần đây (Tổng quan) nhỏ gọn, chỉ icon */
+.sw-row.sw-compact .sw-btn { width: 34px; font-size: 14px; gap: 0; }
+/* Khoảng cách dòng ngân hàng → dòng thẻ tài khoản gấp đôi (9px → 18px) */
+.bank-chips { padding-bottom: 15px; }

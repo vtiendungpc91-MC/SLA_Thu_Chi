@@ -259,12 +259,13 @@ function parseQuickText(text, books) {
 // ================= Vuốt dòng giao dịch (v7.67) =================
 // Vuốt trái một dòng (màn hình Giao dịch, Giao dịch gần đây) để hiện ✏️ Sửa · 📄 Nhân bản · 🗑 Xóa.
 // Nhân bản chỉ có ở khoản Thu/Chi thường; Xóa chỉ hiện khi giao dịch chưa quá 24 giờ.
-function swipeWrap(inner, t, bookId) {
+/** compact: dòng ngắn (Giao dịch gần đây ở Tổng quan) — nút nhỏ, chỉ có icon. */
+function swipeWrap(inner, t, bookId, { compact = false } = {}) {
   const dup = !t.gop && !t.cardPay && !t.debtId && (t.type === 'income' || t.type === 'expense');
   const del = S.canDeleteTx(t);
   const n = 1 + dup + del;
-  const btn = (act, ic, label, cls = '') => `<button type="button" class="sw-btn ${cls}" data-act="${act}" data-id="${esc(t.id)}" data-book="${esc(bookId)}">${ic}<small>${label}</small></button>`;
-  return `<div class="sw-row" style="--sw-w:${n * 62}px"><div class="sw-acts">${btn('sw-edit', '✏️', 'Sửa')}${dup ? btn('sw-dup', '📄', 'Nhân bản') : ''}${del ? btn('sw-del', '🗑', 'Xóa', 'sw-red') : ''}</div><div class="sw-front">${inner}</div></div>`;
+  const btn = (act, ic, label, cls = '') => `<button type="button" class="sw-btn ${cls}" data-act="${act}" data-id="${esc(t.id)}" data-book="${esc(bookId)}" title="${label}" aria-label="${label}">${ic}${compact ? '' : `<small>${label}</small>`}</button>`;
+  return `<div class="sw-row${compact ? ' sw-compact' : ''}" style="--sw-w:${n * (compact ? 34 : 62)}px"><div class="sw-acts">${btn('sw-edit', '✏️', 'Sửa')}${dup ? btn('sw-dup', '📄', 'Nhân bản') : ''}${del ? btn('sw-del', '🗑', 'Xóa', 'sw-red') : ''}</div><div class="sw-front">${inner}</div></div>`;
 }
 const swTx = async (el) => { await inBook(el.dataset.book); closeSwipes(); return state.transactions.find((x) => x.id === el.dataset.id); };
 actions['sw-edit'] = async (el) => {
@@ -918,7 +919,7 @@ actions.books = () => {
         })).join('')}</div>
         ${adds ? `<div class="grp-adds">${adds}</div>` : ''}
       </section>`;
-    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button></div></div>' + notifySection(u) + '</div>',
+    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button></div></div></div>',
     onMount(sh, close) {
       fillProfileSums(sh);
       fillPfVals(sh);
@@ -1997,7 +1998,7 @@ function recentRows(list, b) {
     return swipeWrap(`<div class="rc-row"><span class="rc-name"><span class="rc-txt">${kIcon(txTypeKey(t))} ${esc(isPlainGop(t) ? recentGopText(t) : txRowName(t))}</span>${when ? `<small>${esc(when)}</small>` : ''}</span>
       ${canRecall(t) ? `<button type="button" class="btn small ghost rc-btn" data-act="quick-recall" data-id="${esc(t.id)}" data-book="${esc(b.id)}" title="Recall" aria-label="Recall">↩</button>` : ''}
       <span class="rc-amt ${t.type}">${sign ? fmtSigned(sign * t.amountVnd) : fmt(t.amountVnd)}</span>
-      <span class="rc-cat" aria-hidden="true">${esc(t.catIcon || '')}</span></div>`, t, b.id);
+      <span class="rc-cat" aria-hidden="true">${esc(t.catIcon || '')}</span></div>`, t, b.id, { compact: true });
   }).join('');
   return `<div class="rc-box">
     <div class="rc-head"><small>Giao dịch gần đây</small><button type="button" class="link rc-toggle" data-act="recent-toggle" data-id="${esc(b.id)}">${b.hideRecent ? 'Hiện' : 'Ẩn'}</button></div>
@@ -2815,7 +2816,7 @@ actions['tx-tag-go'] = (el) => {
 };
 
 // ================= Kế hoạch =================
-const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả nợ', recurring: 'Định kỳ', trips: 'Chuyến đi' };
+const PLAN_TABS = { budget: 'Ngân sách', goals: 'Mục tiêu', debts: 'Trả nợ', recurring: 'Định kỳ', reminders: 'Nhắc nhở', trips: 'Chuyến đi' };
 
 /**
  * Kế hoạch là màn hình chung của User (mở từ mục Thông báo ở màn hình nút góc phải), không còn ở thanh dưới của mục.
@@ -2857,6 +2858,7 @@ async function mountPlan(root) {
 
 async function planTabHtml(tab) {
   if (tab === 'trips') return tripsTabHtml();
+  if (tab === 'reminders') return remindersTabHtml();
   const books = planBooks(tab);
   const today = todayISO();
   const m = getRange('month', today);
@@ -2904,6 +2906,18 @@ async function planTabHtml(tab) {
   return `<p class="muted">Lương, tiền nhà, điện nước, Netflix… Chọn Ngân hàng giao dịch, rồi <b>tự động ghi</b> khi đến ngày hoặc <b>chờ xác nhận</b>.</p>
     ${sections || empty('🔁', 'Chưa có khoản định kỳ.')}${add('+ Thêm khoản định kỳ')}`;
 }
+
+// ================= Nhắc nhở trong Kế hoạch (v7.72) =================
+function remindersTabHtml() {
+  const u = S.currentUser();
+  const list = [...S.remindersOf(u.id)].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const full = list.length >= S.REMINDER_MAX;
+  return `<p class="muted">Nhắc việc theo ngày giờ, có lặp lại (đóng học phí, gia hạn bảo hiểm…). Đến hạn sẽ hiện trong Notifications. Tối đa ${S.REMINDER_MAX} nhắc nhở.</p>
+    ${list.length ? `<div class="card list">${list.map((r) => `<button type="button" class="row" data-act="rem-edit" data-id="${esc(r.id)}"><span class="ci">🔔</span>
+      <span class="grow"><b>${esc(r.title)}</b><small>${esc(reminderSub(r))}</small></span>›</button>`).join('')}</div>` : empty('🔔', 'Chưa có nhắc nhở nào.')}
+    ${full ? `<p class="muted small center">Đã đủ ${S.REMINDER_MAX} nhắc nhở.</p>` : '<button type="button" class="btn primary block" data-act="rem-edit">+ Thêm nhắc nhở</button>'}`;
+}
+actions['rem-edit'] = (el) => reminderForm(S.remindersOf(S.currentUser().id).find((x) => x.id === el?.dataset?.id) || null);
 
 // ================= Chuyến đi / Sự kiện (v7.67) =================
 // Tạo "Đà Lạt 12–15/12": mọi khoản Thu/Chi của mọi tài khoản trong khoảng ngày đó tự tính vào chuyến đi.
@@ -3539,7 +3553,7 @@ function reminderForm(r) {
   openSheet({
     title: r ? 'Sửa nhắc nhở' : 'Tạo nhắc nhở',
     headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
-    onClose() { actions.books(); },
+    onClose() { if (current.route === 'plan') refresh(); },
     body: `<form class="form" id="${formId}">
       ${field('Tên nhắc nhở', `<input id="rm-title" required maxlength="60" value="${esc(f.title)}" placeholder="vd: Đóng học phí, gia hạn bảo hiểm">`)}
       ${datePick('rm-date', f.date, 'Ngày đến hạn')}
