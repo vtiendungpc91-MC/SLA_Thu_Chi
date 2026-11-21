@@ -507,7 +507,7 @@ function topBar(sub = '', right = '', title = '') {
   if (title) {
     return `<header class="top topbar">
     <div class="chip-col">
-      <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
+      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span> <i>▾</i></button>
     </div>
     <div class="chip-col right">
@@ -520,7 +520,7 @@ function topBar(sub = '', right = '', title = '') {
   }
   return `<header class="top topbar">
     <div class="chip-col">
-      <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
+      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
     </div>
     <div class="chip-col right">
@@ -630,7 +630,8 @@ async function bankTotal(userId) {
 const rainbowOn = new Map();
 function setRainbow(root, userId, on) {
   rainbowOn.set(userId, on);
-  root.querySelectorAll('.profile-chip[data-act="users"]').forEach((el) => el.classList.toggle('rainbow', on));
+  // v7.74: có thông báo thì nút góc phải (🔔 Thông báo) đổi màu 7 sắc cầu vồng liên tục.
+  root.querySelectorAll('.profile-chip[data-act="books"]').forEach((el) => el.classList.toggle('notif-on', on));
 }
 
 /** Điền số thông báo và tổng tiền dưới 2 nút đầu trang (đọc nhiều mục nên làm sau khi vẽ). */
@@ -1943,11 +1944,11 @@ function homeView() {
   const kind = overKindNow();
   return `<header class="top topbar">
     <div class="chip-col">
-      <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
+      <button type="button" class="profile-chip" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
     </div>
     <div class="chip-col right">
-      <button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(overColor(u))}" title="Notifications">
+      <button type="button" class="profile-chip book-chip${rainbowOn.get(u.id) ? ' notif-on' : ''}" data-act="books" style="--c:${esc(overColor(u))}" title="Notifications">
         <span class="chip-av">🔔</span><span class="chip-name">Thông báo</span> <i>▾</i></button>
       <button type="button" class="chip-sub notif-count" data-act="books" data-notif-count hidden></button>
     </div>

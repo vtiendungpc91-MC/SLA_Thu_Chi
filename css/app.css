@@ -1446,3 +1446,16 @@ body[data-route="home"] .fab { display: none !important; }
 @keyframes sb-zoom-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes sb-zoom-out { from { transform: none; opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
 .head-acts { display: inline-flex; gap: 6px; }
+/* v7.74: nút 🔔 Thông báo (góc phải) đổi màu 7 sắc cầu vồng liên tục khi có thông báo; nút User (góc trái) giữ nền cầu vồng đứng yên */
+.profile-chip.book-chip.notif-on {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: linear-gradient(90deg, #ff0000, #ff8a00, #ffd600, #00b341, #0080ff, #4b0082, #8f00ff) !important;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, .25);
+}
+.profile-chip.book-chip.notif-on::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 200%; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, #ff0000, #ff8a00, #ffd600, #00b341, #0080ff, #4b0082, #8f00ff, #ff0000, #ff8a00, #ffd600, #00b341, #0080ff, #4b0082, #8f00ff, #ff0000);
+  animation: rainbow-run 3s linear infinite;
+}
+.profile-chip.book-chip.notif-on span.chip-name, .profile-chip.book-chip.notif-on i { text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }
+.profile-chip.book-chip.notif-on .chip-av { background: rgba(255, 255, 255, .85); }
