@@ -509,11 +509,11 @@ function topBar(sub = '', right = '', title = '') {
     <div class="chip-col">
       <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span> <i>▾</i></button>
-      <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
     <div class="chip-col right">
       <button type="button" class="profile-chip book-chip" data-act="book-close" title="Đóng, về Tổng quan">
         <span class="chip-name">Đóng</span> <i>✕</i></button>
+      <button type="button" class="chip-sub notif-count" data-act="books" data-notif-count hidden></button>
     </div>
   </header>
   <div class="title-row"><div><h1>${title}</h1>${sub ? `<small>${sub}</small>` : ''}</div><div class="title-acts">${right}${maskBtn()}</div></div>`;
@@ -522,11 +522,11 @@ function topBar(sub = '', right = '', title = '') {
     <div class="chip-col">
       <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
-      <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
     <div class="chip-col right">
       <button type="button" class="profile-chip book-chip" data-act="book-close" title="Đóng, về Tổng quan">
         <span class="chip-name">Đóng</span> <i>✕</i></button>
+      <button type="button" class="chip-sub notif-count" data-act="books" data-notif-count hidden></button>
       <small class="chip-sub" data-kind-total></small>
       <small class="chip-sub pf-p" data-pf-top="personal" hidden></small>
       <small class="chip-sub pf-f" data-pf-top="family" hidden></small>
@@ -842,55 +842,14 @@ async function runNotif({ notif, book, id, due }) {
 }
 
 // --- Danh sách User (nút trái) + Notifications. Có nút ⚙️ Cài đặt chung ở góc phải tiêu đề. ---
-actions.users = () => {
-  const cur = S.currentUser();
-  const users = S.getUsers();
-  openSheet({
-    title: 'User',
-    headAction: '<button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt chung">⚙️</button>',
-    body: `<h4 class="grp-h">👤 User</h4>
-      <div class="tile-grid one-col">${users.map((u) => tileHtml({
-        attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name + (u.special ? ' ⭐' : ''), on: u.id === cur.id,
-        sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: users.length > 1,
-      })).join('')}
-      ${users.length < S.MAX_USERS ? '<button type="button" class="ptile-add block" data-add>＋ User</button>' : ''}</div>
-      <h4 class="grp-h">🔔 Notifications của ${esc(cur.name)} <small data-notif-n></small></h4>
-      <div class="notif-list" data-notif-list></div>
-      <div class="quick-save"><button type="button" class="btn primary" data-quick-save>💾 Save</button><small class="muted" data-save-status>${esc(saveStatusText())}</small></div>`,
-    onMount(sh, close) {
-      sh.querySelector('[data-settings]').addEventListener('click', () => { close(); location.hash = '#/settings'; });
-      sh.querySelector('[data-quick-save]').addEventListener('click', () => quickSave(sh));
-      fillProfileSums(sh);
-      fillNotifications(sh);
-      sh.addEventListener('click', async (e) => {
-        const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
-        const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), nt = e.target.closest('[data-notif]');
-        if (nt) { close(); await runNotif(nt.dataset); }
-        else if (del) {
-          const u = S.getUsers().find((x) => x.id === del.dataset.del);
-          if (u && await confirmDeleteUser(u)) { refresh(); close(); actions.users(); }
-        } else if (sw) { close(); await switchToUser(sw.dataset.switch); }
-        else if (ed) { close(); userForm(S.getUsers().find((u) => u.id === ed.dataset.edit)); }
-        else if (add) { close(); userForm(null); }
-      });
-    },
-  });
-};
-
-// --- Danh sách mục của User hiện tại (nút phải): mỗi mục 1 dòng trải hết chiều ngang ---
+// ================= Hai nút góc trên (v7.73) =================
+// Nút trái (User): danh sách User + thẻ Tổng quan (bên trong là Bank và tài khoản, bấm thẻ để mở / thu gọn).
+// Nút phải: Notifications của User + nút Save.
 const BOOKS_OPEN_KEY = 'stc-books-open';
 let booksOpen = localStorage.getItem(BOOKS_OPEN_KEY) === '1';
-actions.books = () => {
-  const u = S.currentUser();
-  const onHome = current.route === 'home';
-  const cur = onHome ? null : S.currentProfile().id;
-  const mine = S.userBooks(u.id);
-  openSheet({
-    title: `Mục của ${u.name}`,
-    headAction: `<button type="button" class="icon-btn theme-btn" data-theme aria-label="Chuyển sáng/tối">${isDark() ? '☀️' : '🌙'}</button>`,
-    // v7.66: Bank / tài khoản nằm bên trong thẻ Tổng quan (bấm thẻ để mở / thu gọn, xem và tạo ngay trong đó);
-    // phần Thông báo đưa lên ngay dưới thẻ Tổng quan.
-    body: `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}${booksOpen ? ' open' : ''}" style="--c:${esc(overColor(u))}">
+/** Thẻ Tổng quan có Bank / tài khoản bên trong. */
+function overviewBlockHtml(u, cur, mine, onHome) {
+  return `<div class="books-compact"><div class="ptile over-tile ${onHome ? 'on is-current' : ''}${booksOpen ? ' open' : ''}" style="--c:${esc(overColor(u))}">
         <div role="button" tabindex="0" class="over-main" data-over aria-expanded="${booksOpen ? 'true' : 'false'}">
           <b><span class="over-ic" data-over-edit role="button" aria-label="Thiết lập">${esc(overIcon(u))}<i>✎</i></span> ${esc(overName(u))}<span class="over-caret">${booksOpen ? '▴' : '▾'}</span></b>
           ${overTabs(u.id).map(([tab, label]) => `<span class="over-row"><span>${OVER_ICONS[tab]} ${label} <small>(${tabBooks(u.id, tab).length})</small></span><b data-over-sum="${tab}">…</b></span>`).join('')}
@@ -919,22 +878,11 @@ actions.books = () => {
         })).join('')}</div>
         ${adds ? `<div class="grp-adds">${adds}</div>` : ''}
       </section>`;
-    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button></div></div></div>',
-    onMount(sh, close) {
-      fillProfileSums(sh);
-      fillPfVals(sh);
-      $(sh, '[data-theme]').addEventListener('click', (e) => {
-        e.currentTarget.textContent = toggleTheme() ? '☀️' : '🌙';
-      });
-      sh.querySelectorAll('[data-over-sum]').forEach(async (el) => {
-        const key = `o:${u.id}:${el.dataset.overSum}`;
-        showCached(el, key);
-        // Thẻ tín dụng: tabTotal là số đang nợ (dương); hiện số âm màu đỏ giống dòng "Nợ thẻ" ở Tổng quan.
-        const v = await tabTotal(u.id, el.dataset.overSum);
-        const shown = el.dataset.overSum === 'credit' ? -v : v;
-        setCached(el, key, shown < 0 ? `<span class="expense">${fmtBal(shown)}</span>` : fmtBal(shown));
-      });
-      sh.addEventListener('click', async (e) => {
+    }).join('') + '<button type="button" class="ptile-add block" data-group-new>＋ Bank / Ví điện tử</button></div></div></div>';
+}
+/** Xử lý bấm trong thẻ Tổng quan (Bank, tài khoản). Trả về true nếu đã xử lý. */
+async function overviewBlockClick(e, sh, close, u, mine) {
+  if (!e.target.closest('.books-compact')) return false;
         const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
         const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]'), rem = e.target.closest('[data-rem]');
         const gEdit = e.target.closest('[data-group-edit]'), gDel = e.target.closest('[data-group-del]');
@@ -955,7 +903,7 @@ actions.books = () => {
         else if (gEdit) { close(); groupForm(S.getGroups().find((x) => x.id === gEdit.dataset.groupEdit)); }
         else if (gDel) {
           const g = S.getGroups().find((x) => x.id === gDel.dataset.groupDel);
-          if (g && await confirmDeleteGroup(g)) { refresh(); close(); actions.books(); }
+          if (g && await confirmDeleteGroup(g)) { refresh(); close(); actions.users(); }
         }
         else if (e.target.closest('[data-group-add]')) {
           const g = S.getGroups().find((x) => x.id === e.target.closest('[data-group-add]').dataset.groupAdd);
@@ -975,7 +923,7 @@ actions.books = () => {
         }
         else if (del) {
           const b = S.getProfiles().find((x) => x.id === del.dataset.del);
-          if (b && await confirmDeleteProfile(b)) { refresh(); close(); actions.books(); }
+          if (b && await confirmDeleteProfile(b)) { refresh(); close(); actions.users(); }
         } else if (ed) { close(); bookForm(S.getProfiles().find((b) => b.id === ed.dataset.edit)); }
         else if (sw) { close(); await openBook(sw.dataset.switch); }
         else if (add) {
@@ -987,6 +935,72 @@ actions.books = () => {
           else if (v === 'saving') bookForm(null, 'saving', false, 'credit', { group });
           else bookForm(null, 'bank', false, 'credit', { group, prepaid: v === 'prepaid' });
         }
+  return true;
+}
+function bindOverviewSums(sh, u) {
+  sh.querySelectorAll('[data-over-sum]').forEach(async (el) => {
+    const key = `o:${u.id}:${el.dataset.overSum}`;
+    showCached(el, key);
+    // Thẻ tín dụng: tabTotal là số đang nợ (dương); hiện số âm màu đỏ giống dòng "Nợ thẻ" ở Tổng quan.
+    const v = await tabTotal(u.id, el.dataset.overSum);
+    const shown = el.dataset.overSum === 'credit' ? -v : v;
+    setCached(el, key, shown < 0 ? `<span class="expense">${fmtBal(shown)}</span>` : fmtBal(shown));
+  });
+}
+
+actions.users = () => {
+  const cur = S.currentUser();
+  const users = S.getUsers();
+  const onHome = current.route === 'home';
+  const curBook = onHome ? null : S.currentProfile().id;
+  const mine = S.userBooks(cur.id);
+  openSheet({
+    title: 'User',
+    headAction: `<span class="head-acts"><button type="button" class="icon-btn theme-btn" data-theme aria-label="Chuyển sáng/tối">${isDark() ? '☀️' : '🌙'}</button><button type="button" class="icon-btn head-gear" data-settings aria-label="Cài đặt chung">⚙️</button></span>`,
+    body: `<div class="users-blk"><h4 class="grp-h">👤 User</h4>
+      <div class="tile-grid one-col">${users.map((u) => tileHtml({
+        attr: 'switch', id: u.id, color: u.color, av: avatar(u, 'ptile-av'), name: u.name + (u.special ? ' ⭐' : ''), on: u.id === cur.id,
+        sum: `<span class="psum" data-usum="${esc(u.id)}">…</span>`, del: users.length > 1,
+      })).join('')}
+      ${users.length < S.MAX_USERS ? '<button type="button" class="ptile-add block" data-add>＋ User</button>' : ''}</div></div>
+      <h4 class="grp-h">📊 Tổng quan</h4>
+      `+ overviewBlockHtml(cur, curBook, mine, onHome),
+    onMount(sh, close) {
+      sh.querySelector('[data-settings]').addEventListener('click', () => { close(); location.hash = '#/settings'; });
+      $(sh, '[data-theme]').addEventListener('click', (e) => { e.currentTarget.textContent = toggleTheme() ? '☀️' : '🌙'; });
+      fillProfileSums(sh);
+      fillPfVals(sh);
+      bindOverviewSums(sh, cur);
+      sh.addEventListener('click', async (e) => {
+        if (await overviewBlockClick(e, sh, close, cur, mine)) return;
+        if (!e.target.closest('.users-blk')) return;
+        const sw = e.target.closest('[data-switch]'), ed = e.target.closest('[data-edit]');
+        const del = e.target.closest('[data-del]'), add = e.target.closest('[data-add]');
+        if (del) {
+          const u = S.getUsers().find((x) => x.id === del.dataset.del);
+          if (u && await confirmDeleteUser(u)) { refresh(); close(); actions.users(); }
+        } else if (sw) { close(); await switchToUser(sw.dataset.switch); }
+        else if (ed) { close(); userForm(S.getUsers().find((u) => u.id === ed.dataset.edit)); }
+        else if (add) { close(); userForm(null); }
+      });
+    },
+  });
+};
+
+/** Nút phải: Notifications của User + Save. */
+actions.books = () => {
+  const cur = S.currentUser();
+  openSheet({
+    title: `🔔 Notifications`,
+    body: `<h4 class="grp-h">🔔 Notifications của ${esc(cur.name)} <small data-notif-n></small></h4>
+      <div class="notif-list" data-notif-list></div>
+      <div class="quick-save"><button type="button" class="btn primary" data-quick-save>💾 Save</button><small class="muted" data-save-status>${esc(saveStatusText())}</small></div>`,
+    onMount(sh, close) {
+      sh.querySelector('[data-quick-save]').addEventListener('click', () => quickSave(sh));
+      fillNotifications(sh);
+      sh.addEventListener('click', async (e) => {
+        const nt = e.target.closest('[data-notif]');
+        if (nt) { close(); await runNotif(nt.dataset); }
       });
     },
   });
@@ -1588,7 +1602,12 @@ function statSettingsHtml() {
       <label class="switch" title="Hiện ở băng rôn Tổng quan"><input type="checkbox" data-stat-show="${esc(st.id)}" ${st.show !== false ? 'checked' : ''}><i></i></label></div>`).join('')}
     ${list.length < S.GSTAT_MAX ? '<button type="button" class="row add-row" data-act="stat-new"><span class="ci">＋</span><span class="grow"><b>Tạo thống kê</b></span></button>' : ''}
   </section>
-  <p class="muted small">Thống kê hiện dạng băng rôn chạy dưới dòng ngày ở Tổng quan, nhiều thống kê thì chạy lần lượt và xoay vòng.</p>`}`;
+  <p class="muted small">Thống kê hiện dạng băng rôn chạy dưới dòng ngày ở Tổng quan, nhiều thống kê thì chạy lần lượt và xoay vòng.</p>
+  <section class="card form">
+    <div class="two">${field('Thời gian mỗi dòng', `<select data-banner-sec>${BANNER_SECS.map((s) => `<option value="${s}" ${bannerCfg().sec === s ? 'selected' : ''}>${s} giây</option>`).join('')}</select>`)}
+    ${field('Hiệu ứng chuyển dòng', `<select data-banner-mode>${BANNER_MODES.map(([k, l]) => `<option value="${k}" ${bannerCfg().mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}</div>
+    <p class="muted small">Dòng dài hơn màn hình sẽ tự chạy ngang cho thấy hết rồi mới chuyển (giữ lâu hơn nếu cần). "Chạy chữ liên tục": mỗi dòng chạy từ phải sang trái hết rồi sang dòng kế, không dừng.</p>
+  </section>`}`;
 }
 
 function cardRow(t) {
@@ -1926,11 +1945,11 @@ function homeView() {
     <div class="chip-col">
       <button type="button" class="profile-chip${rainbowOn.get(u.id) ? ' rainbow' : ''}" data-act="users" style="--c:${esc(u.color)}" title="User">
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
-      <button type="button" class="chip-sub notif-count" data-act="users" data-notif-count hidden></button>
     </div>
     <div class="chip-col right">
-      <button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(overColor(u))}" title="Chọn / tạo mục">
-        <span class="chip-av">${esc(overIcon(u))}</span><span class="chip-name">${esc(overName(u))}</span> <i>▾</i></button>
+      <button type="button" class="profile-chip book-chip" data-act="books" style="--c:${esc(overColor(u))}" title="Notifications">
+        <span class="chip-av">🔔</span><span class="chip-name">Thông báo</span> <i>▾</i></button>
+      <button type="button" class="chip-sub notif-count" data-act="books" data-notif-count hidden></button>
     </div>
   </header>
   <div class="over-lines">
@@ -2098,6 +2117,15 @@ window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = set
  * trượt từ dưới lên, xoay vòng. Bấm vào để xem chi tiết. Số liệu theo kỳ đang chọn.
  */
 let statBannerCache = '', statBannerToken = 0, statBannerTimer = null;
+/** Cài đặt băng rôn thống kê (v7.73): thời gian giữ mỗi dòng (giây) và hiệu ứng chuyển dòng. */
+const BANNER_KEY = 'stc-banner';
+const BANNER_MODES = [['up', '⬆️ Trượt lên'], ['down', '⬇️ Trượt xuống'], ['side', '⬅️ Trượt ngang'], ['fade', '🌫️ Mờ dần'], ['zoom', '🔍 Phóng to'], ['ticker', '📜 Chạy chữ liên tục']];
+const BANNER_SECS = [3, 5, 8, 10, 15, 20];
+function bannerCfg() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem(BANNER_KEY)) || {}; } catch { /* mặc định */ }
+  return { sec: BANNER_SECS.includes(c.sec) ? c.sec : 5, mode: BANNER_MODES.some(([k]) => k === c.mode) ? c.mode : 'up' };
+}
 const STAT_BANNER_MS = 5000;
 async function fillStatBanner(root) {
   const el = root.querySelector('[data-stat-banner]');
@@ -2128,18 +2156,31 @@ async function fillStatBanner(root) {
   if (token !== statBannerToken || !el.isConnected) return;
   clearTimeout(statBannerTimer);
   if (!items.length) { el.hidden = true; return; }
+  // Cài đặt chung › Thống kê: thời gian mỗi dòng và hiệu ứng chuyển dòng (v7.73).
+  const cfg = bannerCfg();
+  const holdMs = cfg.sec * 1000;
+  el.dataset.mode = cfg.mode;
   let i = 0;
   const line = (it, cls = '') => `<span class="sb-line ${cls}"><span class="sb-txt">${it.html}</span></span>`;
   /** Dòng dài hơn băng rôn: sau 1 giây chữ chạy ngang để thấy hết; trả về thời gian cần giữ dòng (ms). */
   const marquee = (lineEl, loop) => {
     const t = lineEl?.querySelector('.sb-txt');
-    if (!t) return STAT_BANNER_MS;
+    if (!t) return holdMs;
+    if (cfg.mode === 'ticker') {
+      // Chạy chữ liên tục: cả dòng chạy từ mép phải sang hết mép trái (~60px/giây), xong là sang dòng kế.
+      const w = lineEl.clientWidth, tw = t.scrollWidth;
+      const dur = Math.max(3, (w + tw) / 60);
+      t.style.setProperty('--sb-from', `${w}px`);
+      t.style.setProperty('--sb-to', `${-tw}px`);
+      t.style.animation = `sb-run ${dur}s linear 0s ${loop ? 'infinite' : '1'} both`;
+      return dur * 1000;
+    }
     const over = t.scrollWidth - (lineEl.clientWidth - 20);
-    if (over <= 2) return STAT_BANNER_MS;
+    if (over <= 2) return holdMs;
     const dur = Math.max(1.5, over / 40); // khoảng 40px mỗi giây
     t.style.setProperty('--sb-dx', `${-over}px`);
     t.style.animation = `sb-scroll ${dur}s linear 1s ${loop ? 'infinite alternate' : '1'} both`;
-    return Math.max(STAT_BANNER_MS, 1000 + dur * 1000 + 1500);
+    return Math.max(holdMs, 1000 + dur * 1000 + 1500);
   };
   el.innerHTML = `<button type="button" class="sb-track" data-act="${items[0].act || 'stat-open'}" data-id="${esc(items[0].id)}">${line(items[0])}</button>`;
   statBannerCache = el.innerHTML; // Vẽ lại Tổng quan thì hiện ngay dòng đầu, không bị trống.
@@ -2157,8 +2198,8 @@ async function fillStatBanner(root) {
     track.dataset.act = items[i].act || 'stat-open';
     old?.classList.add('sb-out');
     const neu = track.lastElementChild;
-    setTimeout(() => { old?.remove(); neu.classList.remove('sb-in'); }, 500);
-    statBannerTimer = setTimeout(next, 500 + marquee(neu, false));
+    setTimeout(() => { old?.remove(); neu.classList.remove('sb-in'); }, cfg.mode === 'ticker' ? 0 : 500);
+    statBannerTimer = setTimeout(next, (cfg.mode === 'ticker' ? 0 : 500) + marquee(neu, false));
   };
   statBannerTimer = setTimeout(next, first);
 }
@@ -5372,6 +5413,11 @@ async function mountSettings(root) {
   root.querySelectorAll('[data-stat-show]').forEach((el) => el.addEventListener('change', async () => {
     S.saveGStats(S.gStats().map((x) => (x.id === el.dataset.statShow ? { ...x, show: el.checked } : x)));
     toast(el.checked ? 'Đã hiện ở Tổng quan' : 'Đã ẩn khỏi Tổng quan');
+  }));
+  root.querySelectorAll('[data-banner-sec],[data-banner-mode]').forEach((el) => el.addEventListener('change', () => {
+    const c = { sec: Number(root.querySelector('[data-banner-sec]').value), mode: root.querySelector('[data-banner-mode]').value };
+    localStorage.setItem(BANNER_KEY, JSON.stringify(c));
+    toast(`Băng rôn: ${c.sec} giây · ${BANNER_MODES.find(([k]) => k === c.mode)[1]}`);
   }));
   root.querySelector('[data-compact]')?.addEventListener('change', (e) => {
     document.documentElement.classList.toggle('compact', e.target.checked);

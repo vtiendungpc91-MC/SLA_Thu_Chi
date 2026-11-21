@@ -1425,3 +1425,24 @@ body[data-route="home"] .fab { display: none !important; }
 .sw-row.sw-compact .sw-btn { width: 34px; font-size: 14px; gap: 0; }
 /* Khoảng cách dòng ngân hàng → dòng thẻ tài khoản gấp đôi (9px → 18px) */
 .bank-chips { padding-bottom: 15px; }
+/* v7.73: hiệu ứng chuyển dòng của băng rôn thống kê (chọn trong Cài đặt chung › Thống kê) */
+.stat-banner[data-mode="down"] .sb-line.sb-in { animation: sb-down-in .45s ease both; }
+.stat-banner[data-mode="down"] .sb-line.sb-out { animation: sb-down-out .45s ease both; }
+.stat-banner[data-mode="side"] .sb-line.sb-in { animation: sb-side-in .45s ease both; }
+.stat-banner[data-mode="side"] .sb-line.sb-out { animation: sb-side-out .45s ease both; }
+.stat-banner[data-mode="fade"] .sb-line.sb-in { animation: sb-fade-in .5s ease both; }
+.stat-banner[data-mode="fade"] .sb-line.sb-out { animation: sb-fade-out .5s ease both; }
+.stat-banner[data-mode="zoom"] .sb-line.sb-in { animation: sb-zoom-in .45s ease both; }
+.stat-banner[data-mode="zoom"] .sb-line.sb-out { animation: sb-zoom-out .45s ease both; }
+.stat-banner[data-mode="ticker"] .sb-line.sb-in { animation: none; }
+.stat-banner[data-mode="ticker"] .sb-line.sb-out { display: none; }
+.stat-banner[data-mode="ticker"] .sb-line { text-overflow: clip; padding: 0; }
+@keyframes sb-down-in { from { transform: translateY(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sb-down-out { from { transform: none; opacity: 1; } to { transform: translateY(100%); opacity: 0; } }
+@keyframes sb-side-in { from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sb-side-out { from { transform: none; opacity: 1; } to { transform: translateX(-100%); opacity: 0; } }
+@keyframes sb-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sb-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes sb-zoom-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sb-zoom-out { from { transform: none; opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
+.head-acts { display: inline-flex; gap: 6px; }
