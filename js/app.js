@@ -6,6 +6,7 @@ import { toast, syncDatePick, applyTimeTheme } from './ui.js';
 import { startBankBadges } from './icons.js';
 import { lockConfig, showLock, initAutoLock } from './lock.js';
 import { fmt, fmtDue } from './utils.js';
+import { initGsSync } from './gsheet.js';
 
 function parseHash() {
   const [route = 'home', sub = null] = location.hash.replace(/^#\/?/, '').split('/');
@@ -147,6 +148,7 @@ async function start() {
   // Xin trình duyệt giữ dữ liệu lâu dài (không tự xóa khi máy đầy bộ nhớ).
   navigator.storage?.persist?.().catch(() => {});
   await S.processRecurring();
+  initGsSync();
   window.addEventListener('hashchange', route);
   route();
   notifyAlerts();

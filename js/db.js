@@ -53,12 +53,17 @@ async function run(store, mode, fn) {
 
 /** Đếm số lần ghi dữ liệu (mọi sổ): bộ nhớ đọc nhanh chỉ dùng lại kết quả khi chưa có lần ghi nào mới (v7.67). */
 export const dbWrites = { n: 0 };
+/** Hàm được gọi sau mỗi lần ghi xong (tên bảng); dùng cho đồng bộ Google Sheets (v7.77). */
+export const writeHooks = new Set();
 
 function runOn(d, store, mode, fn) {
   if (mode === 'readwrite') dbWrites.n++;
   return new Promise((resolve, reject) => {
     const t = d.transaction(store, mode);
-    if (mode === 'readwrite') t.addEventListener('complete', () => { dbWrites.n++; });
+    if (mode === 'readwrite') t.addEventListener('complete', () => {
+      dbWrites.n++;
+      writeHooks.forEach((f) => { try { f(store); } catch { /* bỏ qua */ } });
+    });
     const os = t.objectStore(store);
     let result;
     const r = fn(os);

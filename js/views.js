@@ -14,6 +14,7 @@ import { donut, bars, lineChart } from './charts.js';
 import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, PAIR_TINT, BANK_LOGOS, bankColorOf, bankLogoSrc, plain } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
 import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile, encryptBackup, decryptBackup, isEncryptedBackup, BACKUP_PIN_RE } from './autosave.js';
+import { gsConfig, gsReady, gsStatus, saveGsConfig, clearGsConfig, gsTest, gsSync, onGsStatus } from './gsheet.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay, bioEnabled, bioAvailable, enableBio, disableBio } from './lock.js';
 
 export const actions = {};
@@ -5235,6 +5236,12 @@ function settingsView() {
     <p class="muted small">💡 Web app không tự đặt chuông khi đang đóng. Để nhắc chắc chắn, hãy thêm hạn trả nợ và nhắc ghi chép vào <b>app Lịch</b> của điện thoại. App Lịch sẽ báo cả khi offline.</p>
   </section>`}
 
+  ${sectionTitle('Google Sheets')}
+  <section class="card list">
+    <button type="button" class="row" data-act="gsheet"><span class="ci">📊</span><span class="grow"><b>Đồng bộ lên Google Sheets</b><small data-gs-line>${esc(gsLine())}</small></span>›</button>
+    ${gsReady() ? `<button type="button" class="row" data-act="gsheet-push"><span class="ci">⬆️</span><span class="grow"><b>Đẩy toàn bộ lên Sheet</b><small>Xóa trang GiaoDich trên Sheet rồi ghi lại toàn bộ giao dịch</small></span>›</button>` : ''}
+  </section>
+
   ${sectionTitle('Sao lưu & dữ liệu')}
   <section class="card list">
     <button type="button" class="row" data-act="backup"><span class="ci">💾</span><span class="grow"><b>Sao lưu tất cả (file .json)</b><small>Có mật khẩu 4 số · mọi người dùng + thẻ trả trước · ${s.lastBackup ? 'lần cuối ' + fmtDate(s.lastBackup) : 'chưa sao lưu lần nào'}</small></span>›</button>
@@ -5244,7 +5251,7 @@ function settingsView() {
   </section>
   ${s.lastBackup && diffDays(s.lastBackup, todayISO()) < 30 ? '' : '<p class="muted small center">⚠️ Dữ liệu chỉ nằm trên máy này. Nên sao lưu định kỳ (lưu vào iCloud Drive / Google Drive / Zalo "Cloud của tôi").</p>'}
   <p class="muted small center" id="storage-info"></p>
-  <p class="muted small center">Sổ Thu Chi · chạy offline · dữ liệu không rời khỏi điện thoại của bạn</p>
+  <p class="muted small center">Sổ Thu Chi · chạy offline · ${gsReady() ? 'giao dịch được gửi lên Google Sheets của bạn' : 'dữ liệu không rời khỏi điện thoại của bạn'}</p>
   <p class="muted small center" id="app-version"></p>`;
 }
 
@@ -5762,6 +5769,74 @@ function csvOf(list) {
   return '﻿' + [head, ...rows].map((r) => r.map(q).join(',')).join('\r\n');
 }
 actions['export-csv'] = () => shareOrDownload(`giao-dich-${currentRange().start}.csv`, csvOf(filteredTx()), 'text/csv');
+// ----- Google Sheets (v7.77): tự gửi giao dịch lên Sheet + nút đẩy toàn bộ -----
+function gsLine(st = gsStatus()) {
+  const c = gsConfig();
+  if (!gsReady(c)) return 'Chưa cài đặt · bấm để nhập link ứng dụng web và mật khẩu';
+  const mode = c.auto ? 'Tự động' : 'Tự động đang tắt';
+  if (!st) return `${mode} · chưa đồng bộ lần nào`;
+  if (st.pending && st.err) return `${mode} · ⚠️ ${st.err}`;
+  if (st.oldScript) return `${mode} · ⚠️ Apps Script là bản cũ nên chưa lưu Kế hoạch — dán lại mã mới và triển khai phiên bản mới`;
+  return `${mode} · lần cuối ${st.at ? fmtDateTimeVN(st.at) : '—'} · ${st.rows ?? 0} giao dịch${st.plan != null ? ` · ${st.plan} kế hoạch` : ''} trên Sheet`;
+}
+onGsStatus((st) => document.querySelectorAll('[data-gs-line]').forEach((el) => { el.textContent = gsLine(st); }));
+
+actions.gsheet = () => {
+  const c = gsConfig();
+  const formId = 'gs-' + Date.now();
+  openSheet({
+    title: '📊 Google Sheets',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form" id="${formId}">
+      ${field('Link ứng dụng web (kết thúc bằng /exec)', `<input id="gs-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" data-no-sug placeholder="https://script.google.com/macros/s/…/exec" value="${esc(c.url)}">`)}
+      ${field('Mật khẩu (SECRET trong Apps Script)', `<input id="gs-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-no-sug value="${esc(c.key)}">`)}
+      <div class="row-between"><span>Tự động gửi khi thêm / sửa / xóa<br><small class="muted">Mất mạng thì app nhớ lại và gửi bù khi có mạng</small></span>
+        <label class="switch"><input type="checkbox" id="gs-auto" ${c.auto ? 'checked' : ''}><i></i></label></div>
+      <p class="hint" data-gs-line>${esc(gsLine())}</p>
+      <div class="actions">
+        ${gsReady(c) ? '<button type="button" class="btn ghost" data-gs-off>Ngắt kết nối</button>' : ''}
+        <button type="button" class="btn ghost" data-gs-test>Kiểm tra</button>
+      </div>
+      <p class="muted small">Lưu lần đầu sẽ ghi toàn bộ giao dịch lên trang <b>GiaoDich</b>, số dư lên trang <b>TaiKhoan</b>, kế hoạch và nhắc nhở lên trang <b>KeHoach</b>. Mục Secrecy không được gửi. Dữ liệu trên máy vẫn là bản chính; Sheet chỉ là bản sao để xem.</p>
+    </form>`,
+    onMount(sh, close) {
+      const read = () => ({ url: $(sh, '#gs-url').value, key: $(sh, '#gs-key').value, auto: $(sh, '#gs-auto').checked });
+      $(sh, '[data-gs-test]').addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        try { const r = await gsTest({ ...read(), url: read().url.trim(), key: read().key.trim() }); toast(`✅ Kết nối được · Sheet đang có ${r.rows} giao dịch`); } catch (err) { toast('❌ ' + err.message, 6000); }
+        e.target.disabled = false;
+      });
+      $(sh, '[data-gs-off]')?.addEventListener('click', () => {
+        if (!confirm('Ngắt kết nối Google Sheets trên máy này? Dữ liệu đã có trên Sheet vẫn giữ nguyên.')) return;
+        clearGsConfig(); close(); refresh(); toast('Đã ngắt kết nối Google Sheets');
+      });
+      $(sh, 'form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = read();
+        if (!v.url.trim() && !v.key.trim()) { clearGsConfig(); close(); refresh(); return toast('Đã tắt Google Sheets'); }
+        if (!gsReady({ url: v.url.trim(), key: v.key.trim() })) return toast('Link phải bắt đầu bằng https://script.google.com/… và cần nhập mật khẩu', 5000);
+        const btn = sh.querySelector('.head-save');
+        if (btn) btn.disabled = true;
+        try {
+          await gsTest({ url: v.url.trim(), key: v.key.trim() });
+        } catch (err) { if (btn) btn.disabled = false; return toast('❌ ' + err.message, 6000); }
+        saveGsConfig(v);
+        close(); refresh();
+        toast('Đã lưu · đang gửi dữ liệu lên Sheet…');
+        try { const r = await gsSync(); toast(`✅ Đã đồng bộ ${r.rows} giao dịch lên Google Sheets`); } catch (err) { toast('❌ ' + err.message, 6000); }
+      });
+    },
+  });
+};
+
+actions['gsheet-push'] = async (el) => {
+  if (!confirm('Ghi lại toàn bộ giao dịch lên Google Sheets? Trang GiaoDich trên Sheet sẽ được xóa và ghi lại từ dữ liệu trên máy này.')) return;
+  el.disabled = true;
+  toast('Đang đẩy toàn bộ lên Sheet…');
+  try { const r = await gsSync({ full: true }); toast(`✅ Đã đẩy ${r.rows} giao dịch lên Google Sheets`); } catch (err) { toast('❌ ' + err.message, 6000); }
+  el.disabled = false;
+};
+
 actions['export-csv-all'] = () => shareOrDownload(`giao-dich-tat-ca-${todayISO()}.csv`, csvOf(state.transactions), 'text/csv');
 
 actions.wipe = async () => {
