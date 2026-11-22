@@ -1461,3 +1461,8 @@ body[data-route="home"] .fab { display: none !important; }
 .profile-chip.book-chip.notif-on .chip-av { background: rgba(255, 255, 255, .85); }
 /* v7.75: Cài đặt chung — dòng đầu (tiêu đề + nút đóng ✕) luôn nằm trên cùng khi cuộn */
 .settings-head { position: sticky; top: 0; z-index: 30; background: var(--bg); margin: 0 -16px; padding: calc(8px + var(--safe-t, 0px)) 16px 8px; box-shadow: 0 1px 0 var(--line); }
+/* v7.76: chọn kỳ xem trong màn hình chi tiết thống kê */
+.stv-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 2px; }
+.stv-nav b { flex: 1; text-align: center; font-size: 14px; }
+.stv-nav[hidden], .stv-range[hidden] { display: none; }
+.stv-range { margin-top: 8px; }

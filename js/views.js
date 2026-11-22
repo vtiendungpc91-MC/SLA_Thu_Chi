@@ -1599,22 +1599,63 @@ function statRow(t) {
 }
 
 /** Bấm dòng thống kê ở Tổng quan: xem chi tiết theo kỳ đã đặt trong thiết lập của thống kê. */
+/**
+ * Bấm dòng thống kê: xem các giao dịch của thống kê. v7.76: trong màn hình này chọn được Ngày / Tuần / Tháng / Khoảng
+ * (có nút ‹ › để lùi, tiến kỳ). Chỉ để xem bên trong, không đổi số liệu thống kê ở Tổng quan.
+ */
 actions['stat-open'] = async (el) => {
   const st = S.gStats().find((x) => x.id === el.dataset.id);
   if (!st) return;
   const m = await STATS.track.load(st);
   if (!m.configured) return STATS.track.form(st);
-  const r = statRange(st);
-  const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
-  const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
+  // Bắt đầu từ kỳ đang chọn ở Tổng quan (Last Month = tháng trước).
+  let per = ui.overPeriod === 'lastmonth' ? 'month' : ui.overPeriod || 'day';
+  let anchor = ui.overPeriod === 'lastmonth' ? addMonths(todayISO().slice(0, 8) + '01', -1) : todayISO();
+  const r0 = overRange();
+  let from = r0.start, to = r0.end;
+  const PERS = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['custom', 'Khoảng']];
+  const rangeNow = () => (per === 'custom'
+    ? { start: from <= to ? from : to, end: from <= to ? to : from, label: `${fmtDate(from <= to ? from : to)} – ${fmtDate(from <= to ? to : from)}` }
+    : getRange(per, anchor, state.settings.weekStart));
+  const shift = (d) => { anchor = per === 'day' ? addDays(anchor, d) : per === 'week' ? addDays(anchor, 7 * d) : addMonths(anchor.slice(0, 8) + '01', d); };
+  const bodyHtml = () => {
+    const r = rangeNow();
+    const list = sortTx(m.txs.filter((t) => t.date >= r.start && t.date <= r.end));
+    const inc = statSum(list, 'income'), exp = statSum(list, 'expense');
+    return `<section class="card stats two-col"><div><small>Thu</small><b class="income">${fmt(inc)}</b></div><div><small>Chi</small><b class="expense">${fmt(exp)}</b></div></section>
+      <p class="center"><small class="muted">Chênh lệch</small> <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b> <small class="muted">· ${list.length} giao dịch</small></p>
+      ${list.length ? `<div class="card list">${list.map(statRow).join('')}</div>` : empty('📭', 'Không có giao dịch phù hợp trong kỳ.')}`;
+  };
   openSheet({
-    title: `${statIcon(st)} ${statName(st)} · ${r.label}`,
-    body: `<section class="card stats two-col"><div><small>Thu</small><b class="income">${fmt(inc)}</b></div><div><small>Chi</small><b class="expense">${fmt(exp)}</b></div></section>
-      <p class="center"><small class="muted">Chênh lệch</small> <b class="${inc - exp >= 0 ? 'income' : 'expense'}">${fmtSigned(inc - exp)}</b></p>
-      ${list.length ? `<div class="card list">${list.map(statRow).join('')}</div>` : empty('📭', 'Không có giao dịch phù hợp trong kỳ.')}`,
+    title: `${statIcon(st)} ${statName(st)}`,
+    body: `<div class="seg small" id="stv-per">${PERS.map(([k, l]) => `<button type="button" data-p="${k}" class="${per === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="period-nav stv-nav" id="stv-nav"><button type="button" class="icon-btn" data-sh="-1" aria-label="Kỳ trước">‹</button><b id="stv-label"></b><button type="button" class="icon-btn" data-sh="1" aria-label="Kỳ sau">›</button></div>
+      <div class="two stv-range" id="stv-range" hidden>${field('Từ ngày', `<input type="date" id="stv-from" value="${esc(from)}">`)}${field('Đến ngày', `<input type="date" id="stv-to" value="${esc(to)}">`)}</div>
+      <p class="muted small center">Chỉ để xem ở đây, không đổi số liệu thống kê ở Tổng quan.</p>
+      <div id="stv-body">${bodyHtml()}</div>`,
+    onMount(sh) {
+      const paint = () => {
+        sh.querySelectorAll('#stv-per [data-p]').forEach((b) => b.classList.toggle('on', b.dataset.p === per));
+        $(sh, '#stv-nav').hidden = per === 'custom';
+        $(sh, '#stv-range').hidden = per !== 'custom';
+        $(sh, '#stv-label').textContent = rangeNow().label;
+        $(sh, '#stv-body').innerHTML = bodyHtml();
+      };
+      $(sh, '#stv-per').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-p]');
+        if (!b) return;
+        if (b.dataset.p === 'custom' && per !== 'custom') { const r = rangeNow(); from = r.start; to = r.end; $(sh, '#stv-from').value = from; $(sh, '#stv-to').value = to; }
+        per = b.dataset.p;
+        if (per !== 'custom') anchor = todayISO();
+        paint();
+      });
+      $(sh, '#stv-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-sh]'); if (b) { shift(Number(b.dataset.sh)); paint(); } });
+      $(sh, '#stv-from').addEventListener('change', (e) => { if (e.target.value) { from = e.target.value; paint(); } });
+      $(sh, '#stv-to').addEventListener('change', (e) => { if (e.target.value) { to = e.target.value; paint(); } });
+      paint();
+    },
   });
-};
-actions['stat-setup'] = (el) => {
+};actions['stat-setup'] = (el) => {
   const st = S.gStats().find((x) => x.id === el.dataset.id);
   if (st) STATS.track.form(st);
 };
