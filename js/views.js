@@ -3,7 +3,7 @@ import * as S from './store.js';
 import { state } from './store.js';
 import { dbOf, dbWrites } from './db.js';
 import {
-  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, restorePageScroll, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
+  ui, currentRange, reportRange, rangeFor, periodState, datePick, amountLine, moneyBox, isDark, toggleTheme, toast, openSheet, primeKeyboard, restorePageScroll, periodBar, progress, empty, shareOrDownload, download, openCalendarFile, compressImage,
 } from './ui.js';
 import {
   esc, fmt, fmtNum, fmtCur, fmtSigned, fmtShort, fmtDate, fmtDayHeader, fmtDue, parseAmount, todayISO, addDays, diffDays,
@@ -988,16 +988,46 @@ actions.users = () => {
   });
 };
 
+/** Đổi tên, icon, màu của nút góc phải trên cùng (nút Thông báo) — v7.75. */
+function notifBtnForm(u) {
+  const f = { icon: u.notifIcon || '🔔', color: u.notifColor || overColor(u) };
+  const formId = 'nb-' + Date.now();
+  openSheet({
+    title: 'Nút góc phải trên cùng',
+    headAction: `<button type="submit" form="${formId}" class="btn primary small head-save">Lưu</button>`,
+    body: `<form class="form" id="${formId}">
+      ${field('Tên nút', `<input id="nb-name" maxlength="16" value="${esc(u.notifName || '')}" placeholder="Thông báo">`)}
+      ${looksFields(f, false)}
+      <p class="muted small">Khi có thông báo, nút vẫn đổi màu 7 sắc cầu vồng liên tục; hết thông báo thì về màu đã chọn.</p>
+      <div class="actions"><button type="button" class="btn ghost" data-reset>Về mặc định (🔔 Thông báo)</button></div>
+    </form>`,
+    onMount(sh, close) {
+      bindLooks(sh, f);
+      $(sh, 'form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        S.saveUser({ id: u.id, notifName: $(sh, '#nb-name').value.trim(), notifIcon: f.icon, notifColor: f.color });
+        close(); refresh(); toast('Đã đổi nút góc phải');
+      });
+      $(sh, '[data-reset]').addEventListener('click', () => {
+        S.saveUser({ id: u.id, notifName: '', notifIcon: '', notifColor: '' });
+        close(); refresh(); toast('Đã về mặc định');
+      });
+    },
+  });
+}
+
 /** Nút phải: Notifications của User + Save. */
 actions.books = () => {
   const cur = S.currentUser();
   openSheet({
     title: `🔔 Notifications`,
+    headAction: '<button type="button" class="icon-btn" data-notif-style title="Đổi tên, icon, màu nút" aria-label="Đổi tên, icon, màu nút góc phải">✎</button>',
     body: `<h4 class="grp-h">🔔 Notifications của ${esc(cur.name)} <small data-notif-n></small></h4>
       <div class="notif-list" data-notif-list></div>
       <div class="quick-save"><button type="button" class="btn primary" data-quick-save>💾 Save</button><small class="muted" data-save-status>${esc(saveStatusText())}</small></div>`,
     onMount(sh, close) {
       sh.querySelector('[data-quick-save]').addEventListener('click', () => quickSave(sh));
+      sh.querySelector('[data-notif-style]').addEventListener('click', () => { close(); notifBtnForm(cur); });
       fillNotifications(sh);
       sh.addEventListener('click', async (e) => {
         const nt = e.target.closest('[data-notif]');
@@ -1948,8 +1978,8 @@ function homeView() {
         ${avatar(u, 'chip-av')}<span class="chip-name">${esc(u.name)}</span>${u.special ? '<span class="chip-star" title="User đặc biệt">⭐</span>' : ''} <i>▾</i></button>
     </div>
     <div class="chip-col right">
-      <button type="button" class="profile-chip book-chip${rainbowOn.get(u.id) ? ' notif-on' : ''}" data-act="books" style="--c:${esc(overColor(u))}" title="Notifications">
-        <span class="chip-av">🔔</span><span class="chip-name">Thông báo</span> <i>▾</i></button>
+      <button type="button" class="profile-chip book-chip${rainbowOn.get(u.id) ? ' notif-on' : ''}" data-act="books" style="--c:${esc(u.notifColor || overColor(u))}" title="Notifications">
+        <span class="chip-av">${esc(u.notifIcon || '🔔')}</span><span class="chip-name">${esc(u.notifName || 'Thông báo')}</span> <i>▾</i></button>
       <button type="button" class="chip-sub notif-count" data-act="books" data-notif-count hidden></button>
     </div>
   </header>
@@ -4511,6 +4541,9 @@ function quickDesc(k, q) {
 
 /** Bấm nút ⚡: chỉ nhập số tiền (và ngày nếu cần) rồi OK. */
 actions['quick-run'] = async (el) => {
+  primeKeyboard(); // mở bàn phím số ngay trong lần chạm (iPhone), form mở xong chuyển sang ô số tiền
+  // Không mở được form (thiếu tài khoản, chưa thiết lập…) thì đóng bàn phím tạm.
+  setTimeout(() => { if (document.activeElement?.id === 'kb-primer') document.activeElement.blur(); }, 900);
   const { id, book } = el.dataset;
   await inBook(book);
   const q = S.quicksOf().find((x) => x.id === id);
@@ -4534,7 +4567,10 @@ actions['quick-run'] = async (el) => {
     </form>`,
     onMount(sh, close) {
       const amt = bindMoney(sh, 'qr-amt');
-      setTimeout(() => amt.focus(), 250);
+      // Luôn chọn sẵn ô số tiền và hiện bàn phím số.
+      amt.setAttribute('inputmode', 'decimal');
+      amt.focus({ preventScroll: true });
+      setTimeout(() => { if (document.activeElement !== amt) amt.focus({ preventScroll: true }); }, 260);
       const curId = S.currentProfile().id;
       const pfc = bindPf(sh, q.pf || null, k !== 'card' && S.pfNeeded(curId, peer ? peer.id : null));
       const debtH = bindDebtHint(sh, amt, () => (k === 'gop' ? peer : k === 'trich' ? S.currentProfile() : null));

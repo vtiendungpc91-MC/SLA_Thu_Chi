@@ -270,6 +270,41 @@ function liftSaveButton(wrap) {
 
 /** Mở bottom sheet. onMount(sheetEl, close) để gắn sự kiện cho form. */
 /** headAction: HTML đặt ở góc phải thanh tiêu đề (vd: nút Lưu của form). */
+/**
+ * v7.75: khi bàn phím iPhone hiện lên, vùng nhìn thấy (visualViewport) nhỏ lại và Safari đẩy màn hình lên, làm phần
+ * đầu form (có nút Lưu) bị che. Khung form luôn được co đúng bằng vùng nhìn thấy nên nút Lưu luôn ở trên cùng.
+ */
+function fitSheetsToViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  document.querySelectorAll('.sheet-wrap').forEach((w) => {
+    w.style.top = `${vv.offsetTop}px`;
+    w.style.height = `${vv.height}px`;
+    w.style.bottom = 'auto';
+  });
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitSheetsToViewport);
+  window.visualViewport.addEventListener('scroll', fitSheetsToViewport);
+}
+/**
+ * Mở bàn phím số ngay trong lần chạm (iPhone chỉ cho mở bàn phím khi đang xử lý chạm): tạm đặt con trỏ vào một ô ẩn,
+ * form mở xong thì chuyển con trỏ sang ô số tiền, bàn phím vẫn giữ nguyên.
+ */
+export function primeKeyboard() {
+  let k = document.getElementById('kb-primer');
+  if (!k) {
+    k = document.createElement('input');
+    k.id = 'kb-primer';
+    k.setAttribute('inputmode', 'decimal');
+    k.setAttribute('aria-hidden', 'true');
+    k.tabIndex = -1;
+    k.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;z-index:-1';
+    document.body.appendChild(k);
+  }
+  k.focus({ preventScroll: true });
+}
+
 export function openSheet({ title, body, onMount, onClose, wide = false, headAction = '' }) {
   const wrap = document.createElement('div');
   wrap.className = 'sheet-wrap';
@@ -283,6 +318,7 @@ export function openSheet({ title, body, onMount, onClose, wide = false, headAct
       <div class="sheet-body">${body}</div>
     </div>`;
   document.body.appendChild(wrap);
+  fitSheetsToViewport();
   lockPage();
   guardSheetTouch(wrap);
   if (justClosed) {
