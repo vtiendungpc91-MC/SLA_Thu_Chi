@@ -4,12 +4,17 @@
 // Mục Secrecy không được gửi lên Sheet.
 import * as S from './store.js';
 import { writeHooks } from './db.js';
+import { encryptBackup, decryptBackup, isEncryptedBackup } from './autosave.js';
 
 const CFG_KEY = 'stc-gsheet';
 const SENT_KEY = 'stc-gsheet-sent';
 const ACC_SIG_KEY = 'stc-gsheet-acc';
 const PLAN_SIG_KEY = 'stc-gsheet-plan';
 const STATUS_KEY = 'stc-gsheet-status';
+const BK_SIG_KEY = 'stc-gsheet-bk'; // dấu dữ liệu của bản sao lưu đã gửi lên trang SaoLuu
+const BK_AT_KEY = 'stc-gsheet-bk-at';
+const BK_GAP = 2 * 60 * 1000; // gửi bản sao lưu đầy đủ tối đa 2 phút/lần
+const BK_PART = 45000; // mỗi ô Google Sheets chứa tối đa 50.000 ký tự
 const CHUNK = 400;
 
 const readJSON = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
@@ -30,11 +35,11 @@ export function saveGsConfig(c) {
   const old = gsConfig();
   const next = { url: String(c.url || '').trim(), key: String(c.key || '').trim(), auto: c.auto !== false };
   writeJSON(CFG_KEY, next);
-  if (old.url !== next.url || old.key !== next.key) { [SENT_KEY, ACC_SIG_KEY, PLAN_SIG_KEY, STATUS_KEY].forEach((k) => localStorage.removeItem(k)); }
+  if (old.url !== next.url || old.key !== next.key) { [SENT_KEY, ACC_SIG_KEY, PLAN_SIG_KEY, STATUS_KEY, BK_SIG_KEY, BK_AT_KEY].forEach((k) => localStorage.removeItem(k)); }
   return next;
 }
 export function clearGsConfig() {
-  [CFG_KEY, SENT_KEY, ACC_SIG_KEY, PLAN_SIG_KEY, STATUS_KEY].forEach((k) => localStorage.removeItem(k));
+  [CFG_KEY, SENT_KEY, ACC_SIG_KEY, PLAN_SIG_KEY, STATUS_KEY, BK_SIG_KEY, BK_AT_KEY].forEach((k) => localStorage.removeItem(k));
 }
 
 // ---------- Dựng dòng dữ liệu ----------
@@ -183,11 +188,14 @@ function sig(arr) {
 }
 
 // ---------- Gửi lên ----------
+// Phiên bản Apps Script (lần trả lời gần nhất): 2 = có KeHoach, 3 = có SaoLuu an toàn.
+let scriptV = -1;
 async function post(body, cfg) {
   // text/plain: không cần hỏi trước CORS, Apps Script vẫn đọc được e.postData.contents.
   const res = await fetch(cfg.url, { method: 'POST', body: JSON.stringify({ key: cfg.key, ...body }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
   let out;
   try { out = await res.json(); } catch { throw new Error('Link không trả về dữ liệu đúng — kiểm tra lại link ứng dụng web (phải kết thúc bằng /exec, quyền truy cập "Bất kỳ ai")'); }
+  scriptV = Number(out.v) || 0;
   if (!out.ok) throw new Error(out.error || 'Google Sheets báo lỗi');
   return out;
 }
@@ -198,7 +206,38 @@ export async function gsTest(cfg = gsConfig()) {
   return post({ action: 'ping' }, cfg);
 }
 
-let running = null, again = false, timer = null;
+/** Số giao dịch đang có trên Sheet và Sheet đã có bản sao lưu chưa (dùng khi cài trên máy mới). */
+export async function gsPeek(cfg) {
+  const r = await gsTest(cfg);
+  if ((r.v || 0) < 3) return { rows: r.rows || 0, backup: false, oldScript: true };
+  const b = await post({ action: 'backupGet' }, cfg);
+  return { rows: r.rows || 0, backup: !!b.data, backupAt: b.at || null, size: (b.data || '').length, data: b.data || '' };
+}
+
+/** Tải bản sao lưu trên Sheet về và giải mã (chưa ghi vào máy). */
+export async function gsFetchBackup(cfg, peek = null) {
+  const p = peek || await gsPeek(cfg);
+  if (p.oldScript) throw new Error('Apps Script là bản cũ — dán lại mã mới và triển khai phiên bản mới');
+  if (!p.data) throw new Error('Trên Sheet chưa có bản sao lưu. Ở máy cũ, mở app (bản mới) và bấm "Đẩy toàn bộ lên Sheet" trước');
+  let file;
+  try { file = JSON.parse(p.data); } catch { throw new Error('Bản sao lưu trên Sheet bị lỗi (có thể đã bị sửa tay trang SaoLuu)'); }
+  const data = isEncryptedBackup(file) ? await decryptBackup(file, cfg.key) : file;
+  if (!data || data.app !== 'sothuchi' || !data.all) throw new Error('Bản sao lưu trên Sheet không đúng định dạng');
+  return data;
+}
+
+/** Sau khi khôi phục từ Sheet: lưu cấu hình, đánh dấu dữ liệu hiện tại = bản trên Sheet (không gửi lại sao lưu ngay). */
+export async function gsAfterRestore(cfg) {
+  saveGsConfig(cfg);
+  [SENT_KEY, ACC_SIG_KEY, PLAN_SIG_KEY].forEach((k) => localStorage.removeItem(k));
+  const data = await S.exportAll();
+  localStorage.setItem(BK_SIG_KEY, sig([JSON.stringify({ ...data, exportedAt: 0 })]));
+  localStorage.setItem(BK_AT_KEY, String(Date.now()));
+}
+
+let running = null, again = false, timer = null, paused = false;
+/** Tạm dừng đồng bộ (đang khôi phục dữ liệu, tránh gửi dữ liệu dở dang lên Sheet). */
+export const gsPause = (on) => { paused = !!on; if (on) clearTimeout(timer); };
 
 /**
  * Đồng bộ. full = true: ghi lại toàn bộ trang GiaoDich (nút "Đẩy toàn bộ").
@@ -207,6 +246,7 @@ let running = null, again = false, timer = null;
 export async function gsSync({ full = false } = {}) {
   const cfg = gsConfig();
   if (!gsReady(cfg)) throw new Error('Chưa cài đặt Google Sheets');
+  if (paused) throw new Error('Đang khôi phục dữ liệu');
   if (running) { again = again || !full; if (full) await running.catch(() => {}); else return running; }
   running = (async () => {
     if (!navigator.onLine) { setStatus({ pending: true, err: 'Đang mất mạng — sẽ gửi khi có mạng' }); throw new Error('Đang mất mạng'); }
@@ -254,7 +294,30 @@ export async function gsSync({ full = false } = {}) {
       if (accDirty) localStorage.setItem(ACC_SIG_KEY, accSig);
       result = { sent: changed.length, removed: removed.length, rows: rows.length, full: false };
     }
-    setStatus({ at: Date.now(), ok: true, err: '', pending: false, rows: rows.length, plan: plan.length, oldScript });
+    // A1 (v7.80): bản sao lưu đầy đủ (mã hóa bằng mật khẩu SECRET) lên trang SaoLuu để tải về máy mới.
+    let bkAt = Number(localStorage.getItem(BK_AT_KEY)) || 0;
+    if (scriptV < 0) await post({ action: 'ping' }, cfg);
+    if (scriptV < 3) oldScript = true;
+    if (!oldScript) {
+      const data = await S.exportAll();
+      const bkSig = sig([JSON.stringify({ ...data, exportedAt: 0 })]);
+      if (localStorage.getItem(BK_SIG_KEY) !== bkSig) {
+        const wait = full ? 0 : bkAt + BK_GAP - Date.now();
+        if (wait > 0) scheduleGsSync(wait + 500); // vừa gửi xong → hẹn lần sau, không gửi dồn
+        else {
+          const text = await encryptBackup(JSON.stringify(data), cfg.key);
+          const parts = [];
+          for (let i = 0; i < text.length; i += BK_PART) parts.push(text.slice(i, i + BK_PART));
+          const r = await post({ action: 'backupPut', parts }, cfg);
+          if (r.parts === parts.length) {
+            bkAt = Date.now();
+            localStorage.setItem(BK_SIG_KEY, bkSig);
+            localStorage.setItem(BK_AT_KEY, String(bkAt));
+          } else oldScript = true;
+        }
+      }
+    }
+    setStatus({ at: Date.now(), ok: true, err: '', pending: false, rows: rows.length, plan: plan.length, oldScript, bkAt: bkAt || null });
     return result;
   })();
   try { return await running; } catch (e) {
@@ -269,7 +332,7 @@ export async function gsSync({ full = false } = {}) {
 /** Hẹn đồng bộ tự động sau ms (gộp nhiều lần ghi liên tiếp thành 1 lần gửi). */
 export function scheduleGsSync(ms = 4000) {
   const cfg = gsConfig();
-  if (!gsReady(cfg) || !cfg.auto) return;
+  if (!gsReady(cfg) || !cfg.auto || paused) return;
   clearTimeout(timer);
   timer = setTimeout(() => { gsSync().catch(() => {}); }, ms);
 }

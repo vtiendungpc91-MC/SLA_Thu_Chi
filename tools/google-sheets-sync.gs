@@ -17,7 +17,7 @@ const SHEET_TX = 'GiaoDich';
 const SHEET_ACC = 'TaiKhoan';
 const TX_HEADERS = ['ID', 'Ngày', 'Giờ ghi', 'User', 'Bank', 'Tài khoản', 'Loại', 'Danh mục', 'Số tiền', 'Thu', 'Chi', 'Ghi chú', 'Chuyển đến / Nhận từ', 'Mục ID', 'Cập nhật lúc'];
 const ACC_HEADERS = ['Mục ID', 'User', 'Bank', 'Tài khoản', 'Loại tài khoản', 'Số dư', 'Cập nhật lúc'];
-const SCRIPT_VERSION = 2; // app kiểm tra số này để biết đã dán bản mới
+const SCRIPT_VERSION = 3; // app kiểm tra số này để biết đã dán bản mới
 const EXTRA_SHEETS = ['KeHoach'];
 const SHEET_BACKUP = 'SaoLuu';
 const BACKUP_HEADERS = ['Phần', 'Dữ liệu (không sửa tay)', 'Lúc lưu'];
@@ -66,14 +66,20 @@ function doPost(e) {
       const sh = ensureSheet_(SHEET_BACKUP, BACKUP_HEADERS);
       const parts = body.parts || [];
       const at = new Date();
-      replaceAll_(sh, BACKUP_HEADERS, parts.map((p, i) => [i + 1, p, at]));
+      sh.clearContents();
+      sh.appendRow(BACKUP_HEADERS);
+      if (parts.length) {
+        const rg = sh.getRange(2, 1, parts.length, 3);
+        rg.setNumberFormat('@'); // chữ thuần: dữ liệu bắt đầu bằng + hoặc = không bị hiểu là công thức
+        rg.setValues(parts.map((p, i) => [String(i + 1), String(p), at.toISOString()]));
+      }
       return json_({ ok: true, parts: parts.length });
     }
     if (body.action === 'backupGet') {
       const sh = ensureSheet_(SHEET_BACKUP, BACKUP_HEADERS);
       const n = sh.getLastRow();
       const vals = n > 1 ? sh.getRange(2, 1, n - 1, 3).getValues() : [];
-      vals.sort((a, b) => a[0] - b[0]);
+      vals.sort((a, b) => Number(a[0]) - Number(b[0]));
       return json_({ ok: true, data: vals.map((r) => String(r[1])).join(''), at: vals.length ? vals[0][2] : null });
     }
     return json_({ ok: true, rows: Math.max(0, tx.getLastRow() - 1) });

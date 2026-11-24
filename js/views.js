@@ -14,7 +14,7 @@ import { donut, bars, lineChart } from './charts.js';
 import { iconPickerHtml, bindIconPicker, MONEY_PAIRS, PAIR_TINT, BANK_LOGOS, bankColorOf, bankLogoSrc, plain } from './icons.js';
 import { buildAllDayICS, buildDailyICS } from './ics.js';
 import { AUTO_FILE_NAME, canPickFile, saveStatus, markSaved, backupJson, pickBackupFile, saveToPickedFile, encryptBackup, decryptBackup, isEncryptedBackup, BACKUP_PIN_RE } from './autosave.js';
-import { gsConfig, gsReady, gsStatus, saveGsConfig, clearGsConfig, gsTest, gsSync, onGsStatus } from './gsheet.js';
+import { gsConfig, gsReady, gsStatus, saveGsConfig, clearGsConfig, gsTest, gsSync, onGsStatus, gsPeek, gsFetchBackup, gsAfterRestore, gsPause } from './gsheet.js';
 import { lockConfig, isDefaultPin, DEFAULT_PIN, checkPin, setPin, setLockEnabled, setLockDelay, bioEnabled, bioAvailable, enableBio, disableBio } from './lock.js';
 
 export const actions = {};
@@ -5814,6 +5814,8 @@ actions.gsheet = () => {
         ${gsReady(c) ? '<button type="button" class="btn ghost" data-gs-off>Ngắt kết nối</button>' : ''}
         <button type="button" class="btn ghost" data-gs-test>Kiểm tra</button>
       </div>
+      <button type="button" class="btn ghost" data-gs-restore style="width:100%">⬇️ Tải dữ liệu từ Sheet về máy này</button>
+      <p class="muted small">Dùng khi đổi điện thoại: nhập link + mật khẩu như máy cũ rồi bấm nút trên. Toàn bộ dữ liệu trên máy này sẽ được thay bằng bản trên Sheet (kể cả cài đặt, nút nhanh, Secrecy).</p>
       <p class="muted small">Lưu lần đầu sẽ ghi toàn bộ giao dịch lên trang <b>GiaoDich</b>, số dư lên trang <b>TaiKhoan</b>, kế hoạch và nhắc nhở lên trang <b>KeHoach</b>. Mục Secrecy không được gửi. Dữ liệu trên máy vẫn là bản chính; Sheet chỉ là bản sao để xem.</p>
     </form>`,
     onMount(sh, close) {
@@ -5822,6 +5824,19 @@ actions.gsheet = () => {
         e.target.disabled = true;
         try { const r = await gsTest({ ...read(), url: read().url.trim(), key: read().key.trim() }); toast(`✅ Kết nối được · Sheet đang có ${r.rows} giao dịch`); } catch (err) { toast('❌ ' + err.message, 6000); }
         e.target.disabled = false;
+      });
+      $(sh, '[data-gs-restore]').addEventListener('click', async (e) => {
+        const cfg = { ...read(), url: read().url.trim(), key: read().key.trim() };
+        if (!gsReady(cfg)) return toast('Nhập link ứng dụng web và mật khẩu trước', 4000);
+        e.target.disabled = true;
+        const old = e.target.textContent;
+        e.target.textContent = 'Đang kiểm tra Sheet…';
+        try {
+          const peek = await gsPeek(cfg);
+          await gsRestore(cfg, peek, close);
+        } catch (err) { toast('❌ ' + err.message, 6000); }
+        e.target.disabled = false;
+        e.target.textContent = old;
       });
       $(sh, '[data-gs-off]')?.addEventListener('click', () => {
         if (!confirm('Ngắt kết nối Google Sheets trên máy này? Dữ liệu đã có trên Sheet vẫn giữ nguyên.')) return;
@@ -5834,9 +5849,17 @@ actions.gsheet = () => {
         if (!gsReady({ url: v.url.trim(), key: v.key.trim() })) return toast('Link phải bắt đầu bằng https://script.google.com/… và cần nhập mật khẩu', 5000);
         const btn = sh.querySelector('.head-save');
         if (btn) btn.disabled = true;
+        const cfg = { ...v, url: v.url.trim(), key: v.key.trim() };
+        const fresh = !(gsReady(c) && c.url === cfg.url && c.key === cfg.key);
+        let peek = null;
         try {
-          await gsTest({ url: v.url.trim(), key: v.key.trim() });
+          if (fresh) peek = await gsPeek(cfg); else await gsTest(cfg);
         } catch (err) { if (btn) btn.disabled = false; return toast('❌ ' + err.message, 6000); }
+        // Máy mới nối vào Sheet đã có dữ liệu: hỏi tải về hay ghi đè, tránh xóa nhầm dữ liệu của máy cũ.
+        if (peek && (peek.backup || peek.rows > 0)) {
+          if (btn) btn.disabled = false;
+          return gsChooseSheet(cfg, peek, close);
+        }
         saveGsConfig(v);
         close(); refresh();
         toast('Đã lưu · đang gửi dữ liệu lên Sheet…');
@@ -5845,6 +5868,59 @@ actions.gsheet = () => {
     },
   });
 };
+
+/** A1 (v7.80): tải bản sao lưu trên Sheet về, thay toàn bộ dữ liệu trên máy này. */
+async function gsRestore(cfg, peek, closeForm) {
+  if (peek.oldScript) throw new Error('Apps Script là bản cũ — dán lại mã mới và triển khai phiên bản mới');
+  if (!peek.backup) throw new Error('Trên Sheet chưa có bản sao lưu. Ở máy cũ, cập nhật app rồi bấm "⬆️ Đẩy toàn bộ lên Sheet" trước');
+  const data = await gsFetchBackup(cfg, peek);
+  const when = data.exportedAt ? fmtDateTimeVN(Date.parse(data.exportedAt)) : '?';
+  let nTx = 0;
+  for (const b of Object.values(data.books || {})) nTx += (b.transactions || []).length;
+  if (!confirm(`Bản trên Google Sheets lưu lúc ${when}: ${(data.profiles || []).length} tài khoản, ${nTx} giao dịch.\n\nTải về sẽ THAY THẾ TOÀN BỘ dữ liệu đang có trên máy này. Tiếp tục?`)) return false;
+  ui.period = null;
+  ui.reportPeriod = null;
+  gsPause(true);
+  try {
+    await S.importAny(data);
+    await gsAfterRestore(cfg);
+  } finally { gsPause(false); }
+  closeForm?.();
+  refresh();
+  toast(`✅ Đã tải về ${nTx} giao dịch từ Google Sheets`, 4000);
+  gsSync().catch(() => {});
+  return true;
+}
+
+/** Máy mới nối vào Sheet đã có dữ liệu: chọn tải về hoặc ghi đè. */
+function gsChooseSheet(cfg, peek, closeForm) {
+  openSheet({
+    title: 'Sheet đã có dữ liệu',
+    body: `<p>Google Sheets này đang có <b>${peek.rows}</b> giao dịch${peek.backup ? ` và bản sao lưu đầy đủ${peek.backupAt ? ' lúc ' + esc(fmtDateTimeVN(Date.parse(peek.backupAt))) : ''}` : ''}.</p>
+      <p class="muted small">Nếu đây là điện thoại mới, hãy <b>tải dữ liệu về</b>. Chỉ chọn ghi đè khi bạn chắc dữ liệu trên máy này là bản đúng.</p>
+      <div class="actions" style="flex-direction:column;align-items:stretch;gap:8px">
+        ${peek.backup ? '<button type="button" class="btn primary" data-pull>⬇️ Tải dữ liệu từ Sheet về máy này</button>' : ''}
+        <button type="button" class="btn ghost danger" data-push>⬆️ Ghi đè Sheet bằng dữ liệu máy này</button>
+        <button type="button" class="btn ghost" data-cancel>Hủy</button>
+      </div>`,
+    onMount(sh, close) {
+      $(sh, '[data-cancel]').addEventListener('click', () => close());
+      $(sh, '[data-pull]')?.addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        try { if (await gsRestore(cfg, peek, closeForm)) close(); } catch (err) { toast('❌ ' + err.message, 6000); }
+        e.target.disabled = false;
+      });
+      $(sh, '[data-push]').addEventListener('click', async () => {
+        if (!confirm('Xóa dữ liệu đang có trên Sheet (cả bản sao lưu) và ghi lại bằng dữ liệu của máy này?')) return;
+        close(); closeForm?.();
+        saveGsConfig(cfg);
+        refresh();
+        toast('Đang gửi dữ liệu lên Sheet…');
+        try { const r = await gsSync({ full: true }); toast(`✅ Đã đồng bộ ${r.rows} giao dịch lên Google Sheets`); } catch (err) { toast('❌ ' + err.message, 6000); }
+      });
+    },
+  });
+}
 
 actions['gsheet-push'] = async (el) => {
   if (!confirm('Ghi lại toàn bộ giao dịch lên Google Sheets? Trang GiaoDich trên Sheet sẽ được xóa và ghi lại từ dữ liệu trên máy này.')) return;
