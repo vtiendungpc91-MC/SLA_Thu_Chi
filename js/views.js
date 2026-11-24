@@ -5779,7 +5779,24 @@ function gsLine(st = gsStatus()) {
   if (st.oldScript) return `${mode} · ⚠️ Apps Script là bản cũ nên chưa lưu Kế hoạch — dán lại mã mới và triển khai phiên bản mới`;
   return `${mode} · lần cuối ${st.at ? fmtDateTimeVN(st.at) : '—'} · ${st.rows ?? 0} giao dịch${st.plan != null ? ` · ${st.plan} kế hoạch` : ''} trên Sheet`;
 }
-onGsStatus((st) => document.querySelectorAll('[data-gs-line]').forEach((el) => { el.textContent = gsLine(st); }));
+/** Dòng rất nhỏ dưới thanh cuối ở Tổng quan (v7.79): lần đồng bộ Google Sheets gần nhất. */
+function paintGsFoot(st = gsStatus()) {
+  const el = document.getElementById('gs-foot');
+  if (!el) return;
+  const c = gsConfig();
+  el.hidden = !gsReady(c);
+  if (el.hidden) return;
+  const at = st?.at ? fmtDateTimeVN(st.at) : '';
+  const warn = !!(st?.pending && st?.err);
+  el.classList.toggle('warn', warn);
+  el.textContent = warn ? `⚠️ Chưa đồng bộ được Google Sheets${at ? ' · lần cuối ' + at : ''}`
+    : !c.auto ? `☁️ Google Sheets: đang tắt tự động${at ? ' · lần cuối ' + at : ''}`
+    : at ? `☁️ Tự động đồng bộ Google Sheets lúc ${at}` : '☁️ Google Sheets: chưa đồng bộ lần nào';
+}
+onGsStatus((st) => {
+  document.querySelectorAll('[data-gs-line]').forEach((el) => { el.textContent = gsLine(st); });
+  paintGsFoot(st);
+});
 
 actions.gsheet = () => {
   const c = gsConfig();
@@ -6306,6 +6323,7 @@ export function render(route, sub) {
   const y = window.scrollY;
   // Màu của loại tài khoản đang xem (Thanh Toán cam, Thấu chi xanh nhạt, Tiết kiệm xanh lá, Thẻ đỏ).
   document.body.dataset.route = current.route; // Tổng quan: nút ＋ nằm ở thanh dưới, ẩn nút ＋ tròn phía trên
+  paintGsFoot();
   document.body.dataset.tab = current.route === 'home' ? overKindNow() : current.route === 'settings' ? '' : tabOfBook(S.currentProfile());
   paintMain(main, v.html(sub), current.route);
   restoreTop(main);

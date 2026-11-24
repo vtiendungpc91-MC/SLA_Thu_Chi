@@ -1913,18 +1913,13 @@ export function reminderAlerts(userId) {
   }
   return out;
 }
-// ---------- Nhắc sao lưu: mỗi ngày 1 lần, chỉ trong khung 20:00–24:00, hôm nay đã sao lưu thì thôi ----------
+// ---------- Sao lưu: ghi ngày sao lưu gần nhất (thông báo nhắc hằng ngày đã bỏ ở v7.79) ----------
 const LAST_BACKUP_KEY = 'stc-last-backup';
 export const BACKUP_REMIND_FROM = '20:00';
 export const markBackup = () => localStorage.setItem(LAST_BACKUP_KEY, todayISO());
 export const lastBackupDate = () => localStorage.getItem(LAST_BACKUP_KEY) || state.settings.lastBackup || null;
-export function backupAlerts() {
-  const today = todayISO();
-  const last = lastBackupDate();
-  const days = last ? diffDays(last, today) : null;
-  if (last === today || fmtTimeVN(Date.now()) < BACKUP_REMIND_FROM) return [];
-  return [{ key: `backup:${today}`, kind: 'backup', id: 'backup', days: 0, title: last ? `${days} ngày chưa sao lưu` : 'Chưa sao lưu lần nào', amount: 0, date: today, bookId: '', bookName: 'Sao lưu', bookIcon: '💾' }];
-}
+// v7.79: bỏ thông báo nhắc lưu JSON hằng ngày (đã có đồng bộ Google Sheets) → không còn thông báo sao lưu.
+export const backupAlerts = () => [];
 
 /**
  * Tổng tài sản của User ở cuối mỗi tháng (tháng hiện tại tính đến hôm nay): số dư Thanh Toán, Thấu chi, Tiết kiệm và

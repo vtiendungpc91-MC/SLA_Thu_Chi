@@ -1466,3 +1466,8 @@ body[data-route="home"] .fab { display: none !important; }
 .stv-nav b { flex: 1; text-align: center; font-size: 14px; }
 .stv-nav[hidden], .stv-range[hidden] { display: none; }
 .stv-range { margin-top: 8px; }
+/* v7.79: dòng rất nhỏ dưới thanh cuối ở Tổng quan — lần đồng bộ Google Sheets gần nhất */
+.tabbar { flex-wrap: wrap; }
+.tabbar .gs-foot { flex: 0 0 100%; order: 99; text-align: center; font-size: 9px; line-height: 1.2; color: var(--muted); opacity: .8; padding-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabbar .gs-foot.warn { color: #e8590c; opacity: 1; }
+body:not([data-route="home"]) .tabbar .gs-foot { display: none; }
