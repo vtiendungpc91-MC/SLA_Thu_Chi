@@ -254,7 +254,7 @@ export const PROFILE_COLORS = [
 export const BOOK_KINDS = {
   bank: { label: 'Ngân hàng', icon: '🏦', max: 3 },
   saving: { label: 'Tiết kiệm', icon: '🐷', max: 2 },
-  card: { label: 'Credit Card', icon: '💳', max: 5 },
+  card: { label: 'Thẻ tín dụng', icon: '💳', max: 5 },
   neo: { label: 'NEOBANK', icon: '🏧', max: 2 },
 
 };
@@ -398,7 +398,7 @@ function migrateAccountName() {
 // Mỗi kiểu tài khoản một icon, áp dụng cho mọi mục cùng kiểu (không chọn icon riêng từng mục nữa).
 // Mục của Secrecy (NEOBANK, Cash Outflow) giữ icon riêng.
 const TYPE_ICONS_KEY = 'stc-type-icons';
-export const ACC_TYPES = [['account', 'Thanh Toán', '🏦'], ['od', 'Thấu chi', '💳'], ['saving', 'Tiết kiệm', '🐷'], ['credit', 'Credit Card', '💳'], ['prepaid', 'Thẻ trả trước', '🪪'], ['wallet', 'Ví điện tử', '👛']];
+export const ACC_TYPES = [['account', 'Thanh Toán', '🏦'], ['od', 'Thấu chi', '💳'], ['saving', 'Tiết kiệm', '🐷'], ['credit', 'Thẻ tín dụng', '💳'], ['prepaid', 'Thẻ trả trước', '🪪'], ['wallet', 'Ví điện tử', '👛']];
 export const TYPE_ICON_DEFAULTS = Object.fromEntries(ACC_TYPES.map(([k, , ic]) => [k, ic]));
 export const typeIcons = () => ({ ...TYPE_ICON_DEFAULTS, ...(readJSON(TYPE_ICONS_KEY) || {}) });
 export function setTypeIcon(type, icon) {
@@ -474,7 +474,7 @@ const GROUPS_KEY = 'stc-groups';
 export const GROUP_TYPES = { bank: { label: 'Bank', icon: '🏦' }, wallet: { label: 'Ví điện tử', icon: '👛' } };
 /** Mỗi Bank: 2 Thanh Toán, 1 Thấu chi, 2 Tiết kiệm, 1 Credit Card. Mỗi Ví: 1 tài khoản thanh toán, 1 Thẻ trả trước. */
 export const GROUP_LIMITS = { bank: { account: 2, od: 1, saving: 2, credit: 1 }, wallet: { account: 1, prepaid: 1 } };
-export const SLOT_LABEL = { account: 'Thanh Toán', od: 'Thấu chi', saving: 'Tiết kiệm', credit: 'Credit Card', prepaid: 'Thẻ trả trước', legacy: 'Ví (bản cũ)' };
+export const SLOT_LABEL = { account: 'Thanh Toán', od: 'Thấu chi', saving: 'Tiết kiệm', credit: 'Thẻ tín dụng', prepaid: 'Thẻ trả trước', legacy: 'Ví (bản cũ)' };
 export const MAX_GROUPS = 10;
 export const getGroups = () => readJSON(GROUPS_KEY) || [];
 const saveGroups = (list) => localStorage.setItem(GROUPS_KEY, JSON.stringify(list));
@@ -1045,7 +1045,7 @@ export async function deleteTx(tx, { force = false } = {}) {
 // ---------- Thẻ trả trước ----------
 // Thẻ trả trước là một "sổ" (hồ sơ kind = 'card') không có số dư: chỉ ghi các khoản chi (nguồn MoMo, ZaloPay…).
 // Mỗi khoản chi có trạng thái open/done; "Nhận thanh toán" ghi một khoản chi vào sổ người dùng trả tiền.
-export const CARD_TYPES = { credit: 'Credit Card', wallet: 'Ví điện tử (bản cũ)' };
+export const CARD_TYPES = { credit: 'Thẻ tín dụng', wallet: 'Ví điện tử (bản cũ)' };
 export const isCard = (p = currentProfile()) => p && p.kind === 'card' && !p.credit;
 /** Các mục Ngân hàng của mọi User — dùng cho "Ghi vào sổ của", trả tiền thẻ. */
 export const moneyBooks = () => getProfiles().filter((p) => (p.kind || 'bank') === 'bank' && !p.overdraft);

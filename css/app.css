@@ -1471,3 +1471,103 @@ body[data-route="home"] .fab { display: none !important; }
 .tabbar .gs-foot { flex: 0 0 100%; order: 99; text-align: center; font-size: 9px; line-height: 1.2; color: var(--muted); opacity: .8; padding-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tabbar .gs-foot.warn { color: #e8590c; opacity: 1; }
 body:not([data-route="home"]) .tabbar .gs-foot { display: none; }
+/* ===================== v7.81: sắp xếp lại giao diện ===================== */
+/* X2: màu số tiền thống nhất — dương xanh, âm đỏ, bằng 0 xám */
+.zero { color: var(--muted); }
+/* T1: thẻ tổng tài sản */
+.hero-card { display: block; margin: 4px 0 8px; padding: 10px 12px 10px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 1px 3px rgba(0, 0, 0, .05); text-align: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hero-card:active { background: color-mix(in srgb, var(--kc, #e8590c) 8%, var(--card)); }
+.hero-card .hero-l { display: block; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.hero-card .hero-total { display: block; font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; font-variant-numeric: tabular-nums; margin: 1px 0 6px; }
+.hero-card .hero-total.zero { color: var(--text, inherit); }
+.hero-mini { display: flex; gap: 4px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.hero-mini > span { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.hero-mini > span[hidden] { display: none; }
+.hero-mini small { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.hero-mini b { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.hero-pf { display: flex; justify-content: center; gap: 10px; }
+.hero-pf:not(:has(> :not([hidden]))) { display: none; }
+.over-ticker-box { display: flex; flex-direction: column; gap: 1px; margin: 0 2px 6px; }
+.over-ticker-box[hidden] { display: none; }
+/* T2 + T3: dòng ngày · kỳ · Bank · 🔎 👁 */
+.over-bar { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; }
+.over-bar .ob-date { color: var(--muted); white-space: nowrap; font-weight: 600; }
+.over-bar .chip-select { flex: 0 1 auto; min-width: 0; max-width: 42%; }
+.over-bar .title-acts { margin-left: auto; }
+.over-bar .icon-btn { width: 34px; height: 34px; font-size: 16px; }
+body.pin-small .pin-head .hero-card { padding: 4px 10px; margin-bottom: 6px; }
+body.pin-small .pin-head .hero-card .hero-l, body.pin-small .pin-head .hero-mini, body.pin-small .pin-head .hero-pf { display: none; }
+body.pin-small .pin-head .hero-card .hero-total { font-size: 18px; margin: 0; }
+/* T4: thẻ tài khoản — biểu đồ 30 ngày trải ngang, dòng Thu · Chi gọn */
+.over-acc .spark.wide { display: block; width: 100%; height: 14px; margin: 2px 0 1px; flex: none; }
+.over-acc .ol-flow { justify-content: flex-start; gap: 6px; }
+.over-acc .ol-flow .dot-sep { color: var(--muted); }
+.over-acc.folded .spark.wide { display: none; }
+.over-acc .ol-bal.zero { color: var(--muted); }
+/* T6 / P2: Sắp tới */
+.up-row .grow small { color: var(--muted); }
+.up-row.over .grow small { color: var(--expense); font-weight: 600; }
+.up-row.soon .grow small { color: #e8590c; font-weight: 600; }
+.up-row .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-upcoming] .sec-h { margin-top: 14px; }
+/* K1 / X3: nút "‹ Tổng quan" trong tài khoản; ẩn nút ＋ tròn lơ lửng (đã có ＋ ở thanh dưới) */
+.profile-chip.back-chip { background: var(--card) !important; color: var(--text, #111) !important; border: 1px solid var(--line); box-shadow: none; padding: 5px 12px 5px 8px; gap: 4px; }
+.profile-chip.back-chip i { font-size: 20px; line-height: 1; opacity: 1; font-weight: 700; color: var(--kc-ink, #e8590c); }
+.profile-chip.back-chip span.chip-name { color: inherit; }
+html.dark .profile-chip.back-chip { color: #fff !important; }
+body[data-route="tx"] .fab, body[data-route="reports"] .fab, body[data-route="bookset"] .fab { display: none !important; }
+/* K2: Giao dịch — 1 hàng lọc */
+.tx-filters { gap: 6px; }
+.tx-frow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tx-frow > .seg { flex: 1 1 auto; }
+.tx-frow .cat-filter { flex: 0 0 auto; }
+.tx-frow .cat-filter[open] { order: 9; flex-basis: 100%; }
+.tx-frow .cat-filter > summary.on { background: var(--kc, #e8590c); color: var(--kc-on, #fff); border-color: transparent; }
+.tx-qbtn { flex: 0 0 auto; width: 38px; height: 38px; }
+.tx-qbtn.on { background: color-mix(in srgb, var(--kc, #e8590c) 20%, var(--soft)); }
+.cta-row { margin: -6px 0 12px; }
+/* K5: Cài đặt của tài khoản — Nâng cao + Vùng nguy hiểm */
+.adv-box { margin: 14px 0 4px; }
+.adv-box > .adv-sum { list-style: none; cursor: pointer; padding: 12px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
+.adv-box > .adv-sum::-webkit-details-marker { display: none; }
+.adv-box > .adv-sum::after { content: '▾'; position: absolute; right: 26px; margin-top: 2px; color: var(--muted); }
+.adv-box[open] > .adv-sum::after { content: '▴'; }
+.adv-box > .adv-sum small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.danger-zone { margin-top: 18px; border: 1px solid color-mix(in srgb, var(--expense) 45%, var(--line)) !important; background: color-mix(in srgb, var(--expense) 5%, var(--card)); }
+.danger-zone h3 { font-size: 14px; color: var(--expense); margin: 0 0 6px; padding: 8px 14px 0; }
+.danger-zone.form h3 { padding: 0; }
+/* P1: Kế hoạch — hàng thẻ icon + chữ 1 dòng, vuốt ngang */
+.seg.plan-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.seg.plan-tabs::-webkit-scrollbar { display: none; }
+.seg.plan-tabs > a { flex: 0 0 auto; white-space: nowrap; padding: 7px 10px; font-size: 13px; }
+/* C1 / C2: Cài đặt chung dạng menu, lưới icon 3 cột */
+.set-menu { margin-bottom: 12px; }
+.set-menu .row { color: inherit; text-decoration: none; }
+.settings-head .set-back { width: 40px; height: 40px; font-size: 26px; display: grid; place-items: center; text-decoration: none; color: inherit; flex: 0 0 auto; }
+.settings-head h1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
+.ig-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; }
+.ig-item .ig-ic { font-size: 24px; line-height: 1.1; }
+.ig-item small { font-size: 11.5px; text-align: center; }
+.ig-item i { position: absolute; top: 3px; right: 6px; font-style: normal; font-size: 10px; opacity: .5; }
+/* C3: Cài đặt chung không có thanh dưới */
+body[data-route="settings"] .tabbar { display: none; }
+body[data-route="settings"] .main { padding-bottom: calc(30px + var(--safe-b)); }
+/* G1–G6: form Thêm giao dịch */
+.txf .tf-top { display: flex; justify-content: flex-end; margin: -4px 0 -4px; }
+.txf .nl-toggle { font-size: 13px; }
+.txf .nl-row[hidden] { display: none; }
+.cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cat-grid[hidden] { display: none; }
+.cg-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 2px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: inherit; min-width: 0; }
+.cg-item .cg-ic { font-size: 22px; line-height: 1.1; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--c, #888) 15%, transparent); }
+.cg-item small { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-item.on { border-color: var(--kc, #e8590c); box-shadow: 0 0 0 1.5px var(--kc, #e8590c); background: color-mix(in srgb, var(--kc, #e8590c) 8%, var(--card)); font-weight: 700; }
+.cg-more .cg-ic { background: var(--soft); }
+.tf-more { border: 1px dashed var(--line); border-radius: 12px; padding: 0 12px; }
+.tf-more > summary { list-style: none; cursor: pointer; padding: 10px 0; font-weight: 600; font-size: 14px; }
+.tf-more > summary::-webkit-details-marker { display: none; }
+.tf-more > summary small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.tf-more[open] { padding-bottom: 10px; }
+.tf-more[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }.adv-box > .adv-sum { position: relative; padding-right: 34px; }
+.adv-box > .adv-sum::after { top: 12px; right: 14px; margin: 0; }

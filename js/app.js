@@ -78,7 +78,7 @@ async function notifyAlerts() {
     const body = a.kind === 'budget'
       ? `Đã dùng ${Math.round(a.ratio * 100)}% ngân sách`
       : a.kind === 'reminder' ? fmtDue(a.days)
-        : a.kind === 'backup' ? 'Mở app và bấm Save để lưu file .json'
+        : a.kind === 'backup' ? 'Mở app và bấm Lưu file sao lưu'
         : a.kind === 'cardpay' ? `${a.count} khoản chưa thanh toán · ${fmt(a.amount)}` : `${fmt(a.amount)} · ${fmtDue(a.days)}`;
     const title = { debt: '🏦 Trả nợ: ', pending: '⏳ Cần xác nhận: ', recurring: '🔁 Sắp đến hạn: ', budget: '⚠️ Ngân sách: ', reminder: '🔔 Nhắc nhở: ', cardpay: '💳 ', creditpay: '💳 ', backup: '💾 ', maturity: '📅 ' }[a.kind] + a.title;
     try {
