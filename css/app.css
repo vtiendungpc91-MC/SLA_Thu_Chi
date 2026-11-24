@@ -1571,3 +1571,23 @@ body[data-route="settings"] .main { padding-bottom: calc(30px + var(--safe-b)); 
 .tf-more[open] { padding-bottom: 10px; }
 .tf-more[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }.adv-box > .adv-sum { position: relative; padding-right: 34px; }
 .adv-box > .adv-sum::after { top: 12px; right: 14px; margin: 0; }
+
+/* ===== v7.82: phần đầu thu nhỏ DẦN theo độ cuộn (--pp: 0 = chưa cuộn, 1 = đã cuộn 90px) — mượt, không giật ===== */
+.pin-head { --q: var(--pp, 0); --r: calc(1 - var(--q)); }
+/* Thẻ Tổng tài sản: số tổng nhỏ dần, nhãn và 4 ô nhỏ mờ dần rồi thu lại (không ẩn đột ngột) */
+.pin-head .hero-card { padding: calc(4px + 6px * var(--r)) 12px !important; margin-bottom: calc(6px + 2px * var(--r)) !important; }
+.pin-head .hero-card .hero-l { display: block !important; overflow: hidden; max-height: calc(16px * var(--r)); opacity: clamp(0, calc(1 - 1.6 * var(--q)), 1); }
+.pin-head .hero-card .hero-total { font-size: calc(18px + 8px * var(--r)) !important; margin: calc(1px * var(--r)) 0 calc(6px * var(--r)) !important; transition: none; }
+.pin-head .hero-mini { display: flex !important; overflow: hidden; max-height: calc(40px * var(--r)); padding-top: calc(6px * var(--r)); opacity: clamp(0, calc(1 - 1.6 * var(--q)), 1); border-top-color: color-mix(in srgb, var(--line) calc(100% * var(--r)), transparent); }
+.pin-head .hero-pf { overflow: hidden; max-height: calc(20px * var(--r)); opacity: clamp(0, calc(1 - 1.6 * var(--q)), 1); }
+/* Tiêu đề các màn hình (Giao dịch, Báo cáo, Cài đặt, Kế hoạch…): chữ nhỏ dần, dòng phụ mờ dần */
+.pin-head .title-row { margin: calc(2px + 6px * var(--r)) 2px calc(6px + 6px * var(--r)) !important; }
+.pin-head .title-row h1 { font-size: calc(18px + 8px * var(--r)) !important; transition: none !important; }
+.pin-head .title-row small { display: block !important; overflow: hidden; max-height: calc(20px * var(--r)); opacity: clamp(0, calc(1 - 1.6 * var(--q)), 1); }
+.pin-head .title-row .icon-btn { width: calc(32px + 8px * var(--r)) !important; height: calc(32px + 8px * var(--r)) !important; font-size: calc(15px + 3px * var(--r)) !important; }
+.settings-head h1 { font-size: calc(18px + 4px * (1 - var(--pp, 0))) !important; transition: none !important; }
+.pin-head > p.muted:not(.pin-end) { display: block !important; overflow: hidden; max-height: calc(60px * var(--r)); opacity: clamp(0, calc(1 - 1.6 * var(--q)), 1); margin-bottom: calc(8px * var(--r)); }
+/* Trang ngắn: chừa đủ chiều cao để phần đầu thu nhỏ không làm trang co lại rồi bật ngược (gây nhấp nháy) */
+.main:has(> .pin-head) { min-height: calc(100vh + 150px); }
+/* Không để trình duyệt tự kéo trang khi phần đầu co lại (neo cuộn) — gây giật qua lại */
+html, body, .main { overflow-anchor: none; }

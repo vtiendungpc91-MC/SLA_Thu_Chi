@@ -3066,6 +3066,9 @@ const planBookHead = (b) => `<div class="plan-book"><span class="br-ic sm">${esc
 
 /** Đọc kế hoạch của mọi mục rồi vẽ (đọc nhiều sổ nên làm sau khi vẽ khung). */
 async function mountPlan(root) {
+  // v7.82: hàng thẻ vuốt ngang — giữ thẻ đang chọn trong khung nhìn (trước đây vẽ lại là nhảy về đầu hàng).
+  const tabs = root.querySelector('.plan-tabs'), on = tabs?.querySelector('.on');
+  if (tabs && on) tabs.scrollLeft = Math.max(0, on.offsetLeft - (tabs.clientWidth - on.offsetWidth) / 2);
   const box = root.querySelector('[data-plan-list]');
   if (!box) return;
   const token = ++planToken;
@@ -4599,7 +4602,7 @@ const bankRoute = (id, from, to) => `<div class="bank-route" id="${id}">${bankRo
 
 /** Dòng chọn tài khoản giao dịch, chỉ hiện khi thẻ đó có từ 2 tài khoản. */
 const bookPick = (pick, id = '', attr = 'data-pick') => (pick?.length > 1 ? `<div class="who-pick book-pick" ${id ? `id="${id}"` : 'data-book-pick'}><span>Tài khoản giao dịch</span><div class="chips">${pick.map((p) =>
-  `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" ${attr}="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : '');
+  `<button type="button" class="chip ${p.id === S.currentProfile().id ? 'on' : ''}" ${attr}="${esc(p.id)}" style="--c:${esc(p.color)}">${esc(bankMark(p))}${esc(p.icon)} ${esc(p.name)}${p.locked ? ' 🔒' : ''}</button>`).join('')}</div></div>` : '');
 let pickBusy = false;
 /** Đổi tài khoản: mở lại form của tài khoản đó, giữ số tiền đang nhập. */
 function bindBookPick(sh, close, amtId, reopen) {
@@ -6533,8 +6536,18 @@ actions['search-all'] = () => {
 
 // ----- Phần đầu thu gọn khi cuộn (có độ trễ để không nhấp nháy quanh ngưỡng) -----
 let pinSmall = false;
+// v7.82: thu nhỏ DẦN theo độ cuộn (biến CSS --pp từ 0 → 1 trong 90px đầu) thay vì bật/tắt một lần → mượt, không giật.
+const PIN_RANGE = 90;
+let ppFrame = 0, ppLast = -1;
+function updatePinProgress() {
+  ppFrame = 0;
+  const p = Math.max(0, Math.min(1, window.scrollY / PIN_RANGE));
+  const v = Math.round(p * 100) / 100;
+  if (v !== ppLast) { ppLast = v; document.documentElement.style.setProperty('--pp', v); }
+}
 window.addEventListener('scroll', () => {
   if (document.body.classList.contains('noscroll')) return;
+  if (!ppFrame) ppFrame = requestAnimationFrame(updatePinProgress);
   const want = pinSmall ? window.scrollY > 8 : window.scrollY > 60;
   if (want !== pinSmall) { pinSmall = want; document.body.classList.toggle('pin-small', want); }
 }, { passive: true });
@@ -6622,6 +6635,7 @@ export function render(route, sub) {
   v.mount && v.mount(main);
   fillTopBar(main).catch((err) => console.warn(err));
   restorePageScroll(sameView, y);
+  updatePinProgress();
   document.querySelectorAll('#tabbar a').forEach((a) => a.classList.toggle('on', a.dataset.tab === current.route));
 }
 
